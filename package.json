@@ -1,0 +1,32 @@
+{
+  "name": "@bibit-internal/agent-hub-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build:dev": "vite build",
+    "typecheck": "tsc --noEmit",
+    "keygen": "bibit-plugin keygen --out .bibit-keys --key-id development",
+    "build:plugin": "bibit-plugin build --key .bibit-keys/development-private.pem --key-id development"
+  },
+  "bibitPlugin": {
+    "entry": "src/plugin.tsx",
+    "manifest": "bibit.feature.json",
+    "artifactDir": "artifacts"
+  },
+  "dependencies": {
+    "@bibit/feature-contracts": "file:vendor/bibit-feature-contracts-0.1.0.tgz",
+    "@bibit/feature-dev-host": "file:vendor/bibit-feature-dev-host-0.1.0.tgz",
+    "@bibit/feature-plugin-sdk": "file:vendor/bibit-feature-plugin-sdk-0.1.0.tgz",
+    "@bibit/feature-sdk": "file:vendor/bibit-feature-sdk-0.1.0.tgz",
+    "react": "19.0.0",
+    "react-dom": "19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.2",
+    "@types/react-dom": "19.1.2",
+    "typescript": "5.9.2",
+    "vite": "6.1.0"
+  }
+}
