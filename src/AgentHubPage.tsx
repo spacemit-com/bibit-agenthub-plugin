@@ -8,23 +8,45 @@ export function AgentHubPage(_: FeaturePageProps) {
   const store = useFeatureCapability('external-service:store')
   const [agents, setAgents] = useState<readonly AgentSummary[]>([])
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [reload, setReload] = useState(0)
 
   useEffect(() => {
+    let active = true
+    const controller = new AbortController()
+    setLoading(true)
+    setError('')
     if (!store) {
       setError('Store capability is not available.')
-      return
+      setLoading(false)
+      return () => { active = false }
     }
-    store.request<AgentSummary[]>({ serviceId: 'store', operationId: 'agents.list', params: {} })
-      .then(setAgents)
-      .catch((reason) => setError(String(reason)))
-  }, [store])
+    void store.request<AgentSummary[]>({
+      serviceId: 'store',
+      operationId: 'agents.list.v1',
+      params: {},
+      signal: controller.signal,
+    }).then((items) => {
+      if (active) setAgents(items)
+    }).catch((reason) => {
+      if (active) setError(String(reason))
+    }).finally(() => {
+      if (active) setLoading(false)
+    })
+    return () => {
+      active = false
+      controller.abort()
+    }
+  }, [store, reload])
 
   return (
     <main className="agent-hub">
-      <header><div><p>INTERNAL CATALOG</p><h1>Agent Hub</h1></div><button type="button">Upload package</button></header>
-      {error && <p role="alert" className="agent-hub__error">{error}</p>}
+      <header><div><p>INTERNAL CATALOG</p><h1>Agent Hub</h1></div></header>
+      {loading && <p role="status" className="agent-hub__status">Loading Agents…</p>}
+      {error && <div role="alert" className="agent-hub__error"><span>{error}</span><button type="button" onClick={() => setReload((value) => value + 1)}>Retry</button></div>}
+      {!loading && !error && agents.length === 0 && <p className="agent-hub__status">No Agents are available.</p>}
       <section className="agent-hub__grid" aria-label="Available Agents">
-        {agents.map((agent) => <article key={agent.id}><span>AGENT</span><h2>{agent.name}</h2><p>{agent.description}</p><button type="button">Install</button></article>)}
+        {agents.map((agent) => <article key={agent.id}><span>AGENT</span><h2>{agent.name}</h2><p>{agent.description}</p></article>)}
       </section>
     </main>
   )

@@ -7,8 +7,8 @@
     "dev": "vite --host 0.0.0.0",
     "build:dev": "vite build",
     "typecheck": "tsc --noEmit",
-    "keygen": "bibit-plugin keygen --out .bibit-keys --key-id development",
-    "build:plugin": "bibit-plugin build --key .bibit-keys/development-private.pem --key-id development"
+    "keygen": "bibit-plugin keygen --out .bibit-keys --key-id agent-hub-development",
+    "build:plugin": "bibit-plugin build --key .bibit-keys/agent-hub-development-private.pem --key-id agent-hub-development"
   },
   "bibitPlugin": {
     "entry": "src/plugin.tsx",
@@ -16,10 +16,10 @@
     "artifactDir": "artifacts"
   },
   "dependencies": {
-    "@bibit/feature-contracts": "file:vendor/bibit-feature-contracts-0.1.0.tgz",
-    "@bibit/feature-dev-host": "file:vendor/bibit-feature-dev-host-0.1.0.tgz",
-    "@bibit/feature-plugin-sdk": "file:vendor/bibit-feature-plugin-sdk-0.1.0.tgz",
-    "@bibit/feature-sdk": "file:vendor/bibit-feature-sdk-0.1.0.tgz",
+    "@bibit/feature-contracts": "file:vendor/bibit-feature-contracts-0.2.0.tgz",
+    "@bibit/feature-dev-host": "file:vendor/bibit-feature-dev-host-0.2.0.tgz",
+    "@bibit/feature-plugin-sdk": "file:vendor/bibit-feature-plugin-sdk-0.2.0.tgz",
+    "@bibit/feature-sdk": "file:vendor/bibit-feature-sdk-0.2.0.tgz",
     "react": "19.0.0",
     "react-dom": "19.0.0"
   },
