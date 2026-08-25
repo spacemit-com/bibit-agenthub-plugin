@@ -11,6 +11,8 @@ const mockAgents = [
   { id: 'incident-helper', name: 'Incident Helper', description: 'Collects evidence and prepares an incident timeline.' }
 ]
 
+let settings = { showExperimental: false, refreshMinutes: 15 }
+
 const storeEndpoint =
   new URLSearchParams(globalThis.location.search).get('storeEndpoint') ?? undefined
 
@@ -20,9 +22,15 @@ createRoot(document.getElementById('root')!).render(
       manifest={manifestJson as FeatureManifestV1}
       module={featureModule}
       serviceMocks={storeEndpoint ? undefined : {
-        store: ({ operationId }) => operationId === 'agents.list.v1'
-          ? mockAgents
-          : Promise.reject(new Error(`Unknown operation: ${operationId}`)),
+        store: ({ operationId, params }) => {
+          if (operationId === 'agents.list.v1') return mockAgents
+          if (operationId === 'settings.get.v1') return settings
+          if (operationId === 'settings.update.v1') {
+            settings = params as typeof settings
+            return settings
+          }
+          return Promise.reject(new Error(`Unknown operation: ${operationId}`))
+        },
       }}
       serviceConnections={storeEndpoint ? { store: storeEndpoint } : undefined}
     />
