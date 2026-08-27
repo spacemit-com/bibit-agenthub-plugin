@@ -43,7 +43,7 @@ function isFeatureServiceError(value: unknown): value is FeatureExternalServiceE
   return (
     candidate.version === 1 &&
     typeof candidate.code === 'string' &&
-    candidate.code in ERROR_MESSAGES
+    Object.hasOwn(ERROR_MESSAGES, candidate.code)
   )
 }
 
@@ -101,6 +101,10 @@ export function AgentHubPage(_: FeaturePageProps) {
       .then((result) => {
         if (controller.signal.aborted || generation !== generationRef.current) return
         if (result.status === 'reset_required') {
+          if (page === 1) {
+            setView({ status: 'error', message: 'Power catalog service is incompatible with this plugin.', retryable: false })
+            return
+          }
           setSnapshot(undefined)
           setPage(1)
           return

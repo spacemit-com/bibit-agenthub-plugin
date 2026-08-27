@@ -317,6 +317,19 @@ describe('AgentHubPage', () => {
     await screen.findByRole('heading', { name: 'code-review' })
   })
 
+  it('treats page-1 reset_required as an incompatible service error', async () => {
+    const { hostApi } = makeStoreHost(() => ({
+      status: 'reset_required',
+      reason: 'snapshot_changed',
+    }))
+    renderPage(hostApi)
+
+    expect(
+      await screen.findByText('Power catalog service is incompatible with this plugin.')
+    ).toBeTruthy()
+    expect(screen.queryByText('Loading Powers…')).toBeNull()
+  })
+
   it('renders warnings alongside valid cards', async () => {
     const { hostApi } = makeStoreHost(() =>
       readyResult({
@@ -354,6 +367,18 @@ describe('AgentHubPage', () => {
     const retry = screen.queryByRole('button', { name: 'Retry' })
     if (retryable) expect(retry).toBeTruthy()
     else expect(retry).toBeNull()
+  })
+
+  it('rejects a prototype-key error code and shows the safe fallback', async () => {
+    const { hostApi } = makeStoreHost(() => {
+      throw { version: 1, code: 'constructor', message: 'x' }
+    })
+    renderPage(hostApi)
+
+    expect(
+      await screen.findByText('Power catalog service is incompatible with this plugin.')
+    ).toBeTruthy()
+    expect(screen.queryByText(/function/i)).toBeNull()
   })
 
   it('appends the diagnostic ID when the mapped error carries one', async () => {
