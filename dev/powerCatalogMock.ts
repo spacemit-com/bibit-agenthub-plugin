@@ -4,9 +4,13 @@ import {
   type ListPowersResult,
   type PowerSeries,
   type PowerType,
+  type PowerWarning,
 } from '../src/api/contracts'
 
 const SNAPSHOT = 'local-preview-v1'
+
+const PARTIALLY_UNAVAILABLE_AGENTS = new Set(['nova'])
+const PARTIAL_AGENT_WARNING_MESSAGE = 'Some installed Powers for this agent are temporarily unavailable.'
 
 type MockPowerRecord = {
   scope: 'installed' | 'market'
@@ -237,6 +241,19 @@ export function handlePowerCatalogMock(input: {
       .flatMap((record) => record.tags)
   )
 
+  // partial-agent warning for the selected installed agent, when flagged
+  const selectedAgent = query.scope === 'installed' ? query.agent : undefined
+  const warnings: PowerWarning[] =
+    selectedAgent !== undefined && PARTIALLY_UNAVAILABLE_AGENTS.has(selectedAgent)
+      ? [
+          {
+            code: 'installed-agent-unavailable',
+            agent: selectedAgent,
+            message: PARTIAL_AGENT_WARNING_MESSAGE,
+          },
+        ]
+      : []
+
   // 4. apply type and tag OR filters to exact versions
   const filteredRecords = agentRecords.filter((record) => {
     if (record.type !== query.type) return false
@@ -288,7 +305,7 @@ export function handlePowerCatalogMock(input: {
     pageSize: POWER_PAGE_SIZE,
     total,
     facets: { agents: agentsFacet, tags: tagsFacet },
-    warnings: [],
+    warnings,
   }
   return nextPage === undefined ? base : { ...base, nextPage }
 }

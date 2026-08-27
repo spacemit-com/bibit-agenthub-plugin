@@ -123,6 +123,30 @@ describe('handlePowerCatalogMock', () => {
     expect(result).toEqual({ status: 'reset_required', reason: 'snapshot_changed' })
   })
 
+  it('returns a partial-agent warning alongside available records for the nova agent', () => {
+    const result = readyResult({
+      operationId: 'powers.list.v1',
+      params: {
+        scope: 'installed',
+        agent: 'nova',
+        type: 'skill',
+        tags: [],
+        page: 1,
+        pageSize: 20,
+      },
+    })
+
+    expect(result.warnings).toHaveLength(1)
+    expect(result.warnings[0]).toEqual({
+      code: 'installed-agent-unavailable',
+      agent: 'nova',
+      message: 'Some installed Powers for this agent are temporarily unavailable.',
+    })
+    expect(result.items).not.toHaveLength(0)
+    expect(result.facets.agents).toContain('nova')
+    expect(parseListPowersResult(result)).toEqual(result)
+  })
+
   it('rejects an unknown operation', () => {
     expect(() => handlePowerCatalogMock({ operationId: 'agents.list.v1', params: {} })).toThrow(
       'Unknown operation: agents.list.v1'
