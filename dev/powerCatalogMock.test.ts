@@ -57,6 +57,17 @@ describe('handlePowerCatalogMock', () => {
     expect(parseListPowersResult(result)).toEqual(result)
   })
 
+  it('sorts a series versions in descending SemVer order even when fixtures are authored out of order', () => {
+    const result = readyResult({
+      operationId: 'powers.list.v1',
+      params: bibitSkillParams(),
+    })
+
+    // incident-helper is authored ascending (v1.0.0 before v2.0.0); the mock must sort it
+    const incident = result.items.find((item) => item.name === 'incident-helper')
+    expect(incident?.versions.map((version) => version.version)).toEqual(['v2.0.0', 'v1.0.0'])
+  })
+
   it('returns an empty agents facet for market scope', () => {
     const result = readyResult({
       operationId: 'powers.list.v1',
