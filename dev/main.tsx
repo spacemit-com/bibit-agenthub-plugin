@@ -5,11 +5,7 @@ import '@bibit/feature-dev-host/styles.css'
 import type { FeatureManifestV1 } from '@bibit/feature-contracts'
 import manifestJson from '../bibit.feature.json'
 import { featureModule } from '../src/feature'
-
-const mockAgents = [
-  { id: 'release-notes', name: 'Release Notes', description: 'Turns merged changes into concise internal release notes.' },
-  { id: 'incident-helper', name: 'Incident Helper', description: 'Collects evidence and prepares an incident timeline.' }
-]
+import { handlePowerCatalogMock } from './powerCatalogMock'
 
 let settings = { showExperimental: false, refreshMinutes: 15 }
 
@@ -23,7 +19,7 @@ createRoot(document.getElementById('root')!).render(
       module={featureModule}
       serviceMocks={storeEndpoint ? undefined : {
         store: ({ operationId, params }) => {
-          if (operationId === 'agents.list.v1') return mockAgents
+          if (operationId === 'powers.list.v1') return handlePowerCatalogMock({ operationId, params })
           if (operationId === 'settings.get.v1') return settings
           if (operationId === 'settings.update.v1') {
             settings = params as typeof settings
