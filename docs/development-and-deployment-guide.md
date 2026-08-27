@@ -22,7 +22,7 @@
 - `pages.home`：显示在 Bibit 主导航的 Agent Hub 页面；
 - `settings.settings`：显示在 Bibit 设置子菜单的 Agent Hub 设置页面。
 
-当前 Demo 只实现 Agent 列表、列表重试、实验 Agent 开关和刷新间隔设置。Agent 详情、搜索、分页、上传、下载、删除、版本管理和发布流程尚未实现，这些属于 Agent Hub 模块团队后续定制范围。
+当前 Demo 已实现 APC Power 展示原型：通过 `powers.list.v1` 提供“我的 Power / Power 市场”两种数据范围、Agent / 类型 / tags 分层筛选、系列级卡片、版本选择与每页 20 张卡片的分页，并配套 Local Preview。设置页仍提供实验 Agent 开关和刷新间隔两个字段。Power 安装、下载、提交、审核、下架、恢复以及搜索、详情等能力尚未实现，这些属于 Agent Hub 模块团队后续定制范围。
 
 当前插件没有使用 `@bibit/feature-ui`。如果后续引入，必须由平台提供与目标 Bibit 完全一致的版本快照，并与 React 及其余 SDK 一起锁定升级；不得直接导入 Bibit 私有 UI 源码。
 
@@ -287,25 +287,25 @@ interface FeaturePageProps {
 import type { FeaturePageProps } from '@bibit/feature-sdk'
 
 export function AgentHubPage({ subpath, navigation }: FeaturePageProps) {
-  if (subpath.startsWith('agents/')) {
-    const agentId = subpath.slice('agents/'.length)
+  if (subpath.startsWith('powers/')) {
+    const powerName = subpath.slice('powers/'.length)
     return (
       <section>
         <button type="button" onClick={() => navigation.back()}>
           Back to catalog
         </button>
-        <h1>Agent detail</h1>
-        <p>Agent ID: {agentId}</p>
+        <h1>Power detail</h1>
+        <p>Power name: {powerName}</p>
       </section>
     )
   }
 
   return (
     <section>
-      <h1>Agent catalog</h1>
+      <h1>Power catalog</h1>
       <button
         type="button"
-        onClick={() => navigation.push('agents/incident-helper')}
+        onClick={() => navigation.push('powers/incident-helper')}
       >
         Open Incident Helper
       </button>
@@ -372,16 +372,20 @@ const store = useFeatureCapability('external-service:store')
 
 发起请求：
 
+页面只通过 `src/api/powerCatalogClient.ts` 的 `listPowers` 发起业务数据请求，它封装了请求投影与运行时校验：
+
 ```tsx
 const controller = new AbortController()
 
-const agents = await store.request<AgentSummary[]>({
-  serviceId: 'store',
-  operationId: 'agents.list.v1',
-  params: {},
-  timeoutMs: 30_000,
-  signal: controller.signal,
-})
+const result = await listPowers(store, input, controller.signal)
+// listPowers 内部调用 store.request({
+//   serviceId: 'store',
+//   operationId: 'powers.list.v1',
+//   params: toListPowersParams(input),
+//   timeoutMs: 30_000,
+//   signal: controller.signal,
+// })
+// 并对返回的 powers.list.v1 结果执行 parseListPowersResult 闭集运行时校验。
 ```
 
 组件卸载时执行：
@@ -394,14 +398,14 @@ return () => controller.abort()
 
 - capability 不存在时显示 Agent Hub 局部错误，不直接回退到 `fetch`；
 - `serviceId` 固定为 `store`；
-- `operationId` 必须带版本，例如 `agents.list.v1`；
-- `params` 必须是 JSON object；
+- `operationId` 必须带版本，页面数据只使用 `powers.list.v1`；
+- `params` 必须是 JSON object，由 `toListPowersParams` 投影为字段闭集；
 - timeout 必须在 `1..300000` 毫秒内，默认值为 30000 毫秒；
-- 单个请求最大 1 MiB，单个响应最大 4 MiB；
+- 单个请求最大 1 MiB，单个响应最大 4 MiB；正式发布前必须验证 `powers.list.v1` 单响应不超过 Host 的 4 MiB 上限；
 - 不把 URL、header、authorization、token、API key、cookie、credential 或 secret 放入 `params`；
 - 不显示或记录原始凭据、请求 header 或后端内部堆栈。
 
-当前代码通过 TypeScript 泛型声明返回类型，但没有运行时 DTO 校验。正式增加上传、下载、分页或复杂 DTO 前，应在插件的 API 边界增加轻量运行时校验；后端返回错误结构时必须进入局部错误态，不能让页面白屏。
+`powers.list.v1` 在插件 API 边界执行闭集运行时校验（`parseListPowersInput` / `parseListPowersResult`）：未知字段、非法 Power 类型、非 20 的 pageSize、版本乱序、重复或未排序 tags、market 携带 agent 等都会被拒绝。校验失败或后端返回未知结构时映射为局部错误态（`incompatible`），不能让页面白屏。`settings.get.v1` / `settings.update.v1` 暂未增加运行时校验，仍沿用 TypeScript 泛型。
 
 ## 10. Store 服务协议
 
@@ -409,16 +413,64 @@ return () => controller.abort()
 
 | operationId | params | result |
 | --- | --- | --- |
-| `agents.list.v1` | `{}` | `AgentSummaryV1[]` |
+| `powers.list.v1` | `ListPowersInput` | `ListPowersResult`（`ready` 或 `reset_required` 联合） |
 | `settings.get.v1` | `{}` | `AgentHubSettingsV1` |
 | `settings.update.v1` | `AgentHubSettingsV1` | `AgentHubSettingsV1` |
 
+`powers.list.v1` 是页面唯一的业务数据 operation。请求与结果类型（与 `src/api/contracts.ts` 一致）：
+
 ```ts
-interface AgentSummaryV1 {
-  id: string
-  name: string
-  description: string
+export const POWER_TYPES = ['skill', 'plugin', 'mcp', 'agent'] as const
+export const POWER_PAGE_SIZE = 20 as const
+export const POWERS_LIST_OPERATION_ID = 'powers.list.v1' as const
+
+type PowerScope = 'installed' | 'market'
+type PowerType = (typeof POWER_TYPES)[number]
+
+interface ListPowersInput {
+  scope: PowerScope
+  agent?: string          // 仅 installed 必填；market 必须省略
+  type: PowerType
+  tags: string[]          // 0–20 个 canonical tag，字典序排序且唯一，多项 OR
+  page: number            // 从 1 开始
+  pageSize: 20            // v1 固定
+  snapshot?: string       // page=1 省略；page>1 必填并等于上一页结果 snapshot
 }
+
+interface PowerVersion {
+  version: string
+  description: string
+  tags: string[]
+}
+
+interface PowerSeries {
+  type: PowerType
+  name: string
+  versions: PowerVersion[]
+}
+
+interface PowerWarning {
+  code: 'installed-agent-unavailable'
+  agent: string
+  message: string
+}
+
+type ListPowersResult =
+  | {
+      status: 'ready'
+      snapshot: string
+      items: PowerSeries[]
+      page: number
+      pageSize: 20
+      total: number
+      nextPage?: number
+      facets: { agents: string[]; tags: string[] }
+      warnings: PowerWarning[]
+    }
+  | {
+      status: 'reset_required'
+      reason: 'snapshot_changed'
+    }
 
 interface AgentHubSettingsV1 {
   showExperimental: boolean
@@ -426,7 +478,7 @@ interface AgentHubSettingsV1 {
 }
 ```
 
-注意：当前 `agents.list.v1` 返回的是数组本身，不是 `{ items: AgentSummaryV1[] }`。如果未来需要 cursor、total 或分页元数据，应发布新的 operation 版本，不要悄悄更改 v1 返回结构。
+结果规则：items 按 type、name 升序；每系列 versions 至少一项且按严格 SemVer `vMAJOR.MINOR.PATCH` 降序；tags、facets.agents、facets.tags 排序去重；market 的 facets.agents 恒为 `[]`；total 是当前筛选条件下的系列数；nextPage 仅在有下一页时返回；snapshot 变化时返回 `reset_required`，页面回第 1 页重新加载且不混合新旧结果。请求与结果均为字段闭集，未知字段在 API 边界被拒绝。
 
 ### 10.2 HTTP 请求
 
@@ -442,8 +494,15 @@ Content-Type: application/json
   "protocolVersion": 1,
   "requestId": "host-generated-request-id",
   "serviceId": "store",
-  "operationId": "agents.list.v1",
-  "params": {},
+  "operationId": "powers.list.v1",
+  "params": {
+    "scope": "installed",
+    "agent": "bibit",
+    "type": "skill",
+    "tags": [],
+    "page": 1,
+    "pageSize": 20
+  },
   "timeoutMs": 30000
 }
 ```
@@ -455,13 +514,24 @@ Content-Type: application/json
   "protocolVersion": 1,
   "requestId": "host-generated-request-id",
   "ok": true,
-  "result": [
-    {
-      "id": "incident-helper",
-      "name": "Incident Helper",
-      "description": "Collects evidence and prepares an incident timeline."
-    }
-  ]
+  "result": {
+    "status": "ready",
+    "snapshot": "local-preview-v1",
+    "items": [
+      {
+        "type": "skill",
+        "name": "code-review",
+        "versions": [
+          { "version": "v2.0.0", "description": "Peer review with a quality gate.", "tags": ["quality"] }
+        ]
+      }
+    ],
+    "page": 1,
+    "pageSize": 20,
+    "total": 1,
+    "facets": { "agents": ["bibit"], "tags": ["code-review", "quality"] },
+    "warnings": []
+  }
 }
 ```
 
@@ -543,6 +613,53 @@ Bibit Host 会自动追加 `/bibit/v1/invoke`。`baseUrl` 不得包含用户名�
 
 token 由 Bibit 凭据存储提供。不得把 token 写入插件、Manifest、URL、仓库或日志。
 
+### 10.4 未来 Installed 数据源（APM CLI）
+
+正式 Remote Store 尚未实现。未来 Store 收到 `scope=installed` 时，使用固定 argv 执行（禁止 shell 字符串拼接）：
+
+```text
+apm list --installed --agent=all --all --json
+```
+
+单条 APM JSON 记录映射为精确版本记录：
+
+```ts
+interface APMPowerRecord {
+  agent: string
+  type: PowerType
+  name: string
+  version: string
+  description?: string
+  tags?: string[]
+}
+```
+
+Store 处理规则：缺失 description / tags 分别规范化为 `""` / `[]`；先按 agent、type、tags 过滤，再按 type、name 聚合；相同 agent、type、name、version 重复记录去重；facets.agents 只含实际返回记录中的已安装 Agent；facets.tags 来自当前 agent、type 的完整记录集合（不受当前 tag 选择限制）；CLI 非零退出但 stdout 为合法 JSON 时仍返回有效数据与安全 warning；stdout 非法或 CLI 无法执行时映射为 Host `external-service` 错误；不透传 CLI stderr、物理路径、环境变量、堆栈或命令内部错误。
+
+### 10.5 未来 Market 数据源（APC 公共接口）
+
+正式 APC 服务端尚未实现。未来 Store 收到 `scope=market` 时映射到 APC 系列级公共接口：
+
+```text
+GET /api/v1/resources/list?type=skill&tag=code-review&view=all&page=1&page_size=20&catalog_sha256=<snapshot>
+GET /api/v1/resources/tags?type=skill
+```
+
+`resources/list` 按 `(type, name)` 系列分页：`tag` 可重复 0–20 次并对精确版本做 OR 过滤；`view=all` / `latest`；`page>1` 必须携带首个响应的 `catalog_sha256`。`resources/tags` 按 type 返回该类型全部 published、可下载版本的 tag 清单，不分页、不接受额外查询参数。Store 只投影插件 DTO 所需字段（type、name、versions 的 version / description / tags），并保证 list、tags、version 来自同一 Published Catalog 快照。详见设计文档 §5 与 `../apc/docs/APC-API.md`。
+
+### 10.6 发布前置项
+
+原型行为实现完成后，正式发布仍依赖平台 owner，以下集成仍未实现：
+
+- 批准 `external-service:store` capability grant；
+- 在 Bibit（`../bibit`）注册真实 Host adapter 与 external-service gateway；
+- 实现安全的 APM CLI bridge；
+- 实现 APC transport、timeout、认证与错误映射；
+- 完成 APC 系列级 `resources/list` 与 `resources/tags` 服务端；
+- 验证 `powers.list.v1` 单响应不超过 Feature Host 4 MiB 上限。
+
+在这些前置项完成前，插件只能通过 Local Preview（§11.2）展示数据，不能宣称真实链路已接通。
+
 ## 11. 独立开发调试
 
 ### 11.1 获取代码
@@ -566,22 +683,27 @@ npm ls react react-dom \
   @bibit/feature-dev-host
 ```
 
-### 11.2 Mock 模式
+### 11.2 Local Preview（Mock 模式）
 
 ```bash
 npm run typecheck
 npm run dev
 ```
 
-浏览器打开 Vite 输出地址。Feature Dev Host 会读取真实 Manifest 和 Feature Module，并通过 `dev/main.tsx` 注入内存 Mock。此模式不启动、不编译 Bibit，也不要求 Store 后端在线。
+浏览器打开 Vite 输出地址。Feature Dev Host 读取真实 Manifest 和 Feature Module，并通过 `dev/main.tsx` 把 `powers.list.v1` 路由到 `dev/powerCatalogMock.ts` 的内存 Mock；`settings.get.v1` / `settings.update.v1` 仍使用内存设置。此模式不启动、不编译 Bibit、不执行真实 APM CLI，也不要求 Store 后端在线。
 
-必须检查：
+Local Preview 覆盖 installed 与 market 两类 fixture：Bibit、atlas、nova 三个已安装 Agent，skill / plugin / mcp / agent 四种 Power 类型、多 tags、多版本，以及超过两页的 Bibit skill 数据（含分页）；nova 会触发部分 Agent 可用性 warning。Mock 实现与未来 Remote 相同的筛选、聚合、分页、facets、warnings 与 snapshot 规则。
 
-- `Page · home` 显示两条 Mock Agent；
-- 加载结束后列表可见；
-- `Settings · settings` 可以读取当前 Mock 设置；
-- 修改开关和刷新间隔后保存；
-- 再次进入设置页时 Mock 值一致；
+冒烟检查（filters / version selection / pagination / warnings / Retry）：
+
+- 默认进入“我的 Power / Bibit / skill”，第 1 页显示最多 20 张系列卡，翻页显示“第 X / Y 页”；
+- “Power 市场”隐藏 Agent 层，Agent 层只显示 APM 已安装项；
+- 切换 Agent / 类型会清空失效 tags 并回到第 1 页；
+- 选择多个 tag 时按 OR 过滤，tag 清单随上层筛选刷新；
+- 同一系列切换版本时 description 与 tags 同步变化；
+- 选择 nova 时卡片与部分 Agent warning 同时显示；
+- 停止或未连接 Store 时页面显示局部错误与 Retry，恢复后 Retry 可恢复列表；
+- `Settings · settings` 可以读取当前 Mock 设置、保存后再次进入值一致；
 - 未知 operation 返回错误，而不是伪造成功。
 
 ### 11.3 连接真实开发 Store 服务
@@ -596,7 +718,7 @@ http://127.0.0.1:5173/?storeEndpoint=http%3A%2F%2F127.0.0.1%3A18081%2Fbibit%2Fv1
 
 真实服务调试必须验证：
 
-- `agents.list.v1` 数据来自服务，不是 `mockAgents`；
+- `powers.list.v1` 数据来自服务，不是 Local Preview Mock；
 - 浏览器网络请求中的 `requestId` 与服务响应一致；
 - 设置保存后重新 GET 得到相同值；
 - Store 服务停止后页面显示局部错误和 Retry；
@@ -831,7 +953,7 @@ ssh root@K3DEB1 \
 2. 覆盖 `/usr/lib/bibit/plugins/agent-hub.bibit-plugin.tgz`；
 3. 重新启动 Bibit；
 4. 确认 Registry 激活版本已经回退；
-5. 验证 Agent 列表和设置协议仍与后端兼容。
+5. 验证 Power 目录和设置协议仍与后端兼容。
 
 ### 15.3 卸载
 
@@ -875,7 +997,7 @@ npm run build:plugin
 1. `POST /bibit/v1/invoke` 可达；
 2. 三个 v1 operation 均返回合法信封；
 3. 响应回显请求 `requestId`；
-4. `agents.list.v1` 返回直接数组；
+4. `powers.list.v1` 返回通过闭集运行时校验的 `ready` / `reset_required` 结果；
 5. `settings.update.v1` 后再次调用 `settings.get.v1` 得到持久化值；
 6. 重启 Store 服务后设置值仍存在；
 7. 非法 operation、超时、未授权和离线产生约定错误；
@@ -910,9 +1032,9 @@ external-service-connections.json 的非敏感摘要
 
 执行：
 
-1. 在 Store 服务准备一条唯一测试 Agent，例如 `acceptance-agent-20260826`；
+1. 在 Store 服务准备一条唯一测试 Power 系列，例如 `acceptance-power-20260826`；
 2. 启动目标 Bibit，确认插件已激活且 `external-service:store` 已授予；
-3. 打开 Agent Hub，确认唯一测试 Agent 的名称和描述来自真实 Store；
+3. 打开 Agent Hub，确认唯一测试 Power 的 name、version、description 与 tags 来自真实 Store；
 4. 停止 Store 服务，点击 Retry，确认只显示 Agent Hub 局部错误；
 5. 确认 Bibit 对话、设置和其他页面仍可操作；
 6. 恢复 Store 服务，点击 Retry，确认列表恢复；
@@ -947,7 +1069,7 @@ external-service-connections.json 的非敏感摘要
 
 ### 返回成功但页面白屏
 
-当前 `agents.list.v1` 必须返回数组。如果后端返回 `{ "items": [] }`，TypeScript 泛型不会在运行时转换它。修正后端 v1 响应，或发布新的 operation 版本并更新前端运行时校验。
+`powers.list.v1` 的结果在 API 边界经过闭集运行时校验。后端若返回未知字段、非法 Power 类型、非 20 的 pageSize、版本乱序或重复未排序 tags，插件会拒绝该结果并进入局部错误态；此时应修正后端响应，或在破坏性变更时发布新的 operation 版本并同步更新 `src/api/contracts.ts`。
 
 ### 更新后仍显示旧版本
 
@@ -986,10 +1108,10 @@ external-service-connections.json 的非敏感摘要
 ## 19. 当前已知边界
 
 - v1 只支持 `desktop/main`；
-- 当前插件只实现 Agent 列表和两个设置字段；
-- 上传、下载、详情、分页、搜索和版本管理尚未实现；
-- 当前列表 DTO 没有运行时校验；
-- 当前仓库没有自动化组件测试，只提供类型检查和构建检查；
+- 当前插件实现 APC Power 展示原型（筛选、系列卡、版本选择、每页 20 的分页、warning 与 Retry）和两个设置字段；
+- Power 安装、下载、提交、审核、下架、恢复以及搜索、详情尚未实现；
+- `powers.list.v1` DTO 已做闭集运行时校验；`settings.get.v1` / `settings.update.v1` 尚未做运行时校验；
+- 自动化测试使用 Vitest 覆盖 DTO、Mock、客户端、组件与页面行为；
 - 当前 Demo 使用独立 CSS，尚未使用 `@bibit/feature-ui`；
 - 当前 `locales` 只声明 `en`，页面文案仍直接写在组件中；
 - 插件属于公司可信内部代码，不是不可信代码沙箱；
