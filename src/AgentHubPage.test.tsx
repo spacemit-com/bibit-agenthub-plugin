@@ -127,7 +127,8 @@ describe('AgentHubPage', () => {
       pageSize: 20,
     })
     expect(screen.getByRole('heading', { name: 'code-review' })).toBeTruthy()
-    expect(screen.getByText('第 1 / 1 页')).toBeTruthy()
+    expect((screen.getByRole('spinbutton', { name: 'Page number' }) as HTMLInputElement).value).toBe('1')
+    expect(screen.getByText('/ 1 页')).toBeTruthy()
   })
 
   it('shows the capability-unavailable error and recovers when Retry re-reads the capability', async () => {
@@ -208,10 +209,11 @@ describe('AgentHubPage', () => {
     renderPage(hostApi)
     await screen.findByRole('heading', { name: 'code-review' })
 
-    await user.click(screen.getByRole('button', { name: 'Next' }))
+    await user.click(screen.getByRole('button', { name: 'Next page' }))
     await screen.findByRole('heading', { name: 'second-page' })
 
-    await user.click(screen.getByRole('button', { name: 'atlas' }))
+    await user.hover(screen.getByRole('button', { name: '我的 Power' }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'atlas' }))
 
     await waitFor(() => {
       const last = calls[calls.length - 1]
@@ -220,6 +222,54 @@ describe('AgentHubPage', () => {
       expect('snapshot' in paramsOf(last)).toBe(false)
     })
     await screen.findByRole('heading', { name: 'code-review' })
+  })
+
+  it('jumps directly with the current snapshot', async () => {
+    const user = userEvent.setup()
+    const { hostApi, calls } = makeStoreHost((input) => {
+      const params = paramsOf(input)
+      return readyResult({
+        page: params.page,
+        total: 80,
+        nextPage: params.page < 4 ? params.page + 1 : undefined,
+        items: [params.page === 3 ? secondPageSkill : codeReview],
+      })
+    })
+    renderPage(hostApi)
+    await screen.findByRole('heading', { name: 'code-review' })
+
+    const pageInput = screen.getByRole('spinbutton', { name: 'Page number' })
+    await user.clear(pageInput)
+    await user.type(pageInput, '3{Enter}')
+    await screen.findByRole('heading', { name: 'second-page' })
+
+    const last = paramsOf(calls[calls.length - 1])
+    expect(last.page).toBe(3)
+    expect(last.snapshot).toBe('snap-1')
+  })
+
+  it('retains the installed Agent menu after visiting the market', async () => {
+    const user = userEvent.setup()
+    const { hostApi, calls } = makeStoreHost((input) => {
+      const params = paramsOf(input)
+      return readyResult({
+        facets: params.scope === 'installed'
+          ? { agents: ['atlas', 'bibit'], tags: [] }
+          : { agents: [], tags: [] },
+      })
+    })
+    renderPage(hostApi)
+    await screen.findByRole('heading', { name: 'code-review' })
+
+    await user.hover(screen.getByRole('button', { name: '我的 Power' }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'atlas' }))
+    await waitFor(() => expect(paramsOf(calls[calls.length - 1]).agent).toBe('atlas'))
+
+    await user.click(screen.getByRole('button', { name: 'Power 市场' }))
+    await waitFor(() => expect(paramsOf(calls[calls.length - 1]).scope).toBe('market'))
+    await user.hover(screen.getByRole('button', { name: '我的 Power' }))
+
+    expect(screen.getByRole('menuitemradio', { name: /atlas/ }).getAttribute('aria-checked')).toBe('true')
   })
 
   it('clears tags and resets the page when selecting the plugin type', async () => {
@@ -237,12 +287,10 @@ describe('AgentHubPage', () => {
     renderPage(hostApi)
     await screen.findByRole('heading', { name: 'code-review' })
 
-    const select = screen.getByLabelText('Tags') as HTMLSelectElement
-    for (const option of Array.from(select.options)) option.selected = option.value === 'alpha'
-    fireEvent.change(select)
+    await user.click(screen.getByRole('button', { name: 'alpha' }))
     await waitFor(() => expect(paramsOf(calls[calls.length - 1]).tags).toEqual(['alpha']))
 
-    await user.click(screen.getByRole('button', { name: 'Next' }))
+    await user.click(screen.getByRole('button', { name: 'Next page' }))
     await screen.findByRole('heading', { name: 'second-page' })
 
     await user.click(screen.getByRole('button', { name: 'plugin' }))
@@ -258,17 +306,16 @@ describe('AgentHubPage', () => {
   })
 
   it('sends sorted OR tags when multiple tags are selected', async () => {
+    const user = userEvent.setup()
     const { hostApi, calls } = makeStoreHost(() =>
       readyResult({ facets: { agents: ['bibit'], tags: ['alpha', 'beta', 'gamma'] } })
     )
     renderPage(hostApi)
     await screen.findByRole('heading', { name: 'code-review' })
 
-    const select = screen.getByLabelText('Tags') as HTMLSelectElement
-    for (const option of Array.from(select.options)) {
-      option.selected = option.value === 'beta' || option.value === 'alpha'
-    }
-    fireEvent.change(select)
+    await user.click(screen.getByRole('button', { name: 'beta' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'alpha' })).toBeTruthy())
+    await user.click(screen.getByRole('button', { name: 'alpha' }))
 
     await waitFor(() => expect(paramsOf(calls[calls.length - 1]).tags).toEqual(['alpha', 'beta']))
   })
@@ -287,7 +334,7 @@ describe('AgentHubPage', () => {
     renderPage(hostApi)
     await screen.findByRole('heading', { name: 'code-review' })
 
-    await user.click(screen.getByRole('button', { name: 'Next' }))
+    await user.click(screen.getByRole('button', { name: 'Next page' }))
     await screen.findByRole('heading', { name: 'second-page' })
 
     await waitFor(() => {
@@ -307,7 +354,7 @@ describe('AgentHubPage', () => {
     renderPage(hostApi)
     await screen.findByRole('heading', { name: 'code-review' })
 
-    await user.click(screen.getByRole('button', { name: 'Next' }))
+    await user.click(screen.getByRole('button', { name: 'Next page' }))
 
     await waitFor(() => {
       const last = paramsOf(calls[calls.length - 1])

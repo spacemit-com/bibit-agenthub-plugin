@@ -13,6 +13,7 @@ import {
 import { listPowers } from './api/powerCatalogClient'
 import { PowerCard } from './components/PowerCard'
 import { PowerFilters } from './components/PowerFilters'
+import { PowerPagination } from './components/PowerPagination'
 import './agentHub.css'
 
 type PowerScope = 'installed' | 'market'
@@ -67,6 +68,7 @@ export function AgentHubPage(_: FeaturePageProps) {
   const [agent, setAgent] = useState('bibit')
   const [type, setType] = useState<PowerType>('skill')
   const [tags, setTags] = useState<string[]>([])
+  const [knownAgents, setKnownAgents] = useState<string[]>([])
   const [page, setPage] = useState(1)
   const [snapshot, setSnapshot] = useState<string | undefined>(undefined)
   const [retry, setRetry] = useState(0)
@@ -111,6 +113,9 @@ export function AgentHubPage(_: FeaturePageProps) {
         }
         setSnapshot(result.snapshot)
         setView({ status: 'ready', data: result })
+        if (scope === 'installed' && result.facets.agents.length > 0) {
+          setKnownAgents(result.facets.agents)
+        }
         if (
           scope === 'installed' &&
           result.facets.agents.length > 0 &&
@@ -151,11 +156,11 @@ export function AgentHubPage(_: FeaturePageProps) {
     setPage(1)
     setSnapshot(undefined)
   }
-  const goPrevious = () => setPage((value) => Math.max(1, value - 1))
-  const goNext = () => setPage((value) => value + 1)
+  const changePage = (nextPage: number) => setPage(nextPage)
   const retryLoad = () => setRetry((value) => value + 1)
 
   const facets = view.status === 'ready' ? view.data.facets : { agents: [], tags: [] }
+  const agents = scope === 'installed' && facets.agents.length > 0 ? facets.agents : knownAgents
   const totalPages =
     view.status === 'ready' ? Math.max(1, Math.ceil(view.data.total / POWER_PAGE_SIZE)) : 1
 
@@ -164,7 +169,7 @@ export function AgentHubPage(_: FeaturePageProps) {
       <header><div><p>INTERNAL CATALOG</p><h1>Agent Hub</h1></div></header>
       <PowerFilters
         scope={scope}
-        agents={facets.agents}
+        agents={agents}
         agent={agent}
         type={type}
         availableTags={facets.tags}
@@ -197,11 +202,12 @@ export function AgentHubPage(_: FeaturePageProps) {
                   <PowerCard key={`${series.type}-${series.name}`} series={series} />
                 ))}
               </section>
-              <div>
-                <button type="button" disabled={view.data.page === 1} onClick={goPrevious}>Previous</button>
-                <span>第 {view.data.page} / {totalPages} 页</span>
-                <button type="button" disabled={view.data.nextPage === undefined} onClick={goNext}>Next</button>
-              </div>
+              <PowerPagination
+                page={view.data.page}
+                totalPages={totalPages}
+                canGoNext={view.data.nextPage !== undefined}
+                onPageChange={changePage}
+              />
             </>
           )}
         </>
