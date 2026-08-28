@@ -15,12 +15,12 @@ export function PowerCard({ series }: PowerCardProps) {
   const current = series.versions.find((version) => version.version === selectedVersion) ?? series.versions[0]
 
   return (
-    <article>
-      <span>{series.type}</span>
-      <h2>{series.name}</h2>
-      <label>
-        Version
+    <article className="power-card" data-power-type={series.type}>
+      <div className="power-card__header">
+        <span className="power-card__type">{series.type}</span>
         <select
+          className="power-card__version"
+          aria-label="Version"
           value={selectedVersion}
           onChange={(event) => setSelectedVersion(event.target.value)}
         >
@@ -30,9 +30,16 @@ export function PowerCard({ series }: PowerCardProps) {
             </option>
           ))}
         </select>
-      </label>
-      <textarea readOnly value={current.description} />
-      <textarea readOnly rows={1} wrap="off" value={current.tags.join(' ')} />
+      </div>
+      <h2>{series.name}</h2>
+      <p className="power-card__description">{current.description}</p>
+      <div className="power-card__tags" data-testid="power-card-tags">
+        {current.tags.map((tag) => (
+          <span key={tag} className="power-card__tag">
+            {tag}
+          </span>
+        ))}
+      </div>
     </article>
   )
 }

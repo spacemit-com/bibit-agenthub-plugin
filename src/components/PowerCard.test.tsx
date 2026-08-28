@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { PowerSeries } from '../api/contracts'
 import { PowerCard } from './PowerCard'
@@ -31,12 +31,32 @@ describe('PowerCard', () => {
     expect(screen.getByRole('heading', { name: 'code-review' })).toBeTruthy()
   })
 
-  it('defaults the version select and both textareas to the first version', () => {
+  it('uses the type palette hook and hides the visible Version label', () => {
+    const { container } = render(<PowerCard series={series} />)
+
+    const card = container.querySelector('.power-card')
+    expect(card?.getAttribute('data-power-type')).toBe('skill')
+    expect(screen.queryByText('Version')).toBeNull()
+    expect((screen.getByLabelText('Version') as HTMLSelectElement).value).toBe('v2.0.0')
+  })
+
+  it('renders description as text and Tags as chips', () => {
+    render(<PowerCard series={series} />)
+
+    expect(screen.getByText('Peer review with a quality gate.').tagName).toBe('P')
+    const tags = screen.getByTestId('power-card-tags')
+    expect(within(tags).getByText('code-review')).toBeTruthy()
+    expect(within(tags).getByText('quality')).toBeTruthy()
+  })
+
+  it('defaults the version select, description, and tag chips to the first version', () => {
     render(<PowerCard series={series} />)
 
     expect((screen.getByLabelText('Version') as HTMLSelectElement).value).toBe('v2.0.0')
-    expect(screen.getByDisplayValue('Peer review with a quality gate.')).toBeTruthy()
-    expect(screen.getByDisplayValue('code-review quality')).toBeTruthy()
+    expect(screen.getByText('Peer review with a quality gate.')).toBeTruthy()
+    const tags = screen.getByTestId('power-card-tags')
+    expect(within(tags).getByText('code-review')).toBeTruthy()
+    expect(within(tags).getByText('quality')).toBeTruthy()
   })
 
   it('updates the description and tags together when the version changes', async () => {
@@ -45,9 +65,11 @@ describe('PowerCard', () => {
 
     await user.selectOptions(screen.getByLabelText('Version'), 'v1.0.0')
 
-    expect(screen.getByDisplayValue('Peer review workflow.')).toBeTruthy()
-    expect(screen.getByDisplayValue('writing')).toBeTruthy()
-    expect(screen.queryByDisplayValue('Peer review with a quality gate.')).toBeNull()
+    expect(screen.getByText('Peer review workflow.')).toBeTruthy()
+    const tags = screen.getByTestId('power-card-tags')
+    expect(within(tags).getByText('writing')).toBeTruthy()
+    expect(within(tags).queryByText('quality')).toBeNull()
+    expect(screen.queryByText('Peer review with a quality gate.')).toBeNull()
   })
 
   it('resets the selected version when the series changes', async () => {
@@ -68,6 +90,6 @@ describe('PowerCard', () => {
     rerender(<PowerCard series={other} />)
 
     expect((screen.getByLabelText('Version') as HTMLSelectElement).value).toBe('v3.0.0')
-    expect(screen.getByDisplayValue('Guards dependency scans.')).toBeTruthy()
+    expect(screen.getByText('Guards dependency scans.')).toBeTruthy()
   })
 })
