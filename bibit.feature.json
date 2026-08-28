@@ -2,7 +2,7 @@
   "manifestSchemaVersion": 1,
   "sdkApiVersion": 1,
   "id": "agent-hub",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "owner": "agent-hub-team",
   "display": {
     "titleKey": "agent-hub:title",
@@ -12,7 +12,7 @@
     "fallbackDescription": "Browse and manage Agent packages"
   },
   "targets": ["desktop"],
-  "requiredHostCapabilities": ["external-service:store"],
+  "requiredHostCapabilities": ["service:store"],
   "contributions": {
     "pages": [
       { "id": "home", "path": "", "surfaces": ["main"], "navigation": { "group": "library", "order": 100 } }

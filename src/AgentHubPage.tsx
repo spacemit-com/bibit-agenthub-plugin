@@ -4,7 +4,7 @@ import './agentHub.css'
 import { parseAgentSummaries, type AgentSummary } from './storeContracts'
 
 export function AgentHubPage(_: FeaturePageProps) {
-  const store = useFeatureCapability('external-service:store')
+  const store = useFeatureCapability('service:store')
   const [agents, setAgents] = useState<readonly AgentSummary[]>([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)

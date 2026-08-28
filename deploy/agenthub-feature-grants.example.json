@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "features": {
+    "agent-hub": ["service:store"]
+  },
+  "serviceOperations": {
+    "agent-hub": {
+      "store": [
+        "agents.list.v1",
+        "settings.get.v1",
+        "settings.update.v1"
+      ]
+    }
+  }
+}
