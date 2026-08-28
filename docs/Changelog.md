@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-08-28
+
+分类：功能变更
+
+用户需求：
+
+将 Agent Hub 前端重构为统一 Marketplace 风格：Agent 选择收进“我的 Power”菜单，类型与 Tags 提供选中边框和类型配色，卡片支持固定区域滚动与最多五列布局，分页改为箭头和页码输入。
+
+相关提交：
+- `27b31e7 docs: design Agent Hub marketplace layout`
+- `b4ef4a1 feat: unify Agent Hub filters`
+- `5deb887 feat: restyle Power card content`
+- `a4be83c feat: add direct Power pagination`
+- `042fa69 feat: integrate Agent Hub navigation`
+- `7aa5f17 feat: apply Agent Hub marketplace layout`
+
+解决方案或完成结果：
+
+采用一级范围页签与独立筛选面板，保留已选 Agent；统一四种 Power 类型的筛选与卡片配色；重排版本、描述和 Tags；增加响应式五列网格以及支持 Enter/失焦提交的快速翻页。
+
+验证结果或限制：
+
+`npm test` 全部通过（8 个文件 84 个测试）；`npm run typecheck`、`npm run build:dev`、`git diff --check` 均通过（exit 0）。浏览器端五/四/三/二/一列布局、类型配色、固定区域滚动与悬停效果的可视化检查因本环境无浏览器工具未能执行，留待人工复核。Store DTO、每页 20 项和安装/市场数据语义未改变。
+
 ## [新增功能] 2026-08-27 — APC Power 展示原型与系列级资源接口
 
 - 原始需求：构建 Agent Hub Power 展示原型，用统一的 Store DTO 承载 installed 与 market 数据，并将 APC 公共资源发现改为系列级分页并支持 tag 过滤。
