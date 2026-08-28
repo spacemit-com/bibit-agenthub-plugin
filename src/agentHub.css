@@ -79,6 +79,14 @@
   background: var(--hub-surface);
   box-shadow: 0 18px 40px rgb(23 32 51 / 16%);
 }
+.power-filters__agent-menu::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  left: 0;
+  right: 0;
+  height: 8px;
+}
 .power-filters__agent-menu button { display: flex; width: 100%; gap: 8px; border-color: transparent; }
 .power-filters__agent-menu button[aria-checked='true'] { border-color: #8f7ee6; background: #f3f0ff; }
 .power-filters__panel {
