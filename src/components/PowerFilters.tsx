@@ -1,3 +1,4 @@
+import { useRef, useState, type FocusEvent, type KeyboardEvent } from 'react'
 import { POWER_TYPES, type PowerScope, type PowerType } from '../api/contracts'
 
 export interface PowerFiltersProps {
@@ -13,12 +14,6 @@ export interface PowerFiltersProps {
   onTagsChange(tags: string[]): void
 }
 
-const SCOPES: readonly PowerScope[] = ['installed', 'market']
-const SCOPE_LABELS: Record<PowerScope, string> = {
-  installed: '我的 Power',
-  market: 'Power 市场',
-}
-
 export function PowerFilters({
   scope,
   agents,
@@ -31,69 +26,161 @@ export function PowerFilters({
   onTypeChange,
   onTagsChange,
 }: PowerFiltersProps) {
+  const [agentMenuOpen, setAgentMenuOpen] = useState(false)
+  const installedTriggerRef = useRef<HTMLButtonElement>(null)
+  const firstAgentRef = useRef<HTMLButtonElement>(null)
+  const suppressFocusOpenRef = useRef(false)
+
+  const openAgentMenu = (focusFirst = false) => {
+    if (agents.length === 0) return
+    setAgentMenuOpen(true)
+    if (focusFirst) requestAnimationFrame(() => firstAgentRef.current?.focus())
+  }
+
+  const closeAgentMenu = (restoreFocus = false) => {
+    setAgentMenuOpen(false)
+    if (restoreFocus) {
+      suppressFocusOpenRef.current = true
+      requestAnimationFrame(() => {
+        installedTriggerRef.current?.focus()
+        suppressFocusOpenRef.current = false
+      })
+    }
+  }
+
+  const handleAgentWrapperBlur = (event: FocusEvent<HTMLDivElement>) => {
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) closeAgentMenu()
+  }
+
+  const handleAgentMenuKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      closeAgentMenu(true)
+      return
+    }
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+    const items = Array.from(
+      event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')
+    )
+    if (items.length === 0) return
+    event.preventDefault()
+    const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement)
+    const direction = event.key === 'ArrowDown' ? 1 : -1
+    const nextIndex = currentIndex < 0
+      ? (direction === 1 ? 0 : items.length - 1)
+      : (currentIndex + direction + items.length) % items.length
+    items[nextIndex].focus()
+  }
+
   return (
-    <div>
-      <div role="group" aria-label="Scope">
-        {SCOPES.map((value) => (
-          <button
-            key={value}
-            type="button"
-            aria-pressed={value === scope}
-            disabled={value === scope}
-            onClick={() => onScopeChange(value)}
-          >
-            {SCOPE_LABELS[value]}
-          </button>
-        ))}
-      </div>
-      {scope === 'installed' && (
-        <div role="group" aria-label="Agent">
-          {agents.map((value) => (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={value === agent}
-              disabled={value === agent}
-              onClick={() => onAgentChange(value)}
-            >
-              {value}
-            </button>
-          ))}
-        </div>
-      )}
-      <div role="group" aria-label="Type">
-        {POWER_TYPES.map((value) => (
-          <button
-            key={value}
-            type="button"
-            aria-pressed={value === type}
-            disabled={value === type}
-            onClick={() => onTypeChange(value)}
-          >
-            {value}
-          </button>
-        ))}
-      </div>
-      <label>
-        Tags
-        <select
-          multiple
-          value={[...selectedTags]}
-          onChange={(event) =>
-            onTagsChange(
-              Array.from(event.target.selectedOptions)
-                .map((option) => option.value)
-                .sort()
-            )
-          }
+    <div className="power-filters">
+      <div className="power-filters__scopes" role="group" aria-label="Scope">
+        <div
+          className="power-filters__scope-agent"
+          onMouseEnter={() => openAgentMenu()}
+          onMouseLeave={() => closeAgentMenu()}
+          onFocusCapture={(event) => {
+            if ((event.target as Node | null) === installedTriggerRef.current && !suppressFocusOpenRef.current) {
+              openAgentMenu()
+            }
+          }}
+          onBlurCapture={handleAgentWrapperBlur}
+          onKeyDown={handleAgentMenuKeyDown}
         >
-          {availableTags.map((tag) => (
-            <option key={tag} value={tag}>
-              {tag}
-            </option>
-          ))}
-        </select>
-      </label>
+          <button
+            ref={installedTriggerRef}
+            type="button"
+            className="power-filters__scope"
+            aria-pressed={scope === 'installed'}
+            aria-haspopup="menu"
+            aria-expanded={agentMenuOpen}
+            onClick={() => {
+              if (scope !== 'installed') onScopeChange('installed')
+              openAgentMenu()
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'ArrowDown') {
+                event.preventDefault()
+                openAgentMenu(true)
+              }
+            }}
+          >
+            我的 Power <span aria-hidden="true">⌄</span>
+          </button>
+          {agentMenuOpen && agents.length > 0 && (
+            <div className="power-filters__agent-menu" role="menu" aria-label="Agent">
+              {agents.map((value, index) => (
+                <button
+                  ref={index === 0 ? firstAgentRef : undefined}
+                  key={value}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={value === agent}
+                  onClick={() => {
+                    if (scope !== 'installed') onScopeChange('installed')
+                    if (value !== agent) onAgentChange(value)
+                    closeAgentMenu(true)
+                  }}
+                >
+                  {value === agent && <span aria-hidden="true">✓</span>}
+                  {value}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <button
+          type="button"
+          className="power-filters__scope"
+          aria-pressed={scope === 'market'}
+          onClick={() => scope !== 'market' && onScopeChange('market')}
+        >
+          Power 市场
+        </button>
+      </div>
+      <div className="power-filters__panel">
+        <div className="power-filters__filter-row">
+          <span className="power-filters__label">Type</span>
+          <div className="power-filters__types" role="group" aria-label="Type">
+            {POWER_TYPES.map((value) => (
+              <button
+                key={value}
+                type="button"
+                data-power-type={value}
+                aria-pressed={value === type}
+                onClick={() => value !== type && onTypeChange(value)}
+              >
+                {value}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="power-filters__filter-row">
+          <span className="power-filters__label">Tags</span>
+          <div
+            className="power-filters__tags"
+            data-power-type={type}
+            role="group"
+            aria-label="Tags"
+          >
+            {availableTags.map((tag) => (
+              <button
+                key={tag}
+                type="button"
+                aria-pressed={selectedTags.includes(tag)}
+                onClick={() => {
+                  const next = selectedTags.includes(tag)
+                    ? selectedTags.filter((value) => value !== tag)
+                    : [...selectedTags, tag]
+                  onTagsChange([...next].sort())
+                }}
+              >
+                {tag}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
