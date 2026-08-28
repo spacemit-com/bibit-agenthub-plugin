@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useFeatureCapability, type FeaturePageProps } from '@bibit/feature-sdk'
 import './agentHub.css'
-
-type AgentSummary = { id: string; name: string; description: string }
+import { parseAgentSummaries, type AgentSummary } from './storeContracts'
 
 export function AgentHubPage(_: FeaturePageProps) {
   const store = useFeatureCapability('external-service:store')
@@ -21,12 +20,12 @@ export function AgentHubPage(_: FeaturePageProps) {
       setLoading(false)
       return () => { active = false }
     }
-    void store.request<AgentSummary[]>({
+    void store.request<unknown>({
       serviceId: 'store',
       operationId: 'agents.list.v1',
       params: {},
       signal: controller.signal,
-    }).then((items) => {
+    }).then(parseAgentSummaries).then((items) => {
       if (active) setAgents(items)
     }).catch((reason) => {
       if (active) setError(String(reason))

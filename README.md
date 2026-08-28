@@ -16,6 +16,7 @@ Bibit Agent Hub 的独立前端插件，当前包含：
 
 ```bash
 npm ci
+npm test
 npm run typecheck
 npm run dev
 ```
@@ -27,4 +28,4 @@ npm run keygen
 npm run build:plugin
 ```
 
-当前产物：`artifacts/agent-hub-0.2.1.bibit-plugin.tgz`。`.bibit-keys/` 中的私钥禁止提交。
+当前产物：`artifacts/agent-hub-0.2.2.bibit-plugin.tgz`。`.bibit-keys/` 中的私钥禁止提交。

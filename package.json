@@ -1,11 +1,12 @@
 {
   "name": "@bibit-internal/agent-hub-plugin",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build:dev": "vite build",
+    "test": "node --test --experimental-strip-types tests/storeContracts.test.ts",
     "typecheck": "tsc --noEmit",
     "keygen": "bibit-plugin keygen --out .bibit-keys --key-id agent-hub-development",
     "build:plugin": "bibit-plugin build --key .bibit-keys/agent-hub-development-private.pem --key-id agent-hub-development"

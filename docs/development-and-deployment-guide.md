@@ -6,8 +6,7 @@
 
 | 项目 | 当前版本 |
 | --- | --- |
-| Agent Hub 插件 | `0.2.1` |
-| 功能代码基线 | `033c411932dc4e173af68d73c78f56a884d879c3` |
+| Agent Hub 插件 | `0.2.2` |
 | `manifestSchemaVersion` | `1` |
 | `sdkApiVersion` | `1` |
 | `@bibit/feature-contracts` | `0.2.0` |
@@ -65,7 +64,8 @@ Agent Hub React UI
 ## 3. 仓库结构
 
 ```text
-bibit-agent-hub-plugin/
+bibit-agenthub-plugin/
+├── AGENTS.md
 ├── bibit.feature.json
 ├── package.json
 ├── package-lock.json
@@ -78,7 +78,10 @@ bibit-agent-hub-plugin/
 │   ├── plugin.tsx
 │   ├── AgentHubPage.tsx
 │   ├── AgentHubSettingsPage.tsx
+│   ├── storeContracts.ts
 │   └── agentHub.css
+├── tests/
+│   └── storeContracts.test.ts
 ├── vendor/
 │   ├── bibit-feature-contracts-0.2.0.tgz
 │   ├── bibit-feature-dev-host-0.2.0.tgz
@@ -193,7 +196,7 @@ src/
   "manifestSchemaVersion": 1,
   "sdkApiVersion": 1,
   "id": "agent-hub",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "owner": "agent-hub-team",
   "display": {
     "titleKey": "agent-hub:title",
@@ -332,6 +335,8 @@ export function AgentHubPage({ subpath, navigation }: FeaturePageProps) {
 
 Bibit 自动提供 Settings Shell、“设置”页头、设置子菜单、选中状态、菜单滚动和内容滚动容器。插件只提供 Agent Hub 设置内容。
 
+设置 renderer 的根节点必须使用 `section`、`div` 等内容容器，不得使用 `main` 或 `role="main"`。根节点必须能够收缩到宿主内容区（至少设置 `width: 100%; min-width: 0; max-width: 100%`，或更小的业务最大宽度）。完整契约见目标 Bibit 仓库的 `docs/feature-sdk/settings-content-contract.md`。
+
 插件设置页可以包含自己的分区标题，例如“Catalog preferences”，但不得复制以下宿主结构：
 
 - `HeaderPage`；
@@ -375,13 +380,15 @@ const store = useFeatureCapability('external-service:store')
 ```tsx
 const controller = new AbortController()
 
-const agents = await store.request<AgentSummary[]>({
+const response = await store.request<unknown>({
   serviceId: 'store',
   operationId: 'agents.list.v1',
   params: {},
   timeoutMs: 30_000,
   signal: controller.signal,
 })
+
+const agents = parseAgentSummaries(response)
 ```
 
 组件卸载时执行：
@@ -401,7 +408,7 @@ return () => controller.abort()
 - 不把 URL、header、authorization、token、API key、cookie、credential 或 secret 放入 `params`；
 - 不显示或记录原始凭据、请求 header 或后端内部堆栈。
 
-当前代码通过 TypeScript 泛型声明返回类型，但没有运行时 DTO 校验。正式增加上传、下载、分页或复杂 DTO 前，应在插件的 API 边界增加轻量运行时校验；后端返回错误结构时必须进入局部错误态，不能让页面白屏。
+当前 `src/storeContracts.ts` 对列表和设置 v1 返回值执行运行时校验。新增上传、下载、分页或复杂 DTO 时，必须在同一协议边界增加对应校验；后端返回错误结构时进入局部错误态，不能让页面白屏。
 
 ## 10. Store 服务协议
 
@@ -518,13 +525,13 @@ export BIBIT_EXTERNAL_SERVICE_CONFIG=/absolute/path/external-service-connections
 
 Bibit Host 会自动追加 `/bibit/v1/invoke`。`baseUrl` 不得包含用户名、密码、query 或 fragment。
 
-生产环境读取 Bibit data 目录中的 `external-service-connections.json`。K3DEB1 当前用户的典型路径为：
+生产系统包必须安装模块独立的 Registry drop-in：
 
 ```text
-/home/bianbu/.local/share/BiBit/data/external-service-connections.json
+/etc/bibit/external-services.d/agenthub.json
 ```
 
-如果目标用户或 Bibit data 目录不同，应先从实际运行环境确认路径，不要机械复制示例。
+内容仍使用上面的 `version/services/store` 结构。Agent Hub 模块安装包负责安装自己的 Adapter、systemd unit 和该 drop-in；不得从安装或维护脚本写入任何用户 home。用户数据目录配置和 `BIBIT_EXTERNAL_SERVICE_CONFIG` 只作为更高优先级的显式覆盖，不是模块的默认生产部署方式。
 
 需要认证时只在连接配置中填写 `authRef`：
 
@@ -569,6 +576,7 @@ npm ls react react-dom \
 ### 11.2 Mock 模式
 
 ```bash
+npm test
 npm run typecheck
 npm run dev
 ```
@@ -606,6 +614,7 @@ http://127.0.0.1:5173/?storeEndpoint=http%3A%2F%2F127.0.0.1%3A18081%2Fbibit%2Fv1
 ### 11.4 开发构建
 
 ```bash
+npm test
 npm run typecheck
 npm run build:dev
 ```
@@ -633,6 +642,7 @@ npm run keygen
 构建：
 
 ```bash
+npm test
 npm run typecheck
 npm run build:dev
 npm run build:plugin
@@ -641,16 +651,16 @@ npm run build:plugin
 产物：
 
 ```text
-artifacts/agent-hub-0.2.1.bibit-plugin.tgz
+artifacts/agent-hub-0.2.2.bibit-plugin.tgz
 ```
 
 检查：
 
 ```bash
-tar -tzf artifacts/agent-hub-0.2.1.bibit-plugin.tgz
-tar -xOf artifacts/agent-hub-0.2.1.bibit-plugin.tgz plugin.json
-tar -xOf artifacts/agent-hub-0.2.1.bibit-plugin.tgz plugin.sig
-sha256sum artifacts/agent-hub-0.2.1.bibit-plugin.tgz
+tar -tzf artifacts/agent-hub-0.2.2.bibit-plugin.tgz
+tar -xOf artifacts/agent-hub-0.2.2.bibit-plugin.tgz plugin.json
+tar -xOf artifacts/agent-hub-0.2.2.bibit-plugin.tgz plugin.sig
+sha256sum artifacts/agent-hub-0.2.2.bibit-plugin.tgz
 ```
 
 归档必须包含：
@@ -698,7 +708,7 @@ Settings > Extensions > Trusted plugins
 选择：
 
 ```text
-artifacts/agent-hub-0.2.1.bibit-plugin.tgz
+artifacts/agent-hub-0.2.2.bibit-plugin.tgz
 ```
 
 Bibit 会验签、校验 hash、安装、激活并刷新 Feature Registry。确认主导航出现 Agent Hub，设置子菜单也出现 Agent Hub。
@@ -721,7 +731,7 @@ Agent Hub 插件 deb 应安装：
 
 ```bash
 sudo install -Dm0644 \
-  artifacts/agent-hub-0.2.1.bibit-plugin.tgz \
+  artifacts/agent-hub-0.2.2.bibit-plugin.tgz \
   /usr/lib/bibit/plugins/agent-hub.bibit-plugin.tgz
 ```
 
@@ -796,7 +806,7 @@ dpkg-buildpackage -us -uc -b
 K3DEB1 的 Release 部署必须使用正式签名、且 `keyId` 已进入目标 Bibit 内置信任库的 bundle：
 
 ```bash
-export SIGNED_AGENT_HUB_BUNDLE=/absolute/path/agent-hub-0.2.1.bibit-plugin.tgz
+export SIGNED_AGENT_HUB_BUNDLE=/absolute/path/agent-hub-0.2.2.bibit-plugin.tgz
 test -f "$SIGNED_AGENT_HUB_BUNDLE"
 tar -xOf "$SIGNED_AGENT_HUB_BUNDLE" plugin.json
 tar -xOf "$SIGNED_AGENT_HUB_BUNDLE" plugin.sig
@@ -853,6 +863,7 @@ ssh root@K3DEB1 \
 
 ```bash
 npm ci
+npm test
 npm run typecheck
 npm run build:dev
 npm run build:plugin
@@ -887,7 +898,7 @@ npm run build:plugin
 
 - 目标 Bibit 信任正式 `keyId`；
 - 系统目录只有预期 Agent Hub bundle；
-- Bibit 插件管理页显示 `agent-hub@0.2.1` 已激活；
+- Bibit 插件管理页显示 `agent-hub@0.2.2` 已激活；
 - 主导航出现 Agent Hub；
 - 设置子菜单出现 Agent Hub；
 - 选中设置页后全局“设置”页头和子菜单滚动不消失；
@@ -904,7 +915,7 @@ Agent Hub bundle SHA-256
 Agent Hub keyId
 Bibit commit/version
 Store service version
-external-service-connections.json 的非敏感摘要
+/etc/bibit/external-services.d/agenthub.json 的非敏感摘要及用户覆盖状态
 验收开始时间
 ```
 
@@ -988,8 +999,7 @@ external-service-connections.json 的非敏感摘要
 - v1 只支持 `desktop/main`；
 - 当前插件只实现 Agent 列表和两个设置字段；
 - 上传、下载、详情、分页、搜索和版本管理尚未实现；
-- 当前列表 DTO 没有运行时校验；
-- 当前仓库没有自动化组件测试，只提供类型检查和构建检查；
+- 当前列表和设置 DTO 已有运行时校验及最小契约测试；页面交互仍没有自动化组件测试；
 - 当前 Demo 使用独立 CSS，尚未使用 `@bibit/feature-ui`；
 - 当前 `locales` 只声明 `en`，页面文案仍直接写在组件中；
 - 插件属于公司可信内部代码，不是不可信代码沙箱；
