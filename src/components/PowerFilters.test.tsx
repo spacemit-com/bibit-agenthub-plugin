@@ -28,6 +28,10 @@ describe('PowerFilters', () => {
     const user = userEvent.setup()
     renderFilters()
 
+    expect(document.querySelector('.power-filters__scopes')).toBeTruthy()
+    expect(document.querySelector('.power-filters__panel')).toBeTruthy()
+    expect(document.querySelector('.power-filters__tags')).toBeTruthy()
+
     const trigger = screen.getByRole('button', { name: '我的 Power' })
     expect(trigger.getAttribute('aria-expanded')).toBe('false')
 

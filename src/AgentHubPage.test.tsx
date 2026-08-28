@@ -117,6 +117,9 @@ describe('AgentHubPage', () => {
 
     await screen.findByRole('heading', { name: 'code-review' })
 
+    expect(document.querySelector('.agent-hub__grid')).toBeTruthy()
+    expect(document.querySelector('.power-pagination')).toBeTruthy()
+
     expect(calls).toHaveLength(1)
     expect(calls[0].params).toEqual({
       scope: 'installed',

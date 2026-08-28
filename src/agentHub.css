@@ -1,13 +1,226 @@
-.agent-hub{min-height:100%;padding:32px;background:#f4f7fb;color:#162033;font:14px/1.5 system-ui}
-.agent-hub header{display:flex;align-items:end;justify-content:space-between;margin-bottom:28px}
-.agent-hub header p{margin:0;color:#4264a7;font-size:11px;font-weight:800;letter-spacing:.16em}
-.agent-hub h1{margin:4px 0 0;font-size:32px;letter-spacing:-.03em}
-.agent-hub button{padding:9px 14px;border:1px solid #9caccc;border-radius:8px;background:white;color:#23395f;cursor:pointer}
-.agent-hub__grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}
-.agent-hub article{padding:20px;border:1px solid #d6deec;border-radius:12px;background:white;box-shadow:0 8px 24px #2943690d}
-.agent-hub article span{color:#5374b4;font-size:10px;font-weight:800;letter-spacing:.13em}
-.agent-hub article h2{margin:10px 0 4px}
-.agent-hub article p{min-height:42px;color:#65718a}
-.agent-hub__status{padding:12px;border-radius:8px;background:#eef3fb;color:#53627c}
-.agent-hub__error{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border-radius:8px;background:#fff1f0;color:#9d2d26}
-.agent-hub-settings{max-width:720px;padding:32px;color:#162033;font:14px/1.5 system-ui}.agent-hub-settings header{margin-bottom:24px}.agent-hub-settings header p{margin:0;color:#4264a7;font-size:11px;font-weight:800;letter-spacing:.16em}.agent-hub-settings h1{margin:4px 0 0;font-size:30px}.agent-hub-settings>label{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:18px 0;border-bottom:1px solid #d6deec}.agent-hub-settings label span{display:grid}.agent-hub-settings label small{color:#65718a}.agent-hub-settings input[type=checkbox]{width:18px;height:18px;accent-color:#4264a7}.agent-hub-settings input[type=number]{width:90px;padding:8px;border:1px solid #9caccc;border-radius:8px}.agent-hub-settings footer{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-top:24px;color:#65718a}.agent-hub-settings footer button{border-color:#4264a7;background:#4264a7;color:white}
+/* ===== Agent Hub page: shared marketplace tokens ===== */
+.agent-hub {
+  --hub-bg: #f5f6f8;
+  --hub-surface: #ffffff;
+  --hub-text: #172033;
+  --hub-muted: #687386;
+  --hub-border: #dfe4ec;
+  box-sizing: border-box;
+  min-height: 100%;
+  padding: 36px clamp(20px, 4vw, 56px) 48px;
+  background: var(--hub-bg);
+  color: var(--hub-text);
+  font: 14px/1.5 Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+.agent-hub *, .agent-hub *::before, .agent-hub *::after { box-sizing: border-box; }
+.agent-hub > * { width: min(100%, 1460px); margin-inline: auto; }
+
+[data-power-type='skill']  { --type: #6d55cf; --type-soft: #f2efff; --type-line: #b8acf0; }
+[data-power-type='plugin'] { --type: #16775c; --type-soft: #eef9f5; --type-line: #a9d8ca; }
+[data-power-type='mcp']    { --type: #a95e16; --type-soft: #fff6eb; --type-line: #e9c59e; }
+[data-power-type='agent']  { --type: #356dbd; --type-soft: #eff6ff; --type-line: #abc7ed; }
+
+/* ===== Page header (retained) ===== */
+.agent-hub header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  margin-bottom: 28px;
+}
+.agent-hub header p {
+  margin: 0;
+  color: #4264a7;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .16em;
+}
+.agent-hub h1 {
+  margin: 4px 0 0;
+  font-size: 32px;
+  letter-spacing: -.03em;
+}
+
+/* Base button surface: :where() zeroes the specificity of the :not() exclusion,
+   so the scope-tab reset (border: 0) and every power-filters button override win. */
+.agent-hub button:where(:not(.power-filters__scope)) {
+  padding: 9px 14px;
+  border: 1px solid #c9d0dc;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--hub-text);
+  cursor: pointer;
+}
+
+/* ===== Scope navigation, agent menu, filters, selection states ===== */
+.power-filters { margin-bottom: 24px; }
+.power-filters__scopes { display: flex; gap: 6px; border-bottom: 1px solid var(--hub-border); }
+.power-filters__scope-agent { position: relative; }
+.power-filters__scope {
+  border: 0;
+  border-bottom: 3px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--hub-muted);
+  font-weight: 750;
+  padding: 10px 14px;
+}
+.power-filters__scope[aria-pressed='true'] { border-bottom-color: #6550d8; color: #4f3cb3; }
+.power-filters__agent-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 180px;
+  padding: 7px;
+  border: 1px solid var(--hub-border);
+  border-radius: 12px;
+  background: var(--hub-surface);
+  box-shadow: 0 18px 40px rgb(23 32 51 / 16%);
+}
+.power-filters__agent-menu button { display: flex; width: 100%; gap: 8px; border-color: transparent; }
+.power-filters__agent-menu button[aria-checked='true'] { border-color: #8f7ee6; background: #f3f0ff; }
+.power-filters__panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 15px 18px;
+  border: 1px solid var(--hub-border);
+  border-radius: 14px;
+  background: var(--hub-surface);
+  box-shadow: 0 8px 24px rgb(28 39 64 / 5%);
+}
+.power-filters__filter-row { display: flex; align-items: flex-start; gap: 14px; }
+.power-filters__label { min-width: 42px; padding-top: 9px; color: #8a93a4; font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.power-filters__types, .power-filters__tags { display: flex; flex-wrap: wrap; gap: 8px; }
+.power-filters__tags { max-height: 82px; overflow-y: auto; padding: 2px 4px 2px 2px; }
+.power-filters__types button { border-color: var(--type-line); background: var(--type-soft); color: var(--type); font-weight: 750; text-transform: capitalize; }
+.power-filters__types button[aria-pressed='true'],
+.power-filters__tags button[aria-pressed='true'] {
+  border-color: var(--type);
+  background: var(--type-soft);
+  color: var(--type);
+  box-shadow: inset 0 0 0 1px var(--type);
+}
+.power-filters__tags button { padding: 7px 11px; border-radius: 999px; }
+
+/* ===== Visible shared focus ring ===== */
+.agent-hub button:focus-visible,
+.agent-hub select:focus-visible,
+.agent-hub input:focus-visible {
+  outline: 3px solid rgb(101 80 216 / 28%);
+  outline-offset: 2px;
+}
+
+/* ===== Five-column grid and fixed-height card regions ===== */
+.agent-hub__grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  justify-content: start;
+  gap: 20px;
+  margin-top: 22px;
+}
+.power-card {
+  display: grid;
+  grid-template-rows: auto auto minmax(96px, 1fr) 62px;
+  min-width: 0;
+  min-height: 310px;
+  padding: 20px;
+  border: 1px solid var(--type-line);
+  border-radius: 16px;
+  background: linear-gradient(145deg, #fff 34%, var(--type-soft));
+  box-shadow: 0 9px 28px rgb(27 38 61 / 7%);
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+.power-card:hover { transform: translateY(-3px); box-shadow: 0 15px 34px rgb(27 38 61 / 12%); }
+.power-card__header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.power-card__type { color: var(--type); font-size: 11px; font-weight: 850; letter-spacing: .09em; text-transform: uppercase; }
+.power-card__version { max-width: 112px; border: 1px solid var(--type-line); border-radius: 8px; background: rgb(255 255 255 / 78%); color: var(--hub-text); }
+.power-card h2 { min-width: 0; margin: 15px 0 10px; overflow-wrap: anywhere; font-size: 19px; }
+.power-card__description { min-height: 0; margin: 0; overflow-y: auto; color: var(--hub-muted); }
+.power-card__tags { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 6px; min-height: 0; margin-top: 14px; overflow-y: auto; }
+.power-card__tag { padding: 5px 9px; border-radius: 999px; background: var(--type-soft); color: var(--type); font-size: 11px; font-weight: 700; }
+
+/* ===== Responsive column fallbacks ===== */
+@media (max-width: 1240px) { .agent-hub__grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 980px)  { .agent-hub__grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 720px)  { .agent-hub__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 480px)  {
+  .agent-hub { padding-inline: 14px; }
+  .agent-hub__grid { grid-template-columns: minmax(0, 1fr); }
+  .power-filters__filter-row { display: grid; gap: 6px; }
+  .power-filters__label { padding-top: 0; }
+}
+
+/* ===== Centered pagination, status messages, scrollbars ===== */
+.power-pagination { display: flex; align-items: center; justify-content: center; gap: 9px; margin-top: 28px; }
+.power-pagination button { display: grid; width: 38px; height: 38px; place-items: center; padding: 0; font-size: 22px; }
+.power-pagination input { width: 58px; padding: 8px; border: 1px solid #c9d0dc; border-radius: 8px; text-align: center; }
+.power-pagination button:disabled { cursor: not-allowed; opacity: .42; }
+.agent-hub__status, .agent-hub__error { margin-top: 18px; }
+.power-card__description, .power-card__tags, .power-filters__tags { scrollbar-width: thin; scrollbar-color: #bcc5d3 transparent; }
+
+/* ===== Loading / error / retry states (retained colors) ===== */
+.agent-hub__status {
+  padding: 12px;
+  border-radius: 8px;
+  background: #eef3fb;
+  color: #53627c;
+}
+.agent-hub__error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #fff1f0;
+  color: #9d2d26;
+}
+
+/* ===== Settings page (retained, visually isolated) ===== */
+.agent-hub-settings {
+  max-width: 720px;
+  padding: 32px;
+  color: #162033;
+  font: 14px/1.5 system-ui;
+}
+.agent-hub-settings header { margin-bottom: 24px; }
+.agent-hub-settings header p {
+  margin: 0;
+  color: #4264a7;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .16em;
+}
+.agent-hub-settings h1 { margin: 4px 0 0; font-size: 30px; }
+.agent-hub-settings > label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 18px 0;
+  border-bottom: 1px solid #d6deec;
+}
+.agent-hub-settings label span { display: grid; }
+.agent-hub-settings label small { color: #65718a; }
+.agent-hub-settings input[type='checkbox'] { width: 18px; height: 18px; accent-color: #4264a7; }
+.agent-hub-settings input[type='number'] {
+  width: 90px;
+  padding: 8px;
+  border: 1px solid #9caccc;
+  border-radius: 8px;
+}
+.agent-hub-settings footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 24px;
+  color: #65718a;
+}
+.agent-hub-settings footer button {
+  border-color: #4264a7;
+  background: #4264a7;
+  color: white;
+}
