@@ -62,6 +62,7 @@
   border-radius: 0;
   background: transparent;
   color: var(--hub-muted);
+  cursor: pointer;
   font-weight: 750;
   padding: 10px 14px;
 }
