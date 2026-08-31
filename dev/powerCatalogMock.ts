@@ -9,7 +9,7 @@ import {
 
 const SNAPSHOT = 'local-preview-v1'
 
-const PARTIALLY_UNAVAILABLE_AGENTS = new Set(['nova'])
+const PARTIALLY_UNAVAILABLE_AGENTS = new Set(['codex'])
 const PARTIAL_AGENT_WARNING_MESSAGE = 'Some installed Powers for this agent are temporarily unavailable.'
 
 type MockPowerRecord = {
@@ -115,29 +115,29 @@ const installedFixtures: MockPowerRecord[] = [
   },
   {
     scope: 'installed',
-    agent: 'atlas',
+    agent: 'claude-code',
     type: 'skill',
-    name: 'atlas-lint',
+    name: 'claude-code-lint',
     version: 'v1.1.0',
-    description: 'Atlas linter.',
+    description: 'Claude Code linter.',
     tags: ['code-review'],
   },
   {
     scope: 'installed',
-    agent: 'atlas',
+    agent: 'claude-code',
     type: 'plugin',
-    name: 'atlas-cache',
+    name: 'claude-code-cache',
     version: 'v2.0.0',
-    description: 'Atlas cache plugin.',
+    description: 'Claude Code cache plugin.',
     tags: ['perf'],
   },
   {
     scope: 'installed',
-    agent: 'nova',
+    agent: 'codex',
     type: 'skill',
-    name: 'nova-summary',
+    name: 'codex-summary',
     version: 'v1.0.0',
-    description: 'Nova summary skill.',
+    description: 'Codex summary skill.',
     tags: ['writing'],
   },
 ]

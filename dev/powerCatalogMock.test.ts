@@ -28,7 +28,7 @@ describe('handlePowerCatalogMock', () => {
     })
 
     // agents facet only includes installed fixtures
-    expect(result.facets.agents).toEqual(['atlas', 'bibit', 'nova'])
+    expect(result.facets.agents).toEqual(['bibit', 'claude-code', 'codex'])
 
     // facets.tags contains every tag across Bibit skills, unfiltered
     expect(result.facets.tags).toEqual([
@@ -134,12 +134,12 @@ describe('handlePowerCatalogMock', () => {
     expect(result).toEqual({ status: 'reset_required', reason: 'snapshot_changed' })
   })
 
-  it('returns a partial-agent warning alongside available records for the nova agent', () => {
+  it('returns a partial-agent warning alongside available records for the codex agent', () => {
     const result = readyResult({
       operationId: 'powers.list.v1',
       params: {
         scope: 'installed',
-        agent: 'nova',
+        agent: 'codex',
         type: 'skill',
         tags: [],
         page: 1,
@@ -150,11 +150,11 @@ describe('handlePowerCatalogMock', () => {
     expect(result.warnings).toHaveLength(1)
     expect(result.warnings[0]).toEqual({
       code: 'installed-agent-unavailable',
-      agent: 'nova',
+      agent: 'codex',
       message: 'Some installed Powers for this agent are temporarily unavailable.',
     })
     expect(result.items).not.toHaveLength(0)
-    expect(result.facets.agents).toContain('nova')
+    expect(result.facets.agents).toContain('codex')
     expect(parseListPowersResult(result)).toEqual(result)
   })
 
