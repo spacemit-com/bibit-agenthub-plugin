@@ -1,12 +1,14 @@
 {
   "version": 1,
   "features": {
-    "agent-hub": ["service:store"]
+    "agent-hub": ["service:store", "file:transfer", "job:manage"]
   },
   "serviceOperations": {
     "agent-hub": {
       "store": [
         "agents.list.v1",
+        "agents.upload.v1",
+        "agents.download.v1",
         "settings.get.v1",
         "settings.update.v1"
       ]

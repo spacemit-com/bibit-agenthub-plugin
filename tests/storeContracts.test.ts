@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { parseAgentHubSettings, parseAgentSummaries } from '../src/storeContracts.ts'
+import {
+  parseAgentDownloadResult,
+  parseAgentHubSettings,
+  parseAgentSummaries,
+  parseAgentUploadResult,
+} from '../src/storeContracts.ts'
 
 test('accepts Agent Hub v1 responses', () => {
   assert.deepEqual(parseAgentSummaries([
@@ -20,5 +25,25 @@ test('rejects malformed Store responses', () => {
   assert.throws(
     () => parseAgentHubSettings({ showExperimental: true, refreshMinutes: 121 }),
     /incompatible Agent Hub settings/,
+  )
+})
+
+test('accepts transfer results and rejects malformed digests', () => {
+  const sha256 = 'a'.repeat(64)
+  assert.equal(
+    parseAgentUploadResult({
+      agentId: 'demo',
+      displayName: 'Demo',
+      bytes: 12,
+      sha256,
+    }).agentId,
+    'demo',
+  )
+  assert.equal(
+    parseAgentDownloadResult({ agentId: 'demo', bytes: 12, sha256 }).bytes,
+    12,
+  )
+  assert.throws(() =>
+    parseAgentDownloadResult({ agentId: 'demo', bytes: 12, sha256: 'bad' }),
   )
 })

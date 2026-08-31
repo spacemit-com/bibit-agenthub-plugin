@@ -9,6 +9,19 @@ export type AgentHubSettings = {
   refreshMinutes: number
 }
 
+export type AgentUploadResult = {
+  agentId: string
+  displayName: string
+  bytes: number
+  sha256: string
+}
+
+export type AgentDownloadResult = {
+  agentId: string
+  bytes: number
+  sha256: string
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -36,4 +49,34 @@ export function parseAgentHubSettings(value: unknown): AgentHubSettings {
     throw new Error('Store returned incompatible Agent Hub settings.')
   }
   return value as AgentHubSettings
+}
+
+const isSha256 = (value: unknown): value is string =>
+  typeof value === 'string' && /^[a-f0-9]{64}$/i.test(value)
+
+export function parseAgentUploadResult(value: unknown): AgentUploadResult {
+  if (
+    !isRecord(value) ||
+    typeof value.agentId !== 'string' ||
+    typeof value.displayName !== 'string' ||
+    !Number.isSafeInteger(value.bytes) ||
+    (value.bytes as number) < 0 ||
+    !isSha256(value.sha256)
+  ) {
+    throw new Error('Store returned an incompatible upload result.')
+  }
+  return value as AgentUploadResult
+}
+
+export function parseAgentDownloadResult(value: unknown): AgentDownloadResult {
+  if (
+    !isRecord(value) ||
+    typeof value.agentId !== 'string' ||
+    !Number.isSafeInteger(value.bytes) ||
+    (value.bytes as number) < 0 ||
+    !isSha256(value.sha256)
+  ) {
+    throw new Error('Store returned an incompatible download result.')
+  }
+  return value as AgentDownloadResult
 }

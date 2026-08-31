@@ -12,7 +12,7 @@
     "fallbackDescription": "Browse and manage Agent packages"
   },
   "targets": ["desktop"],
-  "requiredHostCapabilities": ["service:store"],
+  "requiredHostCapabilities": ["service:store", "file:transfer", "job:manage"],
   "contributions": {
     "pages": [
       { "id": "home", "path": "", "surfaces": ["main"], "navigation": { "group": "library", "order": 100 } }

@@ -6,7 +6,7 @@
       "executable": "/usr/libexec/bibit/bibit-agenthub",
       "args": ["provider"],
       "lifecycle": "managed",
-      "protocolVersions": [1],
+      "protocolVersions": [1, 2],
       "requestTimeoutMs": 30000
     }
   }

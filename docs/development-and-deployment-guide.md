@@ -21,9 +21,9 @@
 - `pages.home`：显示在 Bibit 主导航的 Agent Hub 页面；
 - `settings.settings`：显示在 Bibit 设置子菜单的 Agent Hub 设置页面。
 
-当前 Demo 只实现 Agent 列表、列表重试、实验 Agent 开关和刷新间隔设置。Agent 详情、搜索、分页、上传、下载、删除、版本管理和发布流程尚未实现，这些属于 Agent Hub 模块团队后续定制范围。
+当前 Demo 已实现 Agent 列表、设置、上传、卡片内下载、进度、显式取消、失败重试和页面重进恢复。上传/下载按钮只调用 `file:transfer` 与 `job:manage`，真实字节经 managed stdio 模拟 CLI；Agent 详情、搜索、分页、删除、版本管理和正式包规则仍由模块团队后续实现。
 
-当前插件没有使用 `@bibit/feature-ui`。如果后续引入，必须由平台提供与目标 Bibit 完全一致的版本快照，并与 React 及其余 SDK 一起锁定升级；不得直接导入 Bibit 私有 UI 源码。
+当前插件使用平台随目标 Bibit 一并发布的 `@bibit/feature-ui@0.3.0`，复用 `FeatureSettingsPage`、`Button`、状态组件和图标，并通过 Bibit 主题 token 适配明暗主题。该包必须与 React 及其余 SDK 一起锁定升级；不得直接导入 Bibit 私有 UI 源码。
 
 ## 2. 总体职责边界
 
@@ -55,10 +55,10 @@ Store 能力可以由模块团队独立部署的 HTTP 服务提供，也可以�
 
 ```text
 Agent Hub React UI
-  └─ useFeatureCapability("service:store")
-       └─ Bibit Host API / Provider Broker
-            ├─ HTTP Provider POST /bibit/v1/invoke
-            └─ AgentHub CLI Provider stdin/stdout
+  ├─ service:store（列表与设置）
+  ├─ file:transfer（原生选择文件/保存位置，只返回 grantId）
+  └─ job:manage（启动、进度、续订、取消）
+       └─ Bibit Provider Broker -> AgentHub CLI Provider stdin/stdout
 ```
 
 ## 3. 仓库结构
@@ -70,6 +70,7 @@ bibit-agenthub-plugin/
 ├── package.json
 ├── package-lock.json
 ├── tsconfig.json
+├── vite.config.ts
 ├── index.html
 ├── dev/
 │   └── main.tsx
@@ -81,12 +82,15 @@ bibit-agenthub-plugin/
 │   ├── storeContracts.ts
 │   └── agentHub.css
 ├── tests/
-│   └── storeContracts.test.ts
+│   ├── storeContracts.test.ts
+│   └── AgentHubPage.test.tsx
+├── demo/
+│   ├── cli/bibit-agenthub-mock-provider.py
+│   ├── fixtures/sample-agent.demo-agent
+│   ├── registry/agenthub-provider.json
+│   └── deploy-debug.sh
 ├── vendor/
-│   ├── bibit-feature-contracts-0.3.0.tgz
-│   ├── bibit-feature-dev-host-0.3.0.tgz
-│   ├── bibit-feature-plugin-sdk-0.3.0.tgz
-│   └── bibit-feature-sdk-0.3.0.tgz
+│   └── bibit-feature-*-0.3.0-u6*.tgz
 ├── .bibit-keys/
 ├── artifacts/
 └── docs/
@@ -106,9 +110,10 @@ bibit-agenthub-plugin/
 | `package.json` 的 `keygen`、`build:plugin` | 签名工具接线 | 不把私钥路径改成仓库内可提交文件，不绕过签名工具 | 平台签名工具或正式签名 SOP 变更时 |
 | `src/plugin.tsx` | 插件注册入口 | 保持纯注册，不放业务逻辑、网络连接、定时器或全局监听 | 仅随 `@bibit/feature-plugin-sdk` 接口升级 |
 | `tsconfig.json` 的严格模式、ES 模块和 JSX 配置 | SDK 编译基线 | 不关闭 `strict`，不改成 CommonJS，不放宽类型检查 | 平台提供新版 TypeScript 模板时 |
+| `vite.config.ts` 的 automatic JSX runtime | SDK 源码包兼容基线 | 保留 `esbuild.jsx = automatic`，防止源码形式 UI SDK 生成未定义的全局 `React` | 平台构建器不再分发 TSX 源码时 |
 | `.gitignore` 对 `.bibit-keys/` 的排除 | 安全边界 | 不删除、不反向提交密钥 | 不允许例外 |
 | Manifest 的 `manifestSchemaVersion`、`sdkApiVersion`、`id` | 公共身份契约 | 当前保持 `1`、`1`、`agent-hub` | 平台升级 Schema/API，或经过迁移评审创建全新 Feature |
-| Manifest 的 `requiredHostCapabilities` | 最小授权契约 | 保留实际使用的 `service:store`，不把 operation、URL 或 command 当 capability | 功能确实需要新的 Service 或非 Service 公共能力时 |
+| Manifest 的 `requiredHostCapabilities` | 最小授权契约 | 当前保留 `service:store`、`file:transfer`、`job:manage`，不把 operation、URL 或 command 当 capability | 平台发布新的公共能力时 |
 
 `src/plugin.tsx` 推荐长期保持如下形态：
 
@@ -207,7 +212,7 @@ src/
     "fallbackDescription": "Browse and manage Agent packages"
   },
   "targets": ["desktop"],
-  "requiredHostCapabilities": ["service:store"],
+  "requiredHostCapabilities": ["service:store", "file:transfer", "job:manage"],
   "contributions": {
     "pages": [
       {
@@ -409,7 +414,7 @@ return () => controller.abort()
 - 不把 URL、header、authorization、token、API key、cookie、credential 或 secret 放入 `params`；
 - 不显示或记录原始凭据、请求 header 或后端内部堆栈。
 
-当前 `src/storeContracts.ts` 对列表和设置 v1 返回值执行运行时校验。新增上传、下载、分页或复杂 DTO 时，必须在同一协议边界增加对应校验；后端返回错误结构时进入局部错误态，不能让页面白屏。
+当前 `src/storeContracts.ts` 对列表、设置、上传结果和下载结果执行运行时校验。新增分页或复杂 DTO 时，必须在同一协议边界增加对应校验；Provider 返回错误结构时进入局部错误态，不能让页面白屏。
 
 ## 10. Store 服务协议
 
@@ -420,6 +425,8 @@ return () => controller.abort()
 | `agents.list.v1` | `{}` | `AgentSummaryV1[]` |
 | `settings.get.v1` | `{}` | `AgentHubSettingsV1` |
 | `settings.update.v1` | `AgentHubSettingsV1` | `AgentHubSettingsV1` |
+| `agents.upload.v1` | Job input `{displayName}` + input FileGrant | `{agentId,displayName,bytes,sha256}` |
+| `agents.download.v1` | Job input `{agentId}` + output FileGrant | `{agentId,bytes,sha256}` |
 
 ```ts
 interface AgentSummaryV1 {
@@ -697,9 +704,12 @@ dist/agent-hub-plugin.css
 启动 Debug Bibit 时指定 Agent Hub 开发 trust store：
 
 ```bash
-BIBIT_PLUGIN_TRUST_STORE=/absolute/path/.bibit-keys/agent-hub-development-trust-store.json \
+XDG_DATA_HOME=/absolute/path/bibit-agenthub-demo/xdg-data \
+  BIBIT_PLUGIN_TRUST_STORE=/absolute/path/.bibit-keys/agent-hub-development-trust-store.json \
   yarn dev:tauri
 ```
+
+调试时必须使用独立的 `XDG_DATA_HOME`，避免开发插件、Provider 数据和用户配置写入正式 Bibit 用户目录。`demo/deploy-debug.sh` 会创建该目录并输出完整启动命令。
 
 进入：
 
@@ -935,18 +945,16 @@ Store service version
 
 执行：
 
-1. 在 Store 服务准备一条唯一测试 Agent，例如 `acceptance-agent-20260826`；
-2. 启动目标 Bibit，确认插件已激活且 `service:store` 或其 SDK v1 兼容能力已授予；
-3. 打开 Agent Hub，确认唯一测试 Agent 的名称和描述来自真实 Store；
-4. 停止 Store 服务，点击 Retry，确认只显示 Agent Hub 局部错误；
-5. 确认 Bibit 对话、设置和其他页面仍可操作；
-6. 恢复 Store 服务，点击 Retry，确认列表恢复；
-7. 打开 Agent Hub 设置，修改 `showExperimental` 和 `refreshMinutes` 并保存；
-8. 关闭并重新打开设置页，确认读取到保存值；
-9. 重启 Bibit 和 Store 服务，再次确认设置值；
-10. 保存 Store 服务按 `requestId` 关联的请求日志、Bibit 日志、页面截图和最终设置读取结果。
+1. 启动目标 Bibit，确认插件 active，`service:store`、`file:transfer`、`job:manage` 均已授权且 Provider 协商 v2；
+2. 通过页面上传唯一 fixture，记录 jobId、事件 sequence、源文件与 Provider package SHA-256；
+3. 通过卡片按钮下载同一 Agent，目标 SHA-256 必须相同，staging 已清理；
+4. 延迟传输中显式取消，最终只能为 `cancelled`，目标位置无半成品；
+5. 取消后执行列表和设置请求，Provider 仍可复用；
+6. 离开并重新进入页面，确认同一 Job 从快照/sequence 恢复，不重复创建；
+7. 切换其他会话，确认不受传输阻塞；
+8. 保存关联 ID、Provider PID、哈希、清理结果和页面截图。
 
-只有第 3、8、9、10 步共同成立，才能证明“真实功能已接通”。只看到端口可达、插件入口或 Mock 数据不算端到端接通。
+入口可见、端口可达或 Dev Host Mock 成功都不算真实端到端接通。
 
 ## 17. 常见问题
 
@@ -1011,10 +1019,9 @@ Store service version
 ## 19. 当前已知边界
 
 - v1 只支持 `desktop/main`；
-- 当前插件只实现 Agent 列表和两个设置字段；
-- 上传、下载、详情、分页、搜索和版本管理尚未实现；
-- 当前列表和设置 DTO 已有运行时校验及最小契约测试；页面交互仍没有自动化组件测试；
-- 当前 Demo 使用独立 CSS，尚未使用 `@bibit/feature-ui`；
+- 当前插件实现列表、两个设置字段以及上传/下载/取消 Demo；详情、分页、搜索和版本管理尚未实现；
+- 列表、设置和传输结果均有运行时校验，页面业务按钮有组件测试，模拟 CLI 有 upload/download/hash/cancel 自检；
+- 当前 Demo 已使用目标 Bibit 同版本的 `@bibit/feature-ui`，模块 CSS 仅负责 `.agent-hub*` 范围内的业务布局；
 - 当前 `locales` 只声明 `en`，页面文案仍直接写在组件中；
 - 插件属于公司可信内部代码，不是不可信代码沙箱；
 - 更新需要提升版本、重新签名并重新启动或刷新 Bibit；

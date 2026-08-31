@@ -1,146 +1,146 @@
 # AgentHub CLI Provider 开发与部署指南
 
-本文面向 AgentHub CLI 开发者。CLI 不由插件直接执行，而是作为 Bibit `store` Service 的 Provider，由 Bibit Provider Broker 启动和管理。CLI 可以使用 Python、C++、Rust 或其他实现语言，但必须遵守本文协议。
-
-## 1. 固定调用链
+AgentHub 前端不能执行命令、传 executable/argv 或接触本机路径。所有按钮固定走：
 
 ```text
-AgentHub Plugin
-  -> service:store
-  -> Bibit Provider Broker
-  -> /usr/libexec/bibit/bibit-agenthub provider
-  -> AgentHub 本地数据
+AgentHub UI -> Feature SDK -> Bibit FileGrant / Job Registry
+            -> Provider Protocol v2 -> AgentHub CLI
 ```
 
-插件只能传 `operationId + params`，不得传命令、argv、环境变量、工作目录、URL、凭据或任意文件路径。CLI 不能要求插件导入 Tauri API。
+CLI 可以使用 Python、C++、Rust 等任意实现语言；Bibit 只约束协议、固定入口和资源边界。
 
-## 2. CLI 命令约定
+## 1. 系统入口与进程约束
 
-系统包必须提供固定入口：
+正式 CLI 包提供固定入口：
 
 ```bash
 /usr/libexec/bibit/bibit-agenthub provider
 ```
 
-`provider` 模式必须：
+Provider 必须从 stdin 读取 UTF-8 NDJSON，stdout 只能输出 JSON-RPC 2.0，日志只写 stderr。不得依赖继承的 `HOME`、`PATH` 或工作目录。持久数据根由 `BIBIT_PROVIDER_DATA_DIR` 指定；Host 传来的 `resourcePath` 只能相对此根解析，并拒绝绝对路径、`..`、反斜杠和符号链接跳转。
 
-- 非交互运行，不读取终端 TTY；
-- 从 stdin 读取 UTF-8 NDJSON；
-- stdout 只输出 JSON-RPC 2.0 消息；
-- 日志只写 stderr，且不得包含 token、凭据和完整敏感 DTO；
-- 收到 EOF 后完成当前请求并退出；
-- `managed` 模式收到 `bibit.cancel` 时停止对应工作并尽快结束；收到 `bibit.shutdown` 时刷新持久数据并退出；
-- 使用 `BIBIT_PROVIDER_DATA_DIR` 保存当前用户的持久数据；
-- 不依赖调用进程的 `HOME`、`PATH` 或当前工作目录。
+插件包和 CLI 包可独立升级：插件不拥有 CLI executable、Provider Registry 或 Provider 数据；CLI 不拥有插件 bundle 和 capability grant。
 
-## 3. 初始化协商
+## 2. 协议协商与兼容
 
-Bibit 首先发送：
+Host 初始化示例：
 
 ```json
-{"jsonrpc":"2.0","id":"req-1:initialize","method":"bibit.initialize","params":{"protocolName":"bibit-provider","supportedProtocolVersions":[1],"serviceId":"store","client":{"name":"Bibit"}}}
+{"jsonrpc":"2.0","id":"session:initialize","method":"bibit.initialize","params":{"protocolName":"bibit-provider","supportedProtocolVersions":[2,1],"serviceId":"store","client":{"name":"Bibit"}}}
 ```
 
-CLI 返回：
+支持传输的 Provider 返回：
 
 ```json
-{"jsonrpc":"2.0","id":"req-1:initialize","result":{"protocolVersion":1,"providerVersion":"1.0.0","capabilities":{"invoke":true},"operations":["agents.list.v1","settings.get.v1","settings.update.v1"]}}
+{"jsonrpc":"2.0","id":"session:initialize","result":{"protocolVersion":2,"providerVersion":"1.0.0","capabilities":{"invoke":true,"jobs":true,"cancellation":true,"maxConcurrentJobs":1},"operations":["agents.list.v1","settings.get.v1","settings.update.v1","agents.upload.v1","agents.download.v1"]}}
 ```
 
-要求：
+- v1 只处理 `bibit.invoke`，列表和设置继续可用；Bibit 会禁用上传/下载并显示“Provider 不支持异步传输”。
+- v2 必须同时声明 `jobs`、`cancellation` 和 `maxConcurrentJobs: 1`。
+- `id` 原样回显；未初始化前不处理请求。
+- v1 不得因为 v2 的加入改变请求、取消和生命周期语义。
 
-- `id` 原样回显；
-- `protocolVersion` 必须从 Host 提供的版本集合中选择；
-- `providerVersion` 使用 CLI 包版本；
-- `operations` 必须列出本次进程实际可处理的 operation；
-- 未完成初始化前不得处理 invoke。
+## 3. 普通 operation
 
-## 4. Operation 调用
-
-请求：
+`bibit.invoke` 继续承载短请求：
 
 ```json
 {"jsonrpc":"2.0","id":"req-1","method":"bibit.invoke","params":{"serviceId":"store","operationId":"agents.list.v1","params":{},"timeoutMs":30000}}
 ```
 
-成功：
-
-```json
-{"jsonrpc":"2.0","id":"req-1","result":[{"id":"release-notes","name":"Release Notes","description":"Creates release notes."}]}
-```
-
-失败：
-
-```json
-{"jsonrpc":"2.0","id":"req-1","error":{"code":-32000,"message":"Catalog unavailable","data":{"code":"unavailable"}}}
-```
-
-平台错误码只允许 `cancelled`、`offline`、`timeout`、`unauthorized`、`incompatible`、`unavailable`、`provider_crashed`、`resource_exhausted` 和 `unknown`。Agent 不存在、版本冲突等领域错误应由 operation DTO 定义，不能冒充平台故障。
-
-当前 AgentHub 前端要求：
+当前 DTO：
 
 | operation | params | result |
 | --- | --- | --- |
-| `agents.list.v1` | `{}` | `AgentSummaryV1[]` |
-| `settings.get.v1` | `{}` | `AgentHubSettingsV1` |
-| `settings.update.v1` | `AgentHubSettingsV1` | `AgentHubSettingsV1` |
+| `agents.list.v1` | `{}` | `{id,name,description}[]` |
+| `settings.get.v1` | `{}` | `{showExperimental,refreshMinutes}` |
+| `settings.update.v1` | 同上 | 同上 |
 
-破坏性 DTO 变更必须发布新的 operation 版本。
+破坏性变更必须发布新的 operation 版本。Provider 错误的 `data.code` 仅使用平台闭集：`cancelled`、`offline`、`timeout`、`unauthorized`、`incompatible`、`unavailable`、`provider_crashed`、`resource_exhausted`、`unknown`。
 
-## 5. Registry
+## 4. 上传/下载 Job
 
-CLI 包安装 `/etc/bibit/external-services.d/agenthub.json`，参考仓库中的 [`deploy/agenthub-provider.example.json`](../deploy/agenthub-provider.example.json)：
+Host 先创建并消费不透明 FileGrant，再发送：
 
 ```json
-{
-  "version": 2,
-  "services": {
-    "store": {
-      "transport": "stdio",
-      "executable": "/usr/libexec/bibit/bibit-agenthub",
-      "args": ["provider"],
-      "lifecycle": "managed",
-      "protocolVersions": [1],
-      "requestTimeoutMs": 30000
-    }
-  }
-}
+{"jsonrpc":"2.0","id":"job:start:<jobId>","method":"bibit.job.start","params":{"serviceId":"store","jobId":"<jobId>","operationId":"agents.upload.v1","input":{"displayName":"sample.demo-agent"},"resources":[{"resourcePath":"transfers/agent-hub/<random>/input.bin","byteLength":128,"sha256":"<sha256>"}]}}
 ```
 
-安装脚本不得写用户 home。Registry 和 executable 由 CLI deb 拥有；插件 deb 不覆盖它们。
+Provider 必须立即确认，然后在 worker 中处理，主读循环继续响应 list/settings/cancel：
 
-默认推荐 `managed`：Bibit 为 `store` 保持单个 CLI 会话、只初始化一次，并在崩溃或配置变化后重建。v1 同一 Service 内按请求串行执行；CLI 不得假设并发 invoke。若 CLI 启动几乎无成本且所有操作都完全无状态，可以改为 `oneShot`。
+```json
+{"jsonrpc":"2.0","id":"job:start:<jobId>","result":{"jobId":"<jobId>","accepted":true}}
+```
 
-## 6. 独立调试
+进度事件的 `providerSequence` 从 1 开始严格递增：
 
-开发时构造两行输入：第一行为 initialize，第二行为 invoke。验收至少覆盖：
+```json
+{"jsonrpc":"2.0","method":"bibit.jobEvent","params":{"serviceId":"store","jobId":"<jobId>","providerSequence":1,"kind":"progress","progress":{"completedBytes":65536,"totalBytes":1048576}}}
+```
 
-- 初始化成功和不支持的协议版本；
-- 三个 v1 operation 的合法响应；
-- 未知 operation；
-- 非法 DTO；
-- stdout 混入日志；
-- 超时、非零退出和进程崩溃；
-- `bibit.cancel` 能停止长任务，`bibit.shutdown` 能正常退出；
-- managed 模式连续两个 invoke 只启动一个进程，崩溃后下一次请求可重建；
-- 请求并发时持久化不会损坏；
-- 重启 CLI 后设置仍可读取。
+上传成功只返回业务结果。下载必须把字节写入 Host 预建的 output resource，并回传完全相同的相对 locator、字节数和 SHA-256：
 
-Dev Host 的 Mock 只验证前端。CLI 的真实集成必须通过 Debug Bibit 验证，不能把 Mock 成功作为 Provider 接通证据。
+```json
+{"jsonrpc":"2.0","method":"bibit.jobEvent","params":{"serviceId":"store","jobId":"<jobId>","providerSequence":2,"kind":"result_ready","result":{"output":{"agentId":"demo","bytes":128,"sha256":"<sha256>"},"resource":{"resourcePath":"transfers/agent-hub/<random>/output.bin","byteLength":128,"sha256":"<sha256>"}}}}
+```
 
-## 7. Debian 部署边界
+`result_ready` 只是完成提议。只有 Bibit 完成校验和原子发布后，UI 才会看到 `succeeded`。CLI 不得返回绝对路径。
 
-建议独立包：
+失败事件：
+
+```json
+{"jsonrpc":"2.0","method":"bibit.jobEvent","params":{"serviceId":"store","jobId":"<jobId>","providerSequence":2,"kind":"failed","error":{"code":"resource_exhausted","message":"Package store limit reached","retryable":true}}}
+```
+
+## 5. 取消与竞争
+
+```json
+{"jsonrpc":"2.0","id":"job:cancel:<jobId>:<nonce>","method":"bibit.job.cancel","params":{"serviceId":"store","jobId":"<jobId>"}}
+```
+
+Provider 立即返回 accepted，worker 停止后发送唯一 `cancelled` 事件。若 Host 已先记录终态，取消会返回 too-late；若 Host 已记录 `cancel_requested`，后续 `result_ready` 不能覆盖它。取消超时会只隔离当前 managed Provider，并在下一次请求重建。
+
+页面卸载不会发送取消；只有用户点击“Cancel transfer”才取消 Job。
+
+## 6. 模拟 CLI
+
+仓库内 [`demo/cli/bibit-agenthub-mock-provider.py`](../demo/cli/bibit-agenthub-mock-provider.py) 是可运行参考：
+
+```bash
+python3 demo/cli/bibit-agenthub-mock-provider.py --self-test
+```
+
+自检真实复制上传字节、再下载并比较 SHA-256，还覆盖一次取消。它只用 Python 标准库，限制 package store 为 512 MiB，主 NDJSON 循环与 worker 分离。它是协议示例，不定义正式 Agent 包格式。
+
+## 7. Registry 与 Grant
+
+- Provider Registry：[`deploy/agenthub-provider.example.json`](../deploy/agenthub-provider.example.json)，必须为 managed stdio 且 `protocolVersions` 包含 `[1,2]`。
+- capability grant：[`deploy/agenthub-feature-grants.example.json`](../deploy/agenthub-feature-grants.example.json)，同时授权 `service:store`、`file:transfer`、`job:manage` 和五个 operation。
+- 插件 Manifest 必须声明同一组 Host capability；三处不一致时 Host 拒绝调用。
+
+正式建议拆包：
 
 ```text
-bibit-agenthub-plugin  -> /usr/lib/bibit/plugins/agent-hub.bibit-plugin.tgz
-                       -> /etc/bibit/feature-capability-grants.d/agenthub.json
-bibit-agenthub-cli     -> /usr/libexec/bibit/bibit-agenthub
-                       -> /etc/bibit/external-services.d/agenthub.json
+bibit-agenthub-plugin -> plugin bundle + capability grant
+bibit-agenthub-cli    -> /usr/libexec/bibit/bibit-agenthub + Provider Registry
 ```
 
-插件包同时安装经平台批准的 capability/operation grant，内容参考 [`deploy/agenthub-feature-grants.example.json`](../deploy/agenthub-feature-grants.example.json)。插件和 CLI 可以独立升级，但发布前必须核对 Provider Protocol、operation 和 DTO 兼容范围。CLI 更新不需要重新编译 Bibit 或插件；插件更新也不应覆盖 CLI 数据或 Provider Registry。
+## 8. Debug 部署
 
-## 8. 后续扩展
+先构建插件，再准备隔离目录：
 
-managed session 与真实取消已经由平台提供。长时间安装、下载进度和文件上传应等待/使用平台 Job/Event 与 FileGrant 公共能力；在这些公共契约交付前，相应功能应明确标记为“平台能力未就绪”，不得通过后台化 CLI、轮询临时日志文件或在 DTO 中传绝对路径绕开 Broker。
+```bash
+npm run build:plugin
+./demo/deploy-debug.sh /home/bianbu/bibit-agenthub-demo
+```
+
+脚本不写 `/usr`、`/etc`、systemd 或 DEB 状态；它输出启动开发版 Bibit 所需的 `XDG_DATA_HOME`、`JAN_DATA_FOLDER`、Provider config、grant、plugin 和 trust-store 环境变量。`XDG_DATA_HOME` 必须指向隔离目录，防止调试插件、Provider 数据和用户配置落入正式用户目录。调试结束必须停止开发进程并恢复唯一的 `/usr/bin/bibit-gui` 正式进程。
+
+## 9. 最小验收
+
+1. `npm test && npm run typecheck && npm run build:dev && npm run build:plugin`。
+2. `python3 demo/cli/bibit-agenthub-mock-provider.py --self-test`。
+3. 页面上传 fixture，记录 source、Provider package 的 SHA-256。
+4. 页面下载同一 Agent，目标 SHA-256 必须相同，staging 已清理。
+5. 延迟传输中取消，无目标半成品；随后 list/settings 仍响应。
+6. 多次离开/返回页面不重复 Job，不阻塞其他会话。

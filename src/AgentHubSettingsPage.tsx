@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useFeatureCapability, type FeatureSettingsProps } from '@bibit/feature-sdk'
+import { Button, FeatureSettingsPage } from '@bibit/feature-ui'
 import './agentHub.css'
 import { parseAgentHubSettings, type AgentHubSettings } from './storeContracts'
 
@@ -60,17 +61,48 @@ export function AgentHubSettingsPage(_: FeatureSettingsProps) {
   }
 
   return (
-    <section className="agent-hub-settings">
-      <header><p>CATALOG PREFERENCES</p><h1>Agent Hub settings</h1></header>
-      <label>
-        <span><strong>Experimental Agents</strong><small>Include preview Agents in the catalog.</small></span>
-        <input type="checkbox" checked={settings.showExperimental} onChange={(event) => setSettings({ ...settings, showExperimental: event.target.checked })} />
-      </label>
-      <label>
-        <span><strong>Catalog refresh</strong><small>Refresh interval in minutes.</small></span>
-        <input type="number" min="5" max="120" value={settings.refreshMinutes} onChange={(event) => setSettings({ ...settings, refreshMinutes: Number(event.target.value) })} />
-      </label>
-      <footer><span role="status">{status}</span><button type="button" disabled={!store || saving} onClick={() => void save()}>{saving ? 'Saving…' : 'Save settings'}</button></footer>
-    </section>
+    <div className="agent-hub-settings">
+      <FeatureSettingsPage
+        title="Agent Hub"
+        description="Choose which Agents appear and how often the catalog refreshes."
+      >
+        <div className="agent-hub-settings__panel">
+          <label className="agent-hub-settings__row">
+            <span>
+              <strong>Experimental Agents</strong>
+              <small>Include preview Agents in the catalog.</small>
+            </span>
+            <input
+              type="checkbox"
+              checked={settings.showExperimental}
+              onChange={(event) => setSettings({ ...settings, showExperimental: event.target.checked })}
+            />
+          </label>
+          <label className="agent-hub-settings__row">
+            <span>
+              <strong>Catalog refresh</strong>
+              <small>Refresh interval in minutes.</small>
+            </span>
+            <input
+              type="number"
+              min="5"
+              max="120"
+              value={settings.refreshMinutes}
+              onChange={(event) => setSettings({ ...settings, refreshMinutes: Number(event.target.value) })}
+            />
+          </label>
+        </div>
+        <footer className="agent-hub-settings__footer">
+          <span role="status" aria-live="polite">{status}</span>
+          <Button
+            className="agent-hub-settings__save"
+            disabled={!store || saving}
+            onClick={() => void save()}
+          >
+            {saving ? 'Saving…' : 'Save settings'}
+          </Button>
+        </footer>
+      </FeatureSettingsPage>
+    </div>
   )
 }
