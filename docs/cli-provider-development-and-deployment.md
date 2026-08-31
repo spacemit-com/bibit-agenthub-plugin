@@ -127,6 +127,8 @@ bibit-agenthub-cli    -> /usr/libexec/bibit/bibit-agenthub + Provider Registry
 
 ## 8. Debug 部署
 
+浏览器 `npm run dev` 只运行内存 Host API Mock，不能启动或证明 CLI Provider。真实 CLI 联调必须使用目标 Bibit `49bcd55ece89c6ee970abab4e4cb69b393b21201` 或兼容的更新版本。
+
 先构建插件，再准备隔离目录：
 
 ```bash

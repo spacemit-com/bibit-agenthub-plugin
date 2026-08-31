@@ -14,7 +14,7 @@
 | `@bibit/feature-plugin-sdk` | `0.3.0` |
 | `@bibit/feature-dev-host` | `0.3.0` |
 | React / React DOM | `19.0.0` |
-| 已验证目标 Bibit | `3a6adda0c47637accc59f0612d83bca47e0e4f9e` |
+| 已验证目标 Bibit | `49bcd55ece89c6ee970abab4e4cb69b393b21201` |
 
 当前插件提供两个贡献点：
 
@@ -564,13 +564,14 @@ token 由 Bibit 凭据存储提供。不得把 token 写入插件、Manifest、U
 ### 11.1 获取代码
 
 ```bash
-git clone -b dev \
+git clone -b main \
   git@gitlab.dc.com:bianbu/bianbu-star/bibit-agenthub-plugin.git
 cd bibit-agenthub-plugin
+git rev-parse HEAD
 npm ci
 ```
 
-使用 `npm ci` 保持 lockfile 中的确切版本。不要用 `npm update` 随机改变 SDK 或 React 版本。
+交付负责人还应提供经过验收的固定 commit SHA；正式集成时记录并检出该提交，不要只依赖会变化的 `main`。远程默认分支目前仍可能显示为 `dev`，所以开发初始化必须显式克隆 `main`。使用 `npm ci` 保持 lockfile 中的确切版本，不要用 `npm update` 随机改变 SDK 或 React 版本。
 
 确认依赖：
 
@@ -599,26 +600,36 @@ npm run dev
 - `Settings · settings` 可以读取当前 Mock 设置；
 - 修改开关和刷新间隔后保存；
 - 再次进入设置页时 Mock 值一致；
+- `Upload Agent` 启动内存 Job，显示进度并在完成后刷新 Mock 列表；
+- Agent 卡片的 `Download` 启动内存 Job，完成后显示成功状态；
+- `Cancel transfer` 使当前内存 Job 进入 `cancelled`，离开再返回页面不会重复创建 Job；
 - 未知 operation 返回错误，而不是伪造成功。
 
-### 11.3 连接真实开发 Store 服务
+该模式中的文件选择、Job、进度和取消全部由 `dev/main.tsx` 注入的内存 Host API 实现，不读取真实文件、不启动 Provider，也不会产生下载文件。它验证的是插件业务状态机和公开 SDK 用法，不是 Tauri、FileGrant staging 或 CLI 端到端证据。
 
-Dev Host 的 `storeEndpoint` 是完整 invoke 地址，与 Bibit 连接配置中的 `baseUrl` 不同：
+### 11.3 连接模拟或真实 CLI Provider
 
-```text
-http://127.0.0.1:5173/?storeEndpoint=http%3A%2F%2F127.0.0.1%3A18081%2Fbibit%2Fv1%2Finvoke
+真实 CLI 必须由 Tauri Bibit 的 Provider Broker 启动，浏览器 Dev Host 不提供 executable、argv、文件系统或 Provider 生命周期。先完成自检并准备隔离调试目录：
+
+```bash
+npm run keygen
+npm run build:plugin
+python3 demo/cli/bibit-agenthub-mock-provider.py --self-test
+./demo/deploy-debug.sh /home/bianbu/bibit-agenthub-demo
 ```
 
-此时 `dev/main.tsx` 不再注入 Mock，而由浏览器直接向 Store 服务发送第 10 节信封。Store 开发服务必须允许 Dev Host origin 的 CORS；正式 Bibit 使用 Rust Host Gateway，不依赖浏览器 CORS。
+`demo/deploy-debug.sh` 只写指定隔离目录，并输出 `XDG_DATA_HOME`、`JAN_DATA_FOLDER`、Provider Registry、capability grant、系统插件目录和开发 trust store 的完整环境变量前缀。把该前缀放到目标 Bibit `yarn dev:tauri` 或已构建 Debug binary 前；不要写入正式 `/etc`、`/usr` 或用户数据目录。
 
-真实服务调试必须验证：
+真实 Provider 调试必须验证：
 
-- `agents.list.v1` 数据来自服务，不是 `mockAgents`；
-- 浏览器网络请求中的 `requestId` 与服务响应一致；
-- 设置保存后重新 GET 得到相同值；
-- Store 服务停止后页面显示局部错误和 Retry；
-- Store 恢复后 Retry 能恢复列表；
-- Agent Hub 失败不影响 Dev Host 切换到设置贡献点。
+- Bibit 日志显示插件已激活、`store` Provider 协商为协议 v2，且 PID 来自 Registry 中的固定 executable；
+- 上传和下载经过真实 FileGrant staging，源文件、Provider package 和目标文件 SHA-256 一致；
+- 显式取消后 Job 唯一终态为 `cancelled`，目标位置没有半成品；
+- 取消后 `agents.list.v1` 和设置 operation 仍可调用，managed Provider 可继续复用或按规则重建；
+- 页面离开和返回只恢复 Job 快照及 sequence，不重复启动传输；
+- 插件/Provider 故障只影响 Agent Hub，不阻塞 Bibit 其他页面和会话。
+
+模块团队替换模拟 CLI 时保持 Registry 固定入口和 Provider v2 协议不变即可；正式 CLI 的内部语言、子命令实现和后端连接不属于插件前端契约。完整线协议见 [AgentHub CLI Provider 开发与部署指南](./cli-provider-development-and-deployment.md)。
 
 ### 11.4 开发构建
 
@@ -697,7 +708,7 @@ dist/agent-hub-plugin.css
 
 收到正式 bundle 后执行第 12.1 节的四条检查命令。拿不到“正式签名 bundle + SHA-256 + key ID + 目标 Bibit 公钥登记结果”时，Release 部署处于阻塞状态；开发 key 不能代替这些交付物。
 
-截至目标 Bibit `3a6adda0c47637accc59f0612d83bca47e0e4f9e`，`src-tauri/resources/plugin-trusted-keys.json` 仍为空。正式发布前必须由平台登记公司公钥并重新构建 Bibit。
+截至目标 Bibit `49bcd55ece89c6ee970abab4e4cb69b393b21201`，`src-tauri/resources/plugin-trusted-keys.json` 仍为空。正式发布前必须由平台登记公司公钥并重新构建 Bibit。
 
 ## 13. 在 Bibit 中开发安装
 
@@ -899,12 +910,13 @@ npm run build:plugin
 - Dev Host 同时列出 `Page · home` 和 `Settings · settings`；
 - Mock 列表、空态、错误态和 Retry 可见；
 - Mock 设置可以读取和保存；
+- Mock 上传、下载、进度、取消和页面重进恢复可见；
 - bundle 包含 `plugin.json`、`plugin.sig`、JS 和 CSS；
 - `.bibit-keys` 和 `artifacts` 没有进入 Git。
 
-### 16.2 Store 服务协议
+### 16.2 Store 短请求与 Provider 协议
 
-使用真实服务验证：
+如果模块同时提供 HTTP Provider，使用真实 HTTP 服务验证：
 
 1. `POST /bibit/v1/invoke` 可达；
 2. 三个 v1 operation 均返回合法信封；
@@ -914,6 +926,8 @@ npm run build:plugin
 6. 重启 Store 服务后设置值仍存在；
 7. 非法 operation、超时、未授权和离线产生约定错误；
 8. 日志不包含 token 或完整凭据。
+
+当前 AgentHub CLI 路径还必须执行 `python3 demo/cli/bibit-agenthub-mock-provider.py --self-test`，并确认 `bibit.initialize` 协商 v2、五个 operation 完整、`jobs/cancellation/maxConcurrentJobs` 能力与 Registry 一致。HTTP 探针不能替代 CLI 协商和传输验收。
 
 ### 16.3 Bibit 插件加载
 
@@ -972,11 +986,11 @@ Store service version
 
 ### Dev Host Mock 正常，真实服务失败
 
-确认 URL 参数传入的是完整 `/bibit/v1/invoke` 地址，并检查浏览器 CORS。再核对 operation ID、DTO、HTTP 2xx、JSON 信封和 `requestId`。
+Dev Host 当前只注入内存 Host API，不接受 `storeEndpoint` URL 参数，也不会启动 CLI。执行第 11.3 节的隔离 Tauri 调试，依次核对插件激活、capability grant、Provider Registry、协议 v2 协商和 operation 集合。
 
 ### Bibit 中服务请求失败
 
-确认 Bibit 配置使用的是 `baseUrl`，不要在 `baseUrl` 中重复写 `/bibit/v1/invoke`。检查 `authRef`、超时、HTTP 状态和 Store 服务日志。
+CLI 模式检查 Registry 是否为 `version: 2`、`transport: stdio`、固定绝对 executable、`lifecycle: managed` 和 `protocolVersions: [1,2]`，再检查 Provider stderr。HTTP 模式才检查 `baseUrl`、`authRef`、超时和 HTTP 状态；不要在 `baseUrl` 中重复写 `/bibit/v1/invoke`。
 
 ### 返回成功但页面白屏
 
@@ -1002,9 +1016,9 @@ Store service version
 - 正式签名 bundle、SHA-256 和 key ID；
 - 公司公钥登记申请及登记结果；
 - 独立 Dev Host Mock 验收结果；
-- 真实 Store Dev Host 验收结果；
+- CLI 自检和 Provider v2 协商结果；
 - Bibit 插件加载、激活、停用和回退结果；
-- 真实列表、设置持久化及重启后读取证据；
+- 真实列表、设置持久化、上传、下载、取消、哈希和重进恢复证据；
 - 已知限制和可用回滚版本。
 
 不要交付：
