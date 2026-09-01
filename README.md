@@ -2,29 +2,36 @@
 
 Bibit Agent Hub 的独立前端插件，当前包含：
 
-- Bibit 主侧边栏中的 Agent Hub 页面；
+- Bibit 主侧边栏中的 Agent Hub 市场页面（Power 目录：installed / market 两种范围、类型 / tags 筛选、系列卡与分页）；
 - Agent Hub 设置子页面；
-- `external-service:store` Host API 接入；
+- 传输无关的 `service:store` Host API 接入；
+- 可独立运行的内存 Host API Mock，以及经 Tauri Bibit 调用的 managed stdio 模拟 CLI（AgentHub CLI Provider，Provider Protocol v2）；
 - 独立 Feature Dev Host；
 - 签名插件构建和系统插件部署能力。
 
 完整的代码边界、独立开发、服务协议、签名、部署、升级和验收步骤见：
 
 - [Agent Hub 插件开发与部署指南](./docs/development-and-deployment-guide.md)
+- [AgentHub CLI Provider 开发与部署指南](./docs/cli-provider-development-and-deployment.md)
 
 快速启动：
 
 ```bash
 npm ci
+npm test
 npm run typecheck
 npm run dev
 ```
 
-首次本地构建先生成开发签名 key，后续只需执行构建命令：
+浏览器 Dev Host 只验证插件前端和内存 Host API Mock，不会启动 CLI。真实 Provider 链路需要先构建插件并准备隔离调试目录：
 
 ```bash
 npm run keygen
 npm run build:plugin
+python3 demo/cli/bibit-agenthub-mock-provider.py --self-test
+./demo/deploy-debug.sh /home/bianbu/bibit-agenthub-demo
 ```
 
-当前产物：`artifacts/agent-hub-0.2.1.bibit-plugin.tgz`。`.bibit-keys/` 中的私钥禁止提交。
+脚本会输出启动目标 Tauri Debug Bibit 所需的完整环境变量。不要把 Dev Host 的 Mock 成功当成真实 CLI 已接通。
+
+当前产物：`artifacts/agent-hub-0.3.0.bibit-plugin.tgz`。`.bibit-keys/` 中的私钥禁止提交。

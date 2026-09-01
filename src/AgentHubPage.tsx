@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   useFeatureCapability,
-  type FeatureExternalServiceErrorV1,
+  type FeatureServiceErrorV1,
   type FeaturePageProps,
 } from '@bibit/feature-sdk'
 import {
@@ -23,22 +23,27 @@ type ViewState =
   | { status: 'ready'; data: ReadyListPowersResult }
   | { status: 'error'; message: string; retryable: boolean }
 
-const ERROR_MESSAGES: Record<FeatureExternalServiceErrorV1['code'], string> = {
+const ERROR_MESSAGES: Record<FeatureServiceErrorV1['code'], string> = {
+  cancelled: 'Power catalog request was cancelled.',
   offline: 'Power catalog is offline.',
   timeout: 'Power catalog request timed out.',
   unauthorized: 'Power catalog authorization is required.',
   incompatible: 'Power catalog service is incompatible with this plugin.',
   unavailable: 'Power catalog is unavailable.',
+  provider_crashed: 'Power catalog provider crashed.',
+  resource_exhausted: 'Power catalog is temporarily overloaded.',
   unknown: 'Could not load Power catalog.',
 }
 
-const RETRYABLE_CODES: ReadonlySet<FeatureExternalServiceErrorV1['code']> = new Set([
+const RETRYABLE_CODES: ReadonlySet<FeatureServiceErrorV1['code']> = new Set([
   'offline',
   'timeout',
   'unavailable',
+  'provider_crashed',
+  'resource_exhausted',
 ])
 
-function isFeatureServiceError(value: unknown): value is FeatureExternalServiceErrorV1 {
+function isFeatureServiceError(value: unknown): value is FeatureServiceErrorV1 {
   if (typeof value !== 'object' || value === null) return false
   const candidate = value as { version?: unknown; code?: unknown }
   return (
@@ -63,7 +68,7 @@ function toSafeError(reason: unknown): { message: string; retryable: boolean } {
 }
 
 export function AgentHubPage(_: FeaturePageProps) {
-  const store = useFeatureCapability('external-service:store')
+  const store = useFeatureCapability('service:store')
   const [scope, setScope] = useState<PowerScope>('installed')
   const [agent, setAgent] = useState('bibit')
   const [type, setType] = useState<PowerType>('skill')

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type {
-  FeatureExternalServiceApiV1,
-  FeatureExternalServiceErrorV1,
-  FeatureExternalServiceRequestV1,
+  FeatureServiceApiV1,
+  FeatureServiceErrorV1,
+  FeatureServiceRequestV1,
 } from '@bibit/feature-sdk'
 import {
   parseListPowersResult,
@@ -35,13 +35,13 @@ function readyFixture(): ReadyListPowersResult {
 }
 
 function makeService(respond: () => unknown): {
-  service: FeatureExternalServiceApiV1<'store'>
-  calls: FeatureExternalServiceRequestV1<'store'>[]
+  service: FeatureServiceApiV1<'store'>
+  calls: FeatureServiceRequestV1<'store'>[]
 } {
-  const calls: FeatureExternalServiceRequestV1<'store'>[] = []
-  const service: FeatureExternalServiceApiV1<'store'> = {
+  const calls: FeatureServiceRequestV1<'store'>[] = []
+  const service: FeatureServiceApiV1<'store'> = {
     async request<TResult>(
-      input: FeatureExternalServiceRequestV1<'store'>
+      input: FeatureServiceRequestV1<'store'>
     ): Promise<TResult> {
       calls.push(input)
       return respond() as TResult
@@ -88,7 +88,7 @@ describe('listPowers', () => {
   })
 
   it('preserves a FeatureServiceError rejected by the service as-is', async () => {
-    const error: FeatureExternalServiceErrorV1 = {
+    const error: FeatureServiceErrorV1 = {
       version: 1,
       code: 'unavailable',
       message: 'store is down',

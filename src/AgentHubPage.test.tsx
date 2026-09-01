@@ -3,9 +3,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import userEvent from '@testing-library/user-event'
 import {
   FeatureHostApiProvider,
-  type FeatureExternalServiceApiV1,
-  type FeatureExternalServiceErrorV1,
-  type FeatureExternalServiceRequestV1,
+  type FeatureServiceApiV1,
+  type FeatureServiceErrorV1,
+  type FeatureServiceRequestV1,
   type FeatureHostApiV1,
   type FeatureHostCapabilityApiV1,
   type FeaturePageProps,
@@ -16,7 +16,7 @@ import { AgentHubPage } from './AgentHubPage'
 
 afterEach(cleanup)
 
-type StoreRequest = FeatureExternalServiceRequestV1<'store'>
+type StoreRequest = FeatureServiceRequestV1<'store'>
 
 const codeReview: PowerSeries = {
   type: 'skill',
@@ -70,7 +70,7 @@ function makeStoreHost(
   respond?: (input: StoreRequest) => unknown
 ): { hostApi: FeatureHostApiV1; calls: StoreRequest[] } {
   const calls: StoreRequest[] = []
-  const service: FeatureExternalServiceApiV1<'store'> = {
+  const service: FeatureServiceApiV1<'store'> = {
     async request<TResult>(input: StoreRequest): Promise<TResult> {
       calls.push(input)
       if (respond) return (await respond(input)) as TResult
@@ -80,7 +80,7 @@ function makeStoreHost(
   function getCapability<K extends FeatureHostCapability>(
     capability: K
   ): FeatureHostCapabilityApiV1<K> | undefined {
-    if (capability === 'external-service:store') {
+    if ((capability as string) === 'service:store') {
       return service as unknown as FeatureHostCapabilityApiV1<K>
     }
     return undefined
@@ -88,7 +88,7 @@ function makeStoreHost(
   const hostApi: FeatureHostApiV1 = {
     sdkApiVersion: 1,
     featureId: 'agent-hub',
-    grantedCapabilities: ['external-service:store'],
+    grantedCapabilities: ['service:store'],
     getCapability,
   }
   return { hostApi, calls }
@@ -138,7 +138,7 @@ describe('AgentHubPage', () => {
     const user = userEvent.setup()
     let available = false
     const calls: StoreRequest[] = []
-    const service: FeatureExternalServiceApiV1<'store'> = {
+    const service: FeatureServiceApiV1<'store'> = {
       async request<TResult>(input: StoreRequest): Promise<TResult> {
         calls.push(input)
         return readyResult() as TResult
@@ -147,9 +147,9 @@ describe('AgentHubPage', () => {
     const hostApi: FeatureHostApiV1 = {
       sdkApiVersion: 1,
       featureId: 'agent-hub',
-      grantedCapabilities: ['external-service:store'],
+      grantedCapabilities: ['service:store'],
       getCapability: (capability) =>
-        (available && capability === 'external-service:store' ? service : undefined) as never,
+        (available && (capability as string) === 'service:store' ? service : undefined) as never,
     }
     renderPage(hostApi)
 
@@ -409,7 +409,7 @@ describe('AgentHubPage', () => {
     ['unknown', 'Could not load Power catalog.', false],
   ] as const)('maps the %s error to its safe message', async (code, message, retryable) => {
     const { hostApi } = makeStoreHost(() => {
-      throw { version: 1, code, message: 'raw host message' } as FeatureExternalServiceErrorV1
+      throw { version: 1, code, message: 'raw host message' } as FeatureServiceErrorV1
     })
     renderPage(hostApi)
 
@@ -438,7 +438,7 @@ describe('AgentHubPage', () => {
         code: 'timeout',
         message: 'raw host message',
         diagnosticId: 'diag-42',
-      } as FeatureExternalServiceErrorV1
+      } as FeatureServiceErrorV1
     })
     renderPage(hostApi)
 

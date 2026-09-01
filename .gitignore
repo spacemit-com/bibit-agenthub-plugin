@@ -2,3 +2,5 @@ node_modules/
 dist/
 artifacts/
 .bibit-keys/
+__pycache__/
+*.py[cod]

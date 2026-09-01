@@ -206,49 +206,95 @@
   color: #9d2d26;
 }
 
-/* ===== Settings page (retained, visually isolated) ===== */
+/* ===== Settings page (FeatureSettingsPage + BEM, from main) ===== */
 .agent-hub-settings {
-  max-width: 720px;
-  padding: 32px;
-  color: #162033;
-  font: 14px/1.5 system-ui;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  color: var(--foreground);
+  font: inherit;
 }
-.agent-hub-settings header { margin-bottom: 24px; }
-.agent-hub-settings header p {
-  margin: 0;
-  color: #4264a7;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: .16em;
+
+.agent-hub-settings__panel {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
 }
-.agent-hub-settings h1 { margin: 4px 0 0; font-size: 30px; }
-.agent-hub-settings > label {
+
+.agent-hub-settings__row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  padding: 18px 0;
-  border-bottom: 1px solid #d6deec;
+  padding: 16px;
 }
-.agent-hub-settings label span { display: grid; }
-.agent-hub-settings label small { color: #65718a; }
-.agent-hub-settings input[type='checkbox'] { width: 18px; height: 18px; accent-color: #4264a7; }
+
+.agent-hub-settings__row + .agent-hub-settings__row {
+  border-top: 1px solid var(--border);
+}
+
+.agent-hub-settings__row > span {
+  display: grid;
+  gap: 2px;
+}
+
+.agent-hub-settings__row strong {
+  font-weight: 500;
+}
+
+.agent-hub-settings__row small,
+.agent-hub-settings__footer {
+  color: var(--muted-foreground);
+}
+
+.agent-hub-settings input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+}
+
 .agent-hub-settings input[type='number'] {
-  width: 90px;
-  padding: 8px;
-  border: 1px solid #9caccc;
-  border-radius: 8px;
+  width: 88px;
+  min-height: 36px;
+  padding: 6px 9px;
+  border: 1px solid var(--input);
+  border-radius: calc(var(--radius) - 2px);
+  background: var(--background);
+  color: var(--foreground);
+  font: inherit;
 }
-.agent-hub-settings footer {
+
+.agent-hub-settings input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.agent-hub-settings__footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding-top: 24px;
-  color: #65718a;
+  padding-top: 20px;
 }
-.agent-hub-settings footer button {
-  border-color: #4264a7;
-  background: #4264a7;
-  color: white;
+
+.agent-hub-settings__save {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.agent-hub-settings__save:disabled {
+  cursor: not-allowed;
+}
+
+@media (max-width: 720px) {
+  .agent-hub-settings__footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .agent-hub-settings__row {
+    align-items: flex-start;
+  }
 }
