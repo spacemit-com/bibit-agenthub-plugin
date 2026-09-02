@@ -10,7 +10,7 @@ type AgentHubSettings = {
 const defaults: AgentHubSettings = { showExperimental: false, refreshMinutes: 15 }
 
 export function AgentHubSettingsPage(_: FeatureSettingsProps) {
-  const store = useFeatureCapability('external-service:store')
+  const store = useFeatureCapability('service:store')
   const [settings, setSettings] = useState(defaults)
   const [status, setStatus] = useState('Loading settings…')
 

@@ -3,9 +3,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import userEvent from '@testing-library/user-event'
 import {
   FeatureHostApiProvider,
-  type FeatureExternalServiceApiV1,
-  type FeatureExternalServiceErrorV1,
-  type FeatureExternalServiceRequestV1,
+  type FeatureServiceApiV1,
+  type FeatureServiceErrorV1,
+  type FeatureServiceRequestV1,
   type FeatureHostApiV1,
   type FeatureHostCapabilityApiV1,
   type FeaturePageProps,
@@ -16,7 +16,7 @@ import { AgentHubPage } from './AgentHubPage'
 
 afterEach(cleanup)
 
-type StoreRequest = FeatureExternalServiceRequestV1<'store'>
+type StoreRequest = FeatureServiceRequestV1<'store'>
 
 const codeReview: PowerSeries = {
   type: 'skill',
@@ -56,7 +56,7 @@ function readyResult(overrides: Partial<ReadyListPowersResult> = {}): ReadyListP
     page: 1,
     pageSize: 20,
     total: 1,
-    facets: { agents: ['bibit'], tags: [] },
+    facets: { agents: [], tags: [] },
     warnings: [],
     ...overrides,
   }
@@ -70,7 +70,7 @@ function makeStoreHost(
   respond?: (input: StoreRequest) => unknown
 ): { hostApi: FeatureHostApiV1; calls: StoreRequest[] } {
   const calls: StoreRequest[] = []
-  const service: FeatureExternalServiceApiV1<'store'> = {
+  const service: FeatureServiceApiV1<'store'> = {
     async request<TResult>(input: StoreRequest): Promise<TResult> {
       calls.push(input)
       if (respond) return (await respond(input)) as TResult
@@ -80,7 +80,7 @@ function makeStoreHost(
   function getCapability<K extends FeatureHostCapability>(
     capability: K
   ): FeatureHostCapabilityApiV1<K> | undefined {
-    if (capability === 'external-service:store') {
+    if ((capability as FeatureHostCapability) === 'service:store') {
       return service as unknown as FeatureHostCapabilityApiV1<K>
     }
     return undefined
@@ -88,7 +88,7 @@ function makeStoreHost(
   const hostApi: FeatureHostApiV1 = {
     sdkApiVersion: 1,
     featureId: 'agent-hub',
-    grantedCapabilities: ['external-service:store'],
+    grantedCapabilities: ['service:store'],
     getCapability,
   }
   return { hostApi, calls }
@@ -138,7 +138,7 @@ describe('AgentHubPage', () => {
     const user = userEvent.setup()
     let available = false
     const calls: StoreRequest[] = []
-    const service: FeatureExternalServiceApiV1<'store'> = {
+    const service: FeatureServiceApiV1<'store'> = {
       async request<TResult>(input: StoreRequest): Promise<TResult> {
         calls.push(input)
         return readyResult() as TResult
@@ -147,9 +147,9 @@ describe('AgentHubPage', () => {
     const hostApi: FeatureHostApiV1 = {
       sdkApiVersion: 1,
       featureId: 'agent-hub',
-      grantedCapabilities: ['external-service:store'],
+      grantedCapabilities: ['service:store'],
       getCapability: (capability) =>
-        (available && capability === 'external-service:store' ? service : undefined) as never,
+        (available && (capability as FeatureHostCapability) === 'service:store' ? service : undefined) as never,
     }
     renderPage(hostApi)
 
@@ -205,7 +205,6 @@ describe('AgentHubPage', () => {
         page: params.page,
         total: 40,
         nextPage: params.page === 1 ? 2 : undefined,
-        facets: { agents: ['atlas', 'bibit'], tags: [] },
         items: [params.page === 2 ? secondPageSkill : codeReview],
       })
     })
@@ -216,11 +215,11 @@ describe('AgentHubPage', () => {
     await screen.findByRole('heading', { name: 'second-page' })
 
     await user.hover(screen.getByRole('button', { name: '我的 Power' }))
-    fireEvent.click(screen.getByRole('menuitemradio', { name: 'atlas' }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'codex' }))
 
     await waitFor(() => {
       const last = calls[calls.length - 1]
-      expect(paramsOf(last).agent).toBe('atlas')
+      expect(paramsOf(last).agent).toBe('codex')
       expect(paramsOf(last).page).toBe(1)
       expect('snapshot' in paramsOf(last)).toBe(false)
     })
@@ -251,28 +250,25 @@ describe('AgentHubPage', () => {
     expect(last.snapshot).toBe('snap-1')
   })
 
-  it('retains the installed Agent menu after visiting the market', async () => {
+  it('retains the selected installed Agent after visiting the market', async () => {
     const user = userEvent.setup()
-    const { hostApi, calls } = makeStoreHost((input) => {
-      const params = paramsOf(input)
-      return readyResult({
-        facets: params.scope === 'installed'
-          ? { agents: ['atlas', 'bibit'], tags: [] }
-          : { agents: [], tags: [] },
-      })
-    })
+    const { hostApi, calls } = makeStoreHost()
     renderPage(hostApi)
     await screen.findByRole('heading', { name: 'code-review' })
 
     await user.hover(screen.getByRole('button', { name: '我的 Power' }))
-    fireEvent.click(screen.getByRole('menuitemradio', { name: 'atlas' }))
-    await waitFor(() => expect(paramsOf(calls[calls.length - 1]).agent).toBe('atlas'))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'codex' }))
+    await waitFor(() => expect(paramsOf(calls[calls.length - 1]).agent).toBe('codex'))
 
     await user.click(screen.getByRole('button', { name: 'Power 市场' }))
     await waitFor(() => expect(paramsOf(calls[calls.length - 1]).scope).toBe('market'))
-    await user.hover(screen.getByRole('button', { name: '我的 Power' }))
 
-    expect(screen.getByRole('menuitemradio', { name: /atlas/ }).getAttribute('aria-checked')).toBe('true')
+    await user.click(screen.getByRole('button', { name: '我的 Power' }))
+    await waitFor(() => {
+      const last = paramsOf(calls[calls.length - 1])
+      expect(last.scope).toBe('installed')
+      expect(last.agent).toBe('codex')
+    })
   })
 
   it('clears tags and resets the page when selecting the plugin type', async () => {
@@ -283,7 +279,7 @@ describe('AgentHubPage', () => {
         page: params.page,
         total: 40,
         nextPage: params.page === 1 ? 2 : undefined,
-        facets: { agents: ['bibit'], tags: ['alpha'] },
+        facets: { agents: [], tags: ['alpha'] },
         items: [params.type === 'plugin' ? pluginSeries : params.page === 2 ? secondPageSkill : codeReview],
       })
     })
@@ -311,7 +307,7 @@ describe('AgentHubPage', () => {
   it('sends sorted OR tags when multiple tags are selected', async () => {
     const user = userEvent.setup()
     const { hostApi, calls } = makeStoreHost(() =>
-      readyResult({ facets: { agents: ['bibit'], tags: ['alpha', 'beta', 'gamma'] } })
+      readyResult({ facets: { agents: [], tags: ['alpha', 'beta', 'gamma'] } })
     )
     renderPage(hostApi)
     await screen.findByRole('heading', { name: 'code-review' })
@@ -409,7 +405,7 @@ describe('AgentHubPage', () => {
     ['unknown', 'Could not load Power catalog.', false],
   ] as const)('maps the %s error to its safe message', async (code, message, retryable) => {
     const { hostApi } = makeStoreHost(() => {
-      throw { version: 1, code, message: 'raw host message' } as FeatureExternalServiceErrorV1
+      throw { version: 1, code, message: 'raw host message' } as FeatureServiceErrorV1
     })
     renderPage(hostApi)
 
@@ -431,6 +427,28 @@ describe('AgentHubPage', () => {
     expect(screen.queryByText(/function/i)).toBeNull()
   })
 
+  it('maps a dev-host apm-unavailable Error to a retryable unavailable message', async () => {
+    const { hostApi } = makeStoreHost(() => {
+      throw new Error('apm CLI is unavailable')
+    })
+    renderPage(hostApi)
+
+    expect(
+      await screen.findByText('Power catalog is unavailable: the apm CLI could not be started.')
+    ).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
+  })
+
+  it('maps a dev-host unreachable Error to a retryable unavailable message', async () => {
+    const { hostApi } = makeStoreHost(() => {
+      throw new Error('External service is unavailable')
+    })
+    renderPage(hostApi)
+
+    expect(await screen.findByText('Power catalog is unavailable.')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
+  })
+
   it('appends the diagnostic ID when the mapped error carries one', async () => {
     const { hostApi } = makeStoreHost(() => {
       throw {
@@ -438,7 +456,7 @@ describe('AgentHubPage', () => {
         code: 'timeout',
         message: 'raw host message',
         diagnosticId: 'diag-42',
-      } as FeatureExternalServiceErrorV1
+      } as FeatureServiceErrorV1
     })
     renderPage(hostApi)
 
@@ -482,19 +500,16 @@ describe('AgentHubPage', () => {
     expect(screen.getByRole('heading', { name: 'market-translate' })).toBeTruthy()
   })
 
-  it('selects the first installed Agent when Bibit is not installed', async () => {
-    const { hostApi, calls } = makeStoreHost((input) => {
-      const params = paramsOf(input)
-      if (params.agent === 'bibit') {
-        return readyResult({ items: [], total: 0, facets: { agents: ['atlas'], tags: [] } })
-      }
-      return readyResult({ facets: { agents: ['atlas'], tags: [] } })
-    })
+  it('renders the fixed installed Agent menu with bibit, codex, and claude-code', async () => {
+    const user = userEvent.setup()
+    const { hostApi } = makeStoreHost(() => readyResult({ items: [], total: 0 }))
     renderPage(hostApi)
+    await screen.findByText('No Powers are available.')
 
-    await screen.findByRole('heading', { name: 'code-review' })
-    expect(paramsOf(calls[0]).agent).toBe('bibit')
-    expect(paramsOf(calls[calls.length - 1]).agent).toBe('atlas')
-    expect(paramsOf(calls[calls.length - 1]).page).toBe(1)
+    await user.hover(screen.getByRole('button', { name: '我的 Power' }))
+
+    expect(screen.getByRole('menuitemradio', { name: 'bibit' })).toBeTruthy()
+    expect(screen.getByRole('menuitemradio', { name: 'codex' })).toBeTruthy()
+    expect(screen.getByRole('menuitemradio', { name: 'claude-code' })).toBeTruthy()
   })
 })

@@ -1,4 +1,4 @@
-import type { FeatureExternalServiceApiV1 } from '@bibit/feature-sdk'
+import type { FeatureServiceApiV1 } from '@bibit/feature-sdk'
 import {
   POWERS_LIST_OPERATION_ID,
   parseListPowersResult,
@@ -8,7 +8,7 @@ import {
 } from './contracts'
 
 export async function listPowers(
-  service: FeatureExternalServiceApiV1<'store'>,
+  service: FeatureServiceApiV1<'store'>,
   input: ListPowersInput,
   signal: AbortSignal
 ): Promise<ListPowersResult> {

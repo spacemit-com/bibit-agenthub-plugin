@@ -4,7 +4,7 @@ Bibit Agent Hub 的独立前端插件，当前包含：
 
 - Bibit 主侧边栏中的 Agent Hub 页面；
 - Agent Hub 设置子页面；
-- `external-service:store` Host API 接入；
+- `service:store` Host API 接入；
 - 独立 Feature Dev Host；
 - 签名插件构建和系统插件部署能力。
 

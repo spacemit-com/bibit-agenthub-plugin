@@ -627,13 +627,15 @@ HTTP 模式仍使用上面的 `version/services/store` 结构，并由模块安�
 
 token 由 Bibit 凭据存储提供。不得把 token 写入插件、Manifest、URL、仓库或日志。
 
-### 10.4 未来 Installed 数据源（APM CLI）
+### 10.4 Installed 数据源（APM CLI）
 
-正式 Remote Store 尚未实现。未来 Store 收到 `scope=installed` 时，使用固定 argv 执行（禁止 shell 字符串拼接）：
+正式 Remote Store 尚未实现。Store 收到 `scope=installed` 时，针对前端所选 Agent 使用固定 argv 执行（禁止 shell 字符串拼接，且不做 `--agent=all` 发现）：
 
 ```text
-apm list --installed --agent=all --all --json
+apm list --installed --agent=<selected> --json --all
 ```
+
+前端 Agent 菜单固定为 bibit / codex / claude-code 三个选项（`claude-code` 即 apm 中 Claude 的 id），由插件常量提供，不依赖 `facets.agents` 做发现；每次请求只解析所选 agent 的返回。
 
 单条 APM JSON 记录映射为精确版本记录：
 
@@ -648,7 +650,7 @@ interface APMPowerRecord {
 }
 ```
 
-Store 处理规则：缺失 description / tags 分别规范化为 `""` / `[]`；先按 agent、type、tags 过滤，再按 type、name 聚合；相同 agent、type、name、version 重复记录去重；facets.agents 只含实际返回记录中的已安装 Agent；facets.tags 来自当前 agent、type 的完整记录集合（不受当前 tag 选择限制）；CLI 非零退出但 stdout 为合法 JSON 时仍返回有效数据与安全 warning；stdout 非法或 CLI 无法执行时映射为 Host `service` 错误；不透传 CLI stderr、物理路径、环境变量、堆栈或命令内部错误。
+Store 处理规则：缺失 description / tags 分别规范化为 `""` / `[]`；按 type、tags 过滤，再按 type、name 聚合；相同 type、name、version 重复记录去重；`facets.agents` 固定为空数组；`facets.tags` 来自当前 type 的完整记录集合（不受当前 tag 选择限制）；`apm` 无法执行时映射为可重试的 Host `unavailable` 错误；非零退出或返回「未安装」时渲染为空列表（items 与 total 为空，前端显示空内容）；stdout 非法时映射为 Host `service` 错误；不透传 CLI stderr、物理路径、环境变量、堆栈或命令内部错误。
 
 ### 10.5 未来 Market 数据源（APC 公共接口）
 
@@ -698,7 +700,7 @@ npm ls react react-dom \
   @bibit/feature-dev-host
 ```
 
-### 11.2 Local Preview（Mock 模式）
+### 11.2 Local Preview（开发模式）
 
 ```bash
 npm test
@@ -706,23 +708,23 @@ npm run typecheck
 npm run dev
 ```
 
-浏览器打开 Vite 输出地址。Feature Dev Host 读取真实 Manifest 和 Feature Module，并通过 `dev/main.tsx` 把 `powers.list.v1` 路由到 `dev/powerCatalogMock.ts` 的内存 Mock；`settings.get.v1` / `settings.update.v1` 仍使用内存设置。此模式不启动、不编译 Bibit、不执行真实 APM CLI，也不要求 Store 后端在线。
+浏览器打开 Vite 输出地址。Feature Dev Host 读取真实 Manifest 和 Feature Module，并通过 `dev/main.tsx` 的 `serviceConnections` 把 `powers.list.v1` 路由到 Vite 中间件（`vite.config.ts` → `dev/store.ts`）提供的 Store。`scope=installed` 会真实执行 PATH 中的 `apm list --installed --agent=<selected> --json --all`；`scope=market` 与 `settings.get.v1` / `settings.update.v1` 使用 `dev/store.ts` 的本地 fixture 与内存设置。此模式不启动、不编译 Bibit，也不要求远程 Store 后端在线；未安装 `apm` 时 installed 页显示可重试的 unavailable 错误。
 
-Local Preview 覆盖 installed 与 market 两类 fixture：Bibit、atlas、nova 三个已安装 Agent，skill / plugin / mcp / agent 四种 Power 类型、多 tags、多版本，以及超过两页的 Bibit skill 数据（含分页）；nova 会触发部分 Agent 可用性 warning。Mock 实现与未来 Remote 相同的筛选、聚合、分页、facets、warnings 与 snapshot 规则。
+market 覆盖 skill / plugin / mcp / agent 四种 Power 类型与多 tags；installed 由真实 apm 输出驱动，Agent 菜单固定为 bibit / codex / claude-code 三个选项。两种 scope 复用同一套筛选、聚合、分页、facets 与 snapshot 规则，与未来 Remote Store 一致。
 
 冒烟检查（filters / version selection / pagination / warnings / Retry）：
 
 - 默认进入“我的 Power / Bibit / skill”，第 1 页显示最多 20 张系列卡，翻页显示“第 X / Y 页”；
-- “Power 市场”隐藏 Agent 层，Agent 层只显示 APM 已安装项；
+- “Power 市场”隐藏 Agent 层，Agent 层固定显示 bibit / codex / claude-code 三个选项；
 - 切换 Agent / 类型会清空失效 tags 并回到第 1 页；
 - 选择多个 tag 时按 OR 过滤，tag 清单随上层筛选刷新；
 - 同一系列切换版本时 description 与 tags 同步变化；
-- 选择 nova 时卡片与部分 Agent warning 同时显示；
+- 选择未安装任何 Power 的 Agent 时，页面显示空内容（No Powers are available.）；
 - 停止或未连接 Store 时页面显示局部错误与 Retry，恢复后 Retry 可恢复列表；
 - `Settings · settings` 可以读取当前 Mock 设置、保存后再次进入值一致；
 - 未知 operation 返回错误，而不是伪造成功。
 
-该模式中的文件选择、Job、进度和取消全部由 `dev/main.tsx` 注入的内存 Host API 实现，不读取真实文件、不启动 Provider，也不会产生下载文件。它验证的是插件业务状态机和公开 SDK 用法，不是 Tauri、FileGrant staging 或 CLI 端到端证据。
+该模式只验证插件业务状态机、公开 SDK 用法与 apm CLI 数据投影，不启动 Provider、不读取真实文件，也不会产生下载文件；它不构成 Tauri、FileGrant staging 或 CLI Provider 端到端证据。
 
 ### 11.3 连接模拟或真实 CLI Provider
 
