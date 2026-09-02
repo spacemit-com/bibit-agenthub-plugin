@@ -6,16 +6,15 @@
 
 | 项目 | 当前版本 |
 | --- | --- |
-| Agent Hub 插件 | `0.2.1` |
-| 功能代码基线 | `033c411932dc4e173af68d73c78f56a884d879c3` |
+| Agent Hub 插件 | `0.3.0` |
 | `manifestSchemaVersion` | `1` |
 | `sdkApiVersion` | `1` |
-| `@bibit/feature-contracts` | `0.2.0` |
-| `@bibit/feature-sdk` | `0.2.0` |
-| `@bibit/feature-plugin-sdk` | `0.2.1` |
-| `@bibit/feature-dev-host` | `0.2.0` |
+| `@bibit/feature-contracts` | `0.3.0` |
+| `@bibit/feature-sdk` | `0.3.0` |
+| `@bibit/feature-plugin-sdk` | `0.3.0` |
+| `@bibit/feature-dev-host` | `0.3.0` |
 | React / React DOM | `19.0.0` |
-| 已验证目标 Bibit | `d46529b4891e0ecbff9845b046c1d8f4248e4eff` |
+| 已验证目标 Bibit | `49bcd55ece89c6ee970abab4e4cb69b393b21201` |
 
 当前插件提供两个贡献点：
 
@@ -24,7 +23,7 @@
 
 当前 Demo 已实现 APC Power 展示原型：通过 `powers.list.v1` 提供“我的 Power / Power 市场”两种数据范围、Agent / 类型 / tags 分层筛选、系列级卡片、版本选择与每页 20 张卡片的分页，并配套 Local Preview。设置页仍提供实验 Agent 开关和刷新间隔两个字段。Power 安装、下载、提交、审核、下架、恢复以及搜索、详情等能力尚未实现，这些属于 Agent Hub 模块团队后续定制范围。
 
-当前插件没有使用 `@bibit/feature-ui`。如果后续引入，必须由平台提供与目标 Bibit 完全一致的版本快照，并与 React 及其余 SDK 一起锁定升级；不得直接导入 Bibit 私有 UI 源码。
+当前插件使用平台随目标 Bibit 一并发布的 `@bibit/feature-ui@0.3.0`，复用 `FeatureSettingsPage`、`Button`、状态组件和图标，并通过 Bibit 主题 token 适配明暗主题。该包必须与 React 及其余 SDK 一起锁定升级；不得直接导入 Bibit 私有 UI 源码。
 
 ## 2. 总体职责边界
 
@@ -42,34 +41,36 @@
 
 - Manifest Schema、Feature Module 和 Host API 公共契约；
 - 主导航、Settings Shell、路由挂载和插件错误隔离；
-- `external-service:store` capability grant；
-- Store 连接配置、凭据注入、HTTP 转发和安全错误映射；
+- `service:store` capability、operation grant 与 Provider Broker；
+- Store Provider 发现、HTTP/stdio 路由、凭据注入和安全错误映射；
 - 插件验签、完整性校验、安装、激活、回退和系统目录扫描；
 - 目标 Bibit 的 React、Feature SDK 和可选 Feature UI 版本发布；
 - Release Bibit 内置的可信公钥。
 
 ### 2.3 Store 后端边界
 
-Store 后端由模块团队独立部署运行。Bibit 和插件不限制后端使用 Python、C++、Rust 或其他语言，只要求实现第 10 节的 HTTP 协议。
+Store 能力可以由模块团队独立部署的 HTTP 服务提供，也可以由系统安装的 AgentHub CLI Provider 提供。插件不感知具体传输，只依赖 `store` operation；CLI 的完整协议和部署方式见 [AgentHub CLI Provider 开发与部署指南](./cli-provider-development-and-deployment.md)。
 
 插件不得直接连接后端。正式链路必须是：
 
 ```text
 Agent Hub React UI
-  └─ useFeatureCapability("external-service:store")
-       └─ Bibit Host API
-            └─ Bibit External Service Gateway
-                 └─ Store 服务 POST /bibit/v1/invoke
+  ├─ service:store（列表与设置）
+  ├─ file:transfer（原生选择文件/保存位置，只返回 grantId）
+  └─ job:manage（启动、进度、续订、取消）
+       └─ Bibit Provider Broker -> AgentHub CLI Provider stdin/stdout
 ```
 
 ## 3. 仓库结构
 
 ```text
-bibit-agent-hub-plugin/
+bibit-agenthub-plugin/
+├── AGENTS.md
 ├── bibit.feature.json
 ├── package.json
 ├── package-lock.json
 ├── tsconfig.json
+├── vite.config.ts
 ├── index.html
 ├── dev/
 │   └── main.tsx
@@ -78,12 +79,18 @@ bibit-agent-hub-plugin/
 │   ├── plugin.tsx
 │   ├── AgentHubPage.tsx
 │   ├── AgentHubSettingsPage.tsx
+│   ├── storeContracts.ts
 │   └── agentHub.css
+├── tests/
+│   ├── storeContracts.test.ts
+│   └── AgentHubPage.test.tsx
+├── demo/
+│   ├── cli/bibit-agenthub-mock-provider.py
+│   ├── fixtures/sample-agent.demo-agent
+│   ├── registry/agenthub-provider.json
+│   └── deploy-debug.sh
 ├── vendor/
-│   ├── bibit-feature-contracts-0.2.0.tgz
-│   ├── bibit-feature-dev-host-0.2.0.tgz
-│   ├── bibit-feature-plugin-sdk-0.2.1.tgz
-│   └── bibit-feature-sdk-0.2.0.tgz
+│   └── bibit-feature-*-0.3.0-u6*.tgz
 ├── .bibit-keys/
 ├── artifacts/
 └── docs/
@@ -103,9 +110,10 @@ bibit-agent-hub-plugin/
 | `package.json` 的 `keygen`、`build:plugin` | 签名工具接线 | 不把私钥路径改成仓库内可提交文件，不绕过签名工具 | 平台签名工具或正式签名 SOP 变更时 |
 | `src/plugin.tsx` | 插件注册入口 | 保持纯注册，不放业务逻辑、网络连接、定时器或全局监听 | 仅随 `@bibit/feature-plugin-sdk` 接口升级 |
 | `tsconfig.json` 的严格模式、ES 模块和 JSX 配置 | SDK 编译基线 | 不关闭 `strict`，不改成 CommonJS，不放宽类型检查 | 平台提供新版 TypeScript 模板时 |
+| `vite.config.ts` 的 automatic JSX runtime | SDK 源码包兼容基线 | 保留 `esbuild.jsx = automatic`，防止源码形式 UI SDK 生成未定义的全局 `React` | 平台构建器不再分发 TSX 源码时 |
 | `.gitignore` 对 `.bibit-keys/` 的排除 | 安全边界 | 不删除、不反向提交密钥 | 不允许例外 |
 | Manifest 的 `manifestSchemaVersion`、`sdkApiVersion`、`id` | 公共身份契约 | 当前保持 `1`、`1`、`agent-hub` | 平台升级 Schema/API，或经过迁移评审创建全新 Feature |
-| Manifest 的 `requiredHostCapabilities` | 最小授权契约 | 不删除实际使用的 `external-service:store`，不自行增加未知 capability | 功能确实需要且平台公共契约、grant 和 Host API 都已提供 |
+| Manifest 的 `requiredHostCapabilities` | 最小授权契约 | 当前保留 `service:store`、`file:transfer`、`job:manage`，不把 operation、URL 或 command 当 capability | 平台发布新的公共能力时 |
 
 `src/plugin.tsx` 推荐长期保持如下形态：
 
@@ -176,7 +184,8 @@ src/
 | 新增后端能力 | 模块 DTO、带版本 operation、Store 服务、Mock | 直接 `fetch`、Tauri command、凭据字段 |
 | 新增 Agent Hub 内部详情路由 | 页面组件和 `FeaturePageProps.navigation` | Bibit Router、全局 URL 前缀、主侧边栏源码 |
 | 新增主页面或设置贡献点 | 组件、`feature.tsx`、Manifest 三者同步 | 只改 Manifest 或只改 Feature Module |
-| 需要新 icon、navigation group 或 capability | 先提交平台契约缺口 | 在 Manifest 写入 Schema 未允许的字符串 |
+| 需要新 icon、navigation group 或非 Service capability | 先提交平台契约缺口 | 在 Manifest 写入 Schema 未允许的字符串 |
+| 需要新的模块 Service | 使用合法 `service:<kebab-id>`，提交 operation grant 与 Registry | 为每个 Service 新增 Tauri command 或直接执行 CLI |
 | React 或 SDK 类型冲突 | 核对目标版本矩阵和 vendor 完整性 | 临时升级 React、关闭 `strict`、修改 vendor 内源码 |
 | 插件无法连接真实服务 | 检查 capability、grant、连接配置和协议 | 绕过 Host API 直连后端 |
 
@@ -193,7 +202,7 @@ src/
   "manifestSchemaVersion": 1,
   "sdkApiVersion": 1,
   "id": "agent-hub",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "owner": "agent-hub-team",
   "display": {
     "titleKey": "agent-hub:title",
@@ -203,7 +212,7 @@ src/
     "fallbackDescription": "Browse and manage Agent packages"
   },
   "targets": ["desktop"],
-  "requiredHostCapabilities": ["external-service:store"],
+  "requiredHostCapabilities": ["service:store", "file:transfer", "job:manage"],
   "contributions": {
     "pages": [
       {
@@ -332,6 +341,8 @@ export function AgentHubPage({ subpath, navigation }: FeaturePageProps) {
 
 Bibit 自动提供 Settings Shell、“设置”页头、设置子菜单、选中状态、菜单滚动和内容滚动容器。插件只提供 Agent Hub 设置内容。
 
+设置 renderer 的根节点必须使用 `section`、`div` 等内容容器，不得使用 `main` 或 `role="main"`。根节点必须能够收缩到宿主内容区（至少设置 `width: 100%; min-width: 0; max-width: 100%`，或更小的业务最大宽度）。完整契约见目标 Bibit 仓库的 `docs/feature-sdk/settings-content-contract.md`。
+
 插件设置页可以包含自己的分区标题，例如“Catalog preferences”，但不得复制以下宿主结构：
 
 - `HeaderPage`；
@@ -367,7 +378,7 @@ interface AgentHubSettingsV1 {
 获取 Store capability：
 
 ```tsx
-const store = useFeatureCapability('external-service:store')
+const store = useFeatureCapability('service:store')
 ```
 
 发起请求：
@@ -405,7 +416,7 @@ return () => controller.abort()
 - 不把 URL、header、authorization、token、API key、cookie、credential 或 secret 放入 `params`；
 - 不显示或记录原始凭据、请求 header 或后端内部堆栈。
 
-`powers.list.v1` 在插件 API 边界执行闭集运行时校验（`parseListPowersInput` / `parseListPowersResult`）：未知字段、非法 Power 类型、非 20 的 pageSize、版本乱序、重复或未排序 tags、market 携带 agent 等都会被拒绝。校验失败或后端返回未知结构时映射为局部错误态（`incompatible`），不能让页面白屏。`settings.get.v1` / `settings.update.v1` 暂未增加运行时校验，仍沿用 TypeScript 泛型。
+`powers.list.v1` 在插件 API 边界执行闭集运行时校验（`parseListPowersInput` / `parseListPowersResult`）：未知字段、非法 Power 类型、非 20 的 pageSize、版本乱序、重复或未排序 tags、market 携带 agent 等都会被拒绝。`settings.get.v1` / `settings.update.v1` 通过 `src/storeContracts.ts` 的 `parseAgentHubSettings` 执行运行时校验。校验失败或后端返回未知结构时映射为局部错误态（`incompatible`），不能让页面白屏。
 
 ## 10. Store 服务协议
 
@@ -416,6 +427,8 @@ return () => controller.abort()
 | `powers.list.v1` | `ListPowersInput` | `ListPowersResult`（`ready` 或 `reset_required` 联合） |
 | `settings.get.v1` | `{}` | `AgentHubSettingsV1` |
 | `settings.update.v1` | `AgentHubSettingsV1` | `AgentHubSettingsV1` |
+| `agents.upload.v1` | Job input `{displayName}` + input FileGrant | `{agentId,displayName,bytes,sha256}` |
+| `agents.download.v1` | Job input `{agentId}` + output FileGrant | `{agentId,bytes,sha256}` |
 
 `powers.list.v1` 是页面唯一的业务数据 operation。请求与结果类型（与 `src/api/contracts.ts` 一致）：
 
@@ -560,7 +573,7 @@ Content-Type: application/json
 | `502`、`503` | `unavailable` |
 | 其他非 2xx | `unknown` |
 
-允许的协议信封错误码：`offline`、`timeout`、`unauthorized`、`incompatible`、`unavailable`、`unknown`。
+允许的协议信封错误码：`cancelled`、`offline`、`timeout`、`unauthorized`、`incompatible`、`unavailable`、`provider_crashed`、`resource_exhausted`、`unknown`。
 
 服务必须回显原始 `requestId`。`protocolVersion`、`requestId`、`ok`、`result/error` 互斥关系不正确时，Bibit 返回 `incompatible`。
 
@@ -588,13 +601,14 @@ export BIBIT_EXTERNAL_SERVICE_CONFIG=/absolute/path/external-service-connections
 
 Bibit Host 会自动追加 `/bibit/v1/invoke`。`baseUrl` 不得包含用户名、密码、query 或 fragment。
 
-生产环境读取 Bibit data 目录中的 `external-service-connections.json`。K3DEB1 当前用户的典型路径为：
+生产系统包必须安装模块独立的 Registry drop-in：
 
 ```text
-/home/bianbu/.local/share/BiBit/data/external-service-connections.json
+/etc/bibit/external-services.d/agenthub.json
+/etc/bibit/feature-capability-grants.d/agenthub.json
 ```
 
-如果目标用户或 Bibit data 目录不同，应先从实际运行环境确认路径，不要机械复制示例。
+HTTP 模式仍使用上面的 `version/services/store` 结构，并由模块安装包提供 Adapter、systemd unit 和 Provider drop-in。CLI 模式不需要 Adapter 或 systemd unit，由 CLI 包安装 executable 和 Registry v2 drop-in。插件 deb 安装经平台批准的 capability/operation grant，参考 `deploy/agenthub-feature-grants.example.json`。具体内容见 CLI Provider 指南。两种模式都不得从安装或维护脚本写入任何用户 home；用户数据目录配置和 `BIBIT_EXTERNAL_SERVICE_CONFIG` 只作为更高优先级的显式覆盖。
 
 需要认证时只在连接配置中填写 `authRef`：
 
@@ -634,7 +648,7 @@ interface APMPowerRecord {
 }
 ```
 
-Store 处理规则：缺失 description / tags 分别规范化为 `""` / `[]`；先按 agent、type、tags 过滤，再按 type、name 聚合；相同 agent、type、name、version 重复记录去重；facets.agents 只含实际返回记录中的已安装 Agent；facets.tags 来自当前 agent、type 的完整记录集合（不受当前 tag 选择限制）；CLI 非零退出但 stdout 为合法 JSON 时仍返回有效数据与安全 warning；stdout 非法或 CLI 无法执行时映射为 Host `external-service` 错误；不透传 CLI stderr、物理路径、环境变量、堆栈或命令内部错误。
+Store 处理规则：缺失 description / tags 分别规范化为 `""` / `[]`；先按 agent、type、tags 过滤，再按 type、name 聚合；相同 agent、type、name、version 重复记录去重；facets.agents 只含实际返回记录中的已安装 Agent；facets.tags 来自当前 agent、type 的完整记录集合（不受当前 tag 选择限制）；CLI 非零退出但 stdout 为合法 JSON 时仍返回有效数据与安全 warning；stdout 非法或 CLI 无法执行时映射为 Host `service` 错误；不透传 CLI stderr、物理路径、环境变量、堆栈或命令内部错误。
 
 ### 10.5 未来 Market 数据源（APC 公共接口）
 
@@ -651,7 +665,7 @@ GET /api/v1/resources/tags?type=skill
 
 原型行为实现完成后，正式发布仍依赖平台 owner，以下集成仍未实现：
 
-- 批准 `external-service:store` capability grant；
+- 批准 `service:store` capability grant；
 - 在 Bibit（`../bibit`）注册真实 Host adapter 与 external-service gateway；
 - 实现安全的 APM CLI bridge；
 - 实现 APC transport、timeout、认证与错误映射；
@@ -665,13 +679,14 @@ GET /api/v1/resources/tags?type=skill
 ### 11.1 获取代码
 
 ```bash
-git clone -b dev \
+git clone -b main \
   git@gitlab.dc.com:bianbu/bianbu-star/bibit-agenthub-plugin.git
 cd bibit-agenthub-plugin
+git rev-parse HEAD
 npm ci
 ```
 
-使用 `npm ci` 保持 lockfile 中的确切版本。不要用 `npm update` 随机改变 SDK 或 React 版本。
+交付负责人还应提供经过验收的固定 commit SHA；正式集成时记录并检出该提交，不要只依赖会变化的 `main`。远程默认分支目前仍可能显示为 `dev`，所以开发初始化必须显式克隆 `main`。使用 `npm ci` 保持 lockfile 中的确切版本，不要用 `npm update` 随机改变 SDK 或 React 版本。
 
 确认依赖：
 
@@ -686,6 +701,7 @@ npm ls react react-dom \
 ### 11.2 Local Preview（Mock 模式）
 
 ```bash
+npm test
 npm run typecheck
 npm run dev
 ```
@@ -706,17 +722,22 @@ Local Preview 覆盖 installed 与 market 两类 fixture：Bibit、atlas、nova 
 - `Settings · settings` 可以读取当前 Mock 设置、保存后再次进入值一致；
 - 未知 operation 返回错误，而不是伪造成功。
 
-### 11.3 连接真实开发 Store 服务
+该模式中的文件选择、Job、进度和取消全部由 `dev/main.tsx` 注入的内存 Host API 实现，不读取真实文件、不启动 Provider，也不会产生下载文件。它验证的是插件业务状态机和公开 SDK 用法，不是 Tauri、FileGrant staging 或 CLI 端到端证据。
 
-Dev Host 的 `storeEndpoint` 是完整 invoke 地址，与 Bibit 连接配置中的 `baseUrl` 不同：
+### 11.3 连接模拟或真实 CLI Provider
 
-```text
-http://127.0.0.1:5173/?storeEndpoint=http%3A%2F%2F127.0.0.1%3A18081%2Fbibit%2Fv1%2Finvoke
+真实 CLI 必须由 Tauri Bibit 的 Provider Broker 启动，浏览器 Dev Host 不提供 executable、argv、文件系统或 Provider 生命周期。先完成自检并准备隔离调试目录：
+
+```bash
+npm run keygen
+npm run build:plugin
+python3 demo/cli/bibit-agenthub-mock-provider.py --self-test
+./demo/deploy-debug.sh /home/bianbu/bibit-agenthub-demo
 ```
 
-此时 `dev/main.tsx` 不再注入 Mock，而由浏览器直接向 Store 服务发送第 10 节信封。Store 开发服务必须允许 Dev Host origin 的 CORS；正式 Bibit 使用 Rust Host Gateway，不依赖浏览器 CORS。
+`demo/deploy-debug.sh` 只写指定隔离目录，并输出 `XDG_DATA_HOME`、`JAN_DATA_FOLDER`、Provider Registry、capability grant、系统插件目录和开发 trust store 的完整环境变量前缀。把该前缀放到目标 Bibit `yarn dev:tauri` 或已构建 Debug binary 前；不要写入正式 `/etc`、`/usr` 或用户数据目录。
 
-真实服务调试必须验证：
+真实 Provider 调试必须验证：
 
 - `powers.list.v1` 数据来自服务，不是 Local Preview Mock；
 - 浏览器网络请求中的 `requestId` 与服务响应一致；
@@ -725,9 +746,12 @@ http://127.0.0.1:5173/?storeEndpoint=http%3A%2F%2F127.0.0.1%3A18081%2Fbibit%2Fv1
 - Store 恢复后 Retry 能恢复列表；
 - Agent Hub 失败不影响 Dev Host 切换到设置贡献点。
 
+模块团队替换模拟 CLI 时保持 Registry 固定入口和 Provider v2 协议不变即可；正式 CLI 的内部语言、子命令实现和后端连接不属于插件前端契约。完整线协议见 [AgentHub CLI Provider 开发与部署指南](./cli-provider-development-and-deployment.md)。
+
 ### 11.4 开发构建
 
 ```bash
+npm test
 npm run typecheck
 npm run build:dev
 ```
@@ -755,6 +779,7 @@ npm run keygen
 构建：
 
 ```bash
+npm test
 npm run typecheck
 npm run build:dev
 npm run build:plugin
@@ -763,16 +788,16 @@ npm run build:plugin
 产物：
 
 ```text
-artifacts/agent-hub-0.2.1.bibit-plugin.tgz
+artifacts/agent-hub-0.3.0.bibit-plugin.tgz
 ```
 
 检查：
 
 ```bash
-tar -tzf artifacts/agent-hub-0.2.1.bibit-plugin.tgz
-tar -xOf artifacts/agent-hub-0.2.1.bibit-plugin.tgz plugin.json
-tar -xOf artifacts/agent-hub-0.2.1.bibit-plugin.tgz plugin.sig
-sha256sum artifacts/agent-hub-0.2.1.bibit-plugin.tgz
+tar -tzf artifacts/agent-hub-0.3.0.bibit-plugin.tgz
+tar -xOf artifacts/agent-hub-0.3.0.bibit-plugin.tgz plugin.json
+tar -xOf artifacts/agent-hub-0.3.0.bibit-plugin.tgz plugin.sig
+sha256sum artifacts/agent-hub-0.3.0.bibit-plugin.tgz
 ```
 
 归档必须包含：
@@ -800,16 +825,19 @@ dist/agent-hub-plugin.css
 
 收到正式 bundle 后执行第 12.1 节的四条检查命令。拿不到“正式签名 bundle + SHA-256 + key ID + 目标 Bibit 公钥登记结果”时，Release 部署处于阻塞状态；开发 key 不能代替这些交付物。
 
-截至目标 Bibit `d46529b4891e0ecbff9845b046c1d8f4248e4eff`，`src-tauri/resources/plugin-trusted-keys.json` 仍为空。正式发布前必须由平台登记公司公钥并重新构建 Bibit。
+截至目标 Bibit `49bcd55ece89c6ee970abab4e4cb69b393b21201`，`src-tauri/resources/plugin-trusted-keys.json` 仍为空。正式发布前必须由平台登记公司公钥并重新构建 Bibit。
 
 ## 13. 在 Bibit 中开发安装
 
 启动 Debug Bibit 时指定 Agent Hub 开发 trust store：
 
 ```bash
-BIBIT_PLUGIN_TRUST_STORE=/absolute/path/.bibit-keys/agent-hub-development-trust-store.json \
+XDG_DATA_HOME=/absolute/path/bibit-agenthub-demo/xdg-data \
+  BIBIT_PLUGIN_TRUST_STORE=/absolute/path/.bibit-keys/agent-hub-development-trust-store.json \
   yarn dev:tauri
 ```
+
+调试时必须使用独立的 `XDG_DATA_HOME`，避免开发插件、Provider 数据和用户配置写入正式 Bibit 用户目录。`demo/deploy-debug.sh` 会创建该目录并输出完整启动命令。
 
 进入：
 
@@ -820,7 +848,7 @@ Settings > Extensions > Trusted plugins
 选择：
 
 ```text
-artifacts/agent-hub-0.2.1.bibit-plugin.tgz
+artifacts/agent-hub-0.3.0.bibit-plugin.tgz
 ```
 
 Bibit 会验签、校验 hash、安装、激活并刷新 Feature Registry。确认主导航出现 Agent Hub，设置子菜单也出现 Agent Hub。
@@ -828,6 +856,8 @@ Bibit 会验签、校验 hash、安装、激活并刷新 Feature Registry。确�
 不要同时激活另一个使用 Feature ID `agent-hub` 的内置 Demo 或插件。重复 Feature ID 会被宿主拒绝或隔离。
 
 Debug Bibit 使用真实 Store 服务时，还要配置第 10.3 节的 `BIBIT_EXTERNAL_SERVICE_CONFIG`。插件成功加载不代表 Store 服务已经接通。
+
+若不写系统目录，Debug Bibit 可设置 `BIBIT_FEATURE_CAPABILITY_GRANTS_DIR` 指向包含 `deploy/agenthub-feature-grants.example.json` 的开发目录；Release Bibit 忽略该环境变量。授权与插件均在启动阶段装载，修改后需要重启 Bibit。
 
 ## 14. 系统插件与 Debian 部署
 
@@ -837,14 +867,18 @@ Agent Hub 插件 deb 应安装：
 
 ```text
 /usr/lib/bibit/plugins/agent-hub.bibit-plugin.tgz
+/etc/bibit/feature-capability-grants.d/agenthub.json
 ```
 
 本地安装：
 
 ```bash
 sudo install -Dm0644 \
-  artifacts/agent-hub-0.2.1.bibit-plugin.tgz \
+  artifacts/agent-hub-0.3.0.bibit-plugin.tgz \
   /usr/lib/bibit/plugins/agent-hub.bibit-plugin.tgz
+sudo install -Dm0644 \
+  deploy/agenthub-feature-grants.example.json \
+  /etc/bibit/feature-capability-grants.d/agenthub.json
 ```
 
 在下一次启动 Bibit 时，宿主扫描系统目录、逐个验签并自动激活有效插件。最小插件 deb 不应擅自重启用户正在使用的 Bibit；由发布流程安排重启，或通知用户退出后重新打开。
@@ -861,6 +895,7 @@ debian/
 ├── control
 ├── rules
 ├── source/format
+├── agenthub-feature-grants.json
 └── vendor/agent-hub.bibit-plugin.tgz
 ```
 
@@ -892,11 +927,15 @@ Description: Bibit Agent Hub trusted frontend plugin
 
 override_dh_auto_build:
 	test -f debian/vendor/agent-hub.bibit-plugin.tgz
+	test -f debian/agenthub-feature-grants.json
 
 override_dh_auto_install:
 	install -Dm0644 \
 	  debian/vendor/agent-hub.bibit-plugin.tgz \
 	  debian/bibit-agenthub-plugin/usr/lib/bibit/plugins/agent-hub.bibit-plugin.tgz
+	install -Dm0644 \
+	  debian/agenthub-feature-grants.json \
+	  debian/bibit-agenthub-plugin/etc/bibit/feature-capability-grants.d/agenthub.json
 ```
 
 `debian/source/format`：
@@ -918,7 +957,7 @@ dpkg-buildpackage -us -uc -b
 K3DEB1 的 Release 部署必须使用正式签名、且 `keyId` 已进入目标 Bibit 内置信任库的 bundle：
 
 ```bash
-export SIGNED_AGENT_HUB_BUNDLE=/absolute/path/agent-hub-0.2.1.bibit-plugin.tgz
+export SIGNED_AGENT_HUB_BUNDLE=/absolute/path/agent-hub-0.3.0.bibit-plugin.tgz
 test -f "$SIGNED_AGENT_HUB_BUNDLE"
 tar -xOf "$SIGNED_AGENT_HUB_BUNDLE" plugin.json
 tar -xOf "$SIGNED_AGENT_HUB_BUNDLE" plugin.sig
@@ -975,6 +1014,7 @@ ssh root@K3DEB1 \
 
 ```bash
 npm ci
+npm test
 npm run typecheck
 npm run build:dev
 npm run build:plugin
@@ -985,14 +1025,14 @@ npm run build:plugin
 - 所有命令退出码为 0；
 - package version 与 Manifest version 一致；
 - Dev Host 同时列出 `Page · home` 和 `Settings · settings`；
-- Mock 列表、空态、错误态和 Retry 可见；
+- Mock 市场筛选、系列卡、版本选择、分页、warning 与 Retry 可见；
 - Mock 设置可以读取和保存；
 - bundle 包含 `plugin.json`、`plugin.sig`、JS 和 CSS；
 - `.bibit-keys` 和 `artifacts` 没有进入 Git。
 
-### 16.2 Store 服务协议
+### 16.2 Store 短请求与 Provider 协议
 
-使用真实服务验证：
+如果模块同时提供 HTTP Provider，使用真实 HTTP 服务验证：
 
 1. `POST /bibit/v1/invoke` 可达；
 2. 三个 v1 operation 均返回合法信封；
@@ -1003,13 +1043,15 @@ npm run build:plugin
 7. 非法 operation、超时、未授权和离线产生约定错误；
 8. 日志不包含 token 或完整凭据。
 
+当前 AgentHub CLI 路径还必须执行 `python3 demo/cli/bibit-agenthub-mock-provider.py --self-test`，并确认 `bibit.initialize` 协商 v2、五个 operation 完整、`jobs/cancellation/maxConcurrentJobs` 能力与 Registry 一致。HTTP 探针不能替代 CLI 协商和传输验收。
+
 ### 16.3 Bibit 插件加载
 
 验收：
 
 - 目标 Bibit 信任正式 `keyId`；
 - 系统目录只有预期 Agent Hub bundle；
-- Bibit 插件管理页显示 `agent-hub@0.2.1` 已激活；
+- Bibit 插件管理页显示 `agent-hub@0.3.0` 已激活；
 - 主导航出现 Agent Hub；
 - 设置子菜单出现 Agent Hub；
 - 选中设置页后全局“设置”页头和子菜单滚动不消失；
@@ -1026,14 +1068,15 @@ Agent Hub bundle SHA-256
 Agent Hub keyId
 Bibit commit/version
 Store service version
-external-service-connections.json 的非敏感摘要
+/etc/bibit/external-services.d/agenthub.json 的非敏感摘要及用户覆盖状态
+/etc/bibit/feature-capability-grants.d/agenthub.json 的 capability 与 operation 列表
 验收开始时间
 ```
 
 执行：
 
 1. 在 Store 服务准备一条唯一测试 Power 系列，例如 `acceptance-power-20260826`；
-2. 启动目标 Bibit，确认插件已激活且 `external-service:store` 已授予；
+2. 启动目标 Bibit，确认插件已激活且 `service:store` 已授予；
 3. 打开 Agent Hub，确认唯一测试 Power 的 name、version、description 与 tags 来自真实 Store；
 4. 停止 Store 服务，点击 Retry，确认只显示 Agent Hub 局部错误；
 5. 确认 Bibit 对话、设置和其他页面仍可操作；
@@ -1043,7 +1086,7 @@ external-service-connections.json 的非敏感摘要
 9. 重启 Bibit 和 Store 服务，再次确认设置值；
 10. 保存 Store 服务按 `requestId` 关联的请求日志、Bibit 日志、页面截图和最终设置读取结果。
 
-只有第 3、8、9、10 步共同成立，才能证明“真实功能已接通”。只看到端口可达、插件入口或 Mock 数据不算端到端接通。
+入口可见、端口可达或 Dev Host Mock 成功都不算真实端到端接通。
 
 ## 17. 常见问题
 
@@ -1057,15 +1100,15 @@ external-service-connections.json 的非敏感摘要
 
 ### 页面显示 Store capability 不可用
 
-依次检查 Manifest 的 `requiredHostCapabilities`、平台 grant、Host gateway 注册、连接配置和插件是否运行在 `main` surface。不要回退到直接 `fetch`。
+依次检查 Manifest 的 `requiredHostCapabilities`、`/etc/bibit/feature-capability-grants.d/agenthub.json`、operation allowlist、Provider Registry 和插件是否运行在 `main` surface。不要回退到直接 `fetch`。
 
 ### Dev Host Mock 正常，真实服务失败
 
-确认 URL 参数传入的是完整 `/bibit/v1/invoke` 地址，并检查浏览器 CORS。再核对 operation ID、DTO、HTTP 2xx、JSON 信封和 `requestId`。
+Dev Host 当前只注入内存 Host API，不接受 `storeEndpoint` URL 参数，也不会启动 CLI。执行第 11.3 节的隔离 Tauri 调试，依次核对插件激活、capability grant、Provider Registry、协议 v2 协商和 operation 集合。
 
 ### Bibit 中服务请求失败
 
-确认 Bibit 配置使用的是 `baseUrl`，不要在 `baseUrl` 中重复写 `/bibit/v1/invoke`。检查 `authRef`、超时、HTTP 状态和 Store 服务日志。
+CLI 模式检查 Registry 是否为 `version: 2`、`transport: stdio`、固定绝对 executable、`lifecycle: managed` 和 `protocolVersions: [1,2]`，再检查 Provider stderr。HTTP 模式才检查 `baseUrl`、`authRef`、超时和 HTTP 状态；不要在 `baseUrl` 中重复写 `/bibit/v1/invoke`。
 
 ### 返回成功但页面白屏
 
@@ -1091,9 +1134,9 @@ external-service-connections.json 的非敏感摘要
 - 正式签名 bundle、SHA-256 和 key ID；
 - 公司公钥登记申请及登记结果；
 - 独立 Dev Host Mock 验收结果；
-- 真实 Store Dev Host 验收结果；
+- CLI 自检和 Provider v2 协商结果；
 - Bibit 插件加载、激活、停用和回退结果；
-- 真实列表、设置持久化及重启后读取证据；
+- 真实 Power 列表、设置持久化、错误映射与重试证据；
 - 已知限制和可用回滚版本。
 
 不要交付：
@@ -1110,9 +1153,9 @@ external-service-connections.json 的非敏感摘要
 - v1 只支持 `desktop/main`；
 - 当前插件实现 APC Power 展示原型（筛选、系列卡、版本选择、每页 20 的分页、warning 与 Retry）和两个设置字段；
 - Power 安装、下载、提交、审核、下架、恢复以及搜索、详情尚未实现；
-- `powers.list.v1` DTO 已做闭集运行时校验；`settings.get.v1` / `settings.update.v1` 尚未做运行时校验；
-- 自动化测试使用 Vitest 覆盖 DTO、Mock、客户端、组件与页面行为；
-- 当前 Demo 使用独立 CSS，尚未使用 `@bibit/feature-ui`；
+- `powers.list.v1` DTO 已做闭集运行时校验；`settings.get.v1` / `settings.update.v1` 通过 `src/storeContracts.ts` 的 `parseAgentHubSettings` 做运行时校验；
+- 自动化测试使用 Vitest 覆盖 DTO、Mock、客户端、组件与页面行为，`tests/storeContracts.test.ts` 使用 Node 内置测试运行器；
+- 设置页复用目标 Bibit 同版本的 `@bibit/feature-ui`；市场页使用 `.agent-hub*` 命名空间内的独立 CSS；
 - 当前 `locales` 只声明 `en`，页面文案仍直接写在组件中；
 - 插件属于公司可信内部代码，不是不可信代码沙箱；
 - 更新需要提升版本、重新签名并重新启动或刷新 Bibit；
