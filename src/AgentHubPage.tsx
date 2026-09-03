@@ -60,6 +60,7 @@ function isFeatureServiceError(value: unknown): value is FeatureServiceErrorV1 {
 // renders as unavailable (with Retry) instead of incompatible. In production the host rejects
 // with a structured FeatureServiceErrorV1, so this branch only fires in Local Preview.
 const APM_CLI_UNAVAILABLE_MESSAGE = 'apm CLI is unavailable'
+const APC_CATALOG_UNAVAILABLE_MESSAGE = 'APC catalog is unavailable'
 const DEV_HOST_UNAVAILABLE_MESSAGE = 'External service is unavailable'
 
 function toSafeError(reason: unknown): { message: string; retryable: boolean } {
@@ -73,6 +74,12 @@ function toSafeError(reason: unknown): { message: string; retryable: boolean } {
   if (reason instanceof Error && reason.message === APM_CLI_UNAVAILABLE_MESSAGE) {
     return {
       message: 'Power catalog is unavailable: the apm CLI could not be started.',
+      retryable: true,
+    }
+  }
+  if (reason instanceof Error && reason.message === APC_CATALOG_UNAVAILABLE_MESSAGE) {
+    return {
+      message: 'Power catalog is unavailable: the APC catalog could not be loaded.',
       retryable: true,
     }
   }

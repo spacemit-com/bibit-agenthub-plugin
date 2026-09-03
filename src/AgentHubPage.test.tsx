@@ -439,6 +439,18 @@ describe('AgentHubPage', () => {
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
   })
 
+  it('maps a dev-host apc-unavailable Error to a retryable unavailable message', async () => {
+    const { hostApi } = makeStoreHost(() => {
+      throw new Error('APC catalog is unavailable')
+    })
+    renderPage(hostApi)
+
+    expect(
+      await screen.findByText('Power catalog is unavailable: the APC catalog could not be loaded.')
+    ).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
+  })
+
   it('maps a dev-host unreachable Error to a retryable unavailable message', async () => {
     const { hostApi } = makeStoreHost(() => {
       throw new Error('External service is unavailable')

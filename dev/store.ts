@@ -12,28 +12,15 @@ import {
 
 /**
  * Pure dev Store core for the Feature Dev Host. It contains no Node APIs: the apm
- * CLI spawn lives in vite.config.ts (dev-only, not type-checked), never in the
- * plugin bundle. Installed scope is backed by apm via the injected runApm; market
- * scope uses local fixtures (unchanged); settings are an in-memory echo.
+ * CLI spawn and the APC catalog fetch live in vite.config.ts (dev-only, not
+ * type-checked), never in the plugin bundle. Installed scope is backed by apm via
+ * the injected runApm; market scope is backed by the live APC public catalog via
+ * the injected runApcCatalog (no fixtures, no cache); settings are an in-memory echo.
  */
-
-const MARKET_SNAPSHOT = 'local-preview-v1'
 
 type SettingsState = { showExperimental: boolean; refreshMinutes: number }
 
 let settings: SettingsState = { showExperimental: false, refreshMinutes: 15 }
-
-const marketFixtures: PowerRecord[] = [
-  { type: 'skill', name: 'transcribe', version: 'v1.3.0', description: 'Transcribes audio.', tags: ['transcribe'] },
-  { type: 'skill', name: 'translate', version: 'v2.0.0', description: 'Translates text.', tags: ['translate', 'writing'] },
-  { type: 'plugin', name: 'cache-warm', version: 'v1.0.0', description: 'Warms caches.', tags: ['perf'] },
-  { type: 'mcp', name: 'search-web', version: 'v1.0.0', description: 'Searches the web.', tags: ['search'] },
-  { type: 'agent', name: 'market-triage', version: 'v1.0.0', description: 'Market triage agent.', tags: ['triage'] },
-]
-
-export function buildMarketResult(query: ListPowersInput): ListPowersResult {
-  return buildPowersResult(marketFixtures, query, MARKET_SNAPSHOT)
-}
 
 export type ApmListResult =
   | { status: 'ok'; records: APMPowerRecord[] }
@@ -41,6 +28,12 @@ export type ApmListResult =
   | { status: 'unavailable' }
 
 export type ApmRunner = (agent: string) => Promise<ApmListResult>
+
+export type ApcCatalogResult =
+  | { status: 'ok'; snapshot: string; records: PowerRecord[] }
+  | { status: 'unavailable' }
+
+export type ApcCatalogRunner = () => Promise<ApcCatalogResult>
 
 export class StoreError extends Error {
   constructor(
@@ -54,7 +47,8 @@ export class StoreError extends Error {
 
 export async function handleStoreRequest(
   input: { operationId: string; params: unknown },
-  runApm: ApmRunner
+  runApm: ApmRunner,
+  runApcCatalog: ApcCatalogRunner
 ): Promise<unknown> {
   const { operationId, params } = input
 
@@ -69,7 +63,13 @@ export async function handleStoreRequest(
 
   const query = parseListPowersInput(params)
   if (query.scope === 'market') {
-    return buildMarketResult(query)
+    const catalog = await runApcCatalog()
+    if (catalog.status === 'unavailable') {
+      // This exact message is matched by src/AgentHubPage.tsx to render a retryable
+      // unavailable state (the Dev Host drops the structured error code).
+      throw new StoreError('unavailable', true, 'APC catalog is unavailable')
+    }
+    return buildPowersResult(catalog.records, query, catalog.snapshot)
   }
 
   const agent = query.agent

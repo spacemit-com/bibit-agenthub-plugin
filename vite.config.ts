@@ -1,8 +1,24 @@
 import { spawn } from 'node:child_process'
+import { get as httpGet } from 'node:http'
+import { get as httpsGet } from 'node:https'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { defineConfig, type Plugin } from 'vite'
-import { parseApmInstalledList } from './src/api/apm'
-import { handleStoreRequest, StoreError, type ApmListResult } from './dev/store'
+import { parseApmInstalledList, type PowerRecord } from './src/api/apm'
+import { parseApcCatalog } from './src/api/apc'
+import {
+  handleStoreRequest,
+  StoreError,
+  type ApmListResult,
+  type ApcCatalogResult,
+} from './dev/store'
+
+const APC_BASE_URL =
+  process.env.APC_BASE_URL ?? 'https://developer.bianbu.xyz/api-server/apc/api/v1'
+
+// The test environment serves an untrusted TLS certificate. Dev-only transport
+// disables verification here; the production bibit-agenthub-cli provider must
+// trust the platform CA instead. This file is never part of the plugin bundle.
+const APC_INSECURE_TLS = true
 
 function runApmListInstalled(agent: string): Promise<ApmListResult> {
   return new Promise((resolve) => {
@@ -33,6 +49,63 @@ function runApmListInstalled(agent: string): Promise<ApmListResult> {
       }
     })
   })
+}
+
+function fetchJson(url: string, redirectsLeft = 5): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url)
+    const get = parsed.protocol === 'https:' ? httpsGet : httpGet
+    const options: Record<string, unknown> = { headers: { accept: 'application/json' } }
+    if (parsed.protocol === 'https:' && APC_INSECURE_TLS) {
+      options.rejectUnauthorized = false
+    }
+    const request = get(url, options, (response) => {
+      const status = response.statusCode ?? 0
+      if (status >= 300 && status < 400 && response.headers.location) {
+        response.resume()
+        if (redirectsLeft <= 0) {
+          reject(new Error('too many APC redirects'))
+          return
+        }
+        const next = new URL(response.headers.location, parsed).toString()
+        resolve(fetchJson(next, redirectsLeft - 1))
+        return
+      }
+      if (status >= 400) {
+        response.resume()
+        reject(new Error('APC request failed with ' + status))
+        return
+      }
+      let body = ''
+      response.setEncoding('utf8')
+      response.on('data', (chunk: string) => {
+        body += chunk
+      })
+      response.on('end', () => {
+        try {
+          resolve(JSON.parse(body))
+        } catch {
+          reject(new Error('invalid JSON from APC'))
+        }
+      })
+    })
+    request.on('error', reject)
+  })
+}
+
+async function runApcCatalog(): Promise<ApcCatalogResult> {
+  try {
+    const version = (await fetchJson(`${APC_BASE_URL}/resources/version`)) as Record<string, unknown>
+    const snapshot = version.catalog_sha256
+    if (typeof snapshot !== 'string' || snapshot.length === 0) {
+      return { status: 'unavailable' }
+    }
+    const catalog = await fetchJson(`${APC_BASE_URL}/resources`)
+    const records: PowerRecord[] = parseApcCatalog(catalog)
+    return { status: 'ok', snapshot, records }
+  } catch {
+    return { status: 'unavailable' }
+  }
 }
 
 function readJsonBody(request: IncomingMessage): Promise<unknown> {
@@ -82,6 +155,7 @@ function devStorePlugin(): Plugin {
           const result = await handleStoreRequest(
             { operationId: body.operationId, params: body.params },
             runApmListInstalled,
+            runApcCatalog,
           )
           sendJson(response, { protocolVersion: 1, requestId, ok: true, result })
         } catch (error) {
