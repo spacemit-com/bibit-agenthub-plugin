@@ -1,5 +1,6 @@
-bibit-agenthub-plugin (0.0.1) resolute-porting; urgency=medium
+bibit-agenthub-plugin (0.2.1) resolute-porting; urgency=medium
 
-  * Initial for bianbu-26.04
+  * Package the signed Agent Hub plugin bundle and capability grant for
+    system auto-discovery by Bibit.
 
- -- bianbu <bianbu@k3>  Wed, 02 Sep 2026 15:42:46 +0800
+ -- liangjunzhao <junzhao.liang@spacemit.com>  Wed, 02 Sep 2026 15:53:21 +0800

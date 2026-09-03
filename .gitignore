@@ -2,3 +2,14 @@ node_modules/
 dist/
 artifacts/
 .bibit-keys/
+
+# Debian packaging build artifacts
+debian/vendor/*.tgz
+debian/bibit-agenthub-plugin/
+debian/debhelper-build-stamp
+debian/files
+debian/*.debhelper
+debian/*.substvars
+debian/*.deb
+debian/*.buildinfo
+debian/*.changes
