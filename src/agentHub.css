@@ -101,8 +101,8 @@
 }
 .power-filters__filter-row { display: flex; align-items: flex-start; gap: 14px; }
 .power-filters__label { min-width: 42px; padding-top: 9px; color: #8a93a4; font-size: 11px; font-weight: 800; text-transform: uppercase; }
-.power-filters__types, .power-filters__tags { display: flex; flex-wrap: wrap; gap: 8px; }
-.power-filters__tags { max-height: 82px; overflow-y: auto; padding: 2px 4px 2px 2px; }
+.power-filters__types { display: flex; flex-wrap: wrap; gap: 8px; }
+.power-filters__tags { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; overflow-x: auto; overflow-y: hidden; padding: 2px 4px 2px 2px; }
 .power-filters__types button { border-color: var(--type-line); background: var(--type-soft); color: var(--type); font-weight: 750; text-transform: capitalize; }
 .power-filters__types button[aria-pressed='true'],
 .power-filters__tags button[aria-pressed='true'] {
@@ -111,7 +111,7 @@
   color: var(--type);
   box-shadow: inset 0 0 0 1px var(--type);
 }
-.power-filters__tags button { padding: 7px 11px; border-radius: 999px; }
+.power-filters__tags button { flex: 0 0 auto; padding: 7px 11px; border-radius: 999px; }
 
 /* ===== Visible shared focus ring ===== */
 .agent-hub button:focus-visible,
@@ -147,8 +147,8 @@
 .power-card__version { max-width: 112px; border: 1px solid var(--type-line); border-radius: 8px; background: rgb(255 255 255 / 78%); color: var(--hub-text); }
 .power-card h2 { min-width: 0; margin: 15px 0 10px; overflow-wrap: anywhere; font-size: 19px; }
 .power-card__description { min-height: 0; margin: 0; overflow-y: auto; color: var(--hub-muted); }
-.power-card__tags { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 6px; min-height: 0; margin-top: 14px; overflow-y: auto; }
-.power-card__tag { padding: 5px 9px; border-radius: 999px; background: var(--type-soft); color: var(--type); font-size: 11px; font-weight: 700; }
+.power-card__tags { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; min-height: 0; margin-top: 14px; overflow-x: auto; overflow-y: hidden; }
+.power-card__tag { flex: 0 0 auto; padding: 5px 9px; border-radius: 999px; background: var(--type-soft); color: var(--type); font-size: 11px; font-weight: 700; }
 
 /* ===== Responsive column fallbacks ===== */
 @media (max-width: 1240px) { .agent-hub__grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
