@@ -6,6 +6,8 @@ artifacts/
 # Debian packaging build artifacts
 debian/vendor/*.tgz
 debian/bibit-agenthub-plugin/
+debian/bibit-agenthub-cli/
+debian/.debhelper/
 debian/debhelper-build-stamp
 debian/files
 debian/*.debhelper

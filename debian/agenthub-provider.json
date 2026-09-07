@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "services": {
+    "store": {
+      "transport": "stdio",
+      "executable": "/usr/libexec/bibit/bibit-agenthub",
+      "args": ["provider"],
+      "lifecycle": "managed",
+      "protocolVersions": [1],
+      "requestTimeoutMs": 30000
+    }
+  }
+}

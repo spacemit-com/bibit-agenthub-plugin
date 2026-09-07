@@ -1,6 +1,8 @@
-bibit-agenthub-plugin (0.2.1) resolute-porting; urgency=medium
+bibit-agenthub-plugin (0.2.2) resolute-porting; urgency=medium
 
-  * Package the signed Agent Hub plugin bundle and capability grant for
-    system auto-discovery by Bibit.
+  * Ship the standalone v1 stdio provider as a second package
+    (bibit-agenthub-cli) with its managed service registry drop-in.
+  * Keep the trusted frontend bundle and capability grant in the
+    architecture-independent plugin package.
 
- -- liangjunzhao <junzhao.liang@spacemit.com>  Wed, 02 Sep 2026 15:53:21 +0800
+ -- liangjunzhao <junzhao.liang@spacemit.com>  Sun, 07 Sep 2026 18:30:00 +0800

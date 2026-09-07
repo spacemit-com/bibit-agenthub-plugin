@@ -1,11 +1,22 @@
 #!/usr/bin/make -f
 
+DEB_HOST_ARCH ?= $(shell dpkg-architecture -qDEB_HOST_ARCH)
+SUPPORTED_ARCHS := amd64 arm64 riscv64
+
+ifeq ($(filter $(DEB_HOST_ARCH),$(SUPPORTED_ARCHS)),)
+$(error Unsupported DEB_HOST_ARCH "$(DEB_HOST_ARCH)"; supported: $(SUPPORTED_ARCHS))
+endif
+
 %:
 	dh $@
 
 override_dh_auto_build:
 	test -f debian/vendor/agent-hub.bibit-plugin.tgz
 	test -f debian/agenthub-feature-grants.json
+	$(MAKE) -C provider build GOARCH=$(DEB_HOST_ARCH)
+
+override_dh_auto_clean:
+	$(MAKE) -C provider clean
 
 override_dh_auto_install:
 	install -Dm0644 \
@@ -14,3 +25,14 @@ override_dh_auto_install:
 	install -Dm0644 \
 	  debian/agenthub-feature-grants.json \
 	  debian/bibit-agenthub-plugin/etc/bibit/feature-capability-grants.d/agenthub.json
+	install -Dm0755 \
+	  artifacts/provider/$(DEB_HOST_ARCH)/bibit-agenthub \
+	  debian/bibit-agenthub-cli/usr/libexec/bibit/bibit-agenthub
+	install -Dm0644 \
+	  debian/agenthub-provider.json \
+	  debian/bibit-agenthub-cli/etc/bibit/external-services.d/agenthub.json
+
+override_dh_strip:
+	@# Pure Go binary is already stripped at build time (-ldflags="-s -w");
+	@# skip dh_strip so a wrong-architecture strip is never invoked.
+	@true

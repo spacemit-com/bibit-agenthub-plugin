@@ -2,7 +2,7 @@ Source: bibit-agenthub-plugin
 Section: utils
 Priority: optional
 Maintainer: liangjunzhao <junzhao.liang@spacemit.com>
-Build-Depends: debhelper-compat (= 13)
+Build-Depends: debhelper-compat (= 13), golang-go (>= 1.26.5~)
 Standards-Version: 4.6.2
 Rules-Requires-Root: no
 
@@ -11,3 +11,10 @@ Architecture: all
 Depends: bi-bit, ${misc:Depends}
 Description: Bibit Agent Hub trusted frontend plugin
  Provides the Agent Hub main page and settings contribution.
+
+Package: bibit-agenthub-cli
+Architecture: any
+Depends: ${misc:Depends}
+Description: Bibit Agent Hub standalone v1 provider
+ Managed stdio provider that serves installed and market powers
+ over the Bibit Provider Protocol v1.
