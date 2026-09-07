@@ -281,7 +281,7 @@ func TestInvokeNilDataSourceUnavailable(t *testing.T) {
 
 func TestWireInputStrictValidation(t *testing.T) {
 	cases := []struct {
-		name  string
+		name   string
 		params string
 	}{
 		{"extra key", `{"scope":"market","page":2}`},

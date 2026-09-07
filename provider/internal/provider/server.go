@@ -302,8 +302,8 @@ func rejectKeys(obj map[string]json.RawMessage, allowed ...string) error {
 // --- JSON-RPC helpers ------------------------------------------------------
 
 type initializeParams struct {
-	ProtocolName             string `json:"protocolName"`
-	ServiceID                string `json:"serviceId"`
+	ProtocolName              string `json:"protocolName"`
+	ServiceID                 string `json:"serviceId"`
 	SupportedProtocolVersions []int  `json:"supportedProtocolVersions"`
 }
 
