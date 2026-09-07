@@ -3,8 +3,9 @@ export const POWER_PAGE_SIZE = 20 as const
 export const POWERS_LIST_OPERATION_ID = 'powers.list.v1' as const
 
 // Frontend-fixed installed agent list. Installed data is fetched per-agent from the
-// apm CLI (`apm list --installed --agent=<agent> --json --all`); no discovery is done,
-// so the Agent menu renders exactly these ids. `claude-code` is apm's id for "claude".
+// apm CLI (`apm list --installed --agent=<agent> --json`, identity-only records since
+// apm feature-029); no `--agent=all` discovery is done, so the Agent menu renders
+// exactly these ids. `claude-code` is apm's id for "claude".
 export const INSTALLED_AGENTS = ['bibit', 'codex', 'claude-code'] as const
 
 export type PowerScope = 'installed' | 'market'

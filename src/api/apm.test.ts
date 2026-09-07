@@ -25,14 +25,14 @@ function query(overrides: Partial<ListPowersInput> = {}): ListPowersInput {
 }
 
 describe('parseApmInstalledList', () => {
-  it('parses a valid array and tolerates unknown fields', () => {
+  it('parses an identity-only record and tolerates unknown fields', () => {
     const parsed = parseApmInstalledList([
       { agent: 'bibit', type: 'skill', name: 'a', version: 'v1.0.0', extra: true },
     ])
     expect(parsed).toEqual([{ agent: 'bibit', type: 'skill', name: 'a', version: 'v1.0.0' }])
   })
 
-  it('copies tags and leaves description/tags absent when omitted', () => {
+  it('tolerates optional metadata fields that the current apm list no longer emits', () => {
     const parsed = parseApmInstalledList([
       { agent: 'bibit', type: 'skill', name: 'a', version: 'v1.0.0', description: 'd', tags: ['x', 'y'] },
       { agent: 'bibit', type: 'skill', name: 'b', version: 'v1.0.0' },
@@ -88,6 +88,16 @@ describe('buildInstalledPowersResult', () => {
     if (result.status !== 'ready') return
     expect(result.total).toBe(1)
     expect(result.items[0].versions.map((v) => v.version)).toEqual(['v2.0.0', 'v1.5.0', 'v1.0.0'])
+  })
+
+  it('normalizes identity-only records to empty description/tags and empty facets', () => {
+    const result = buildInstalledPowersResult(query(), [
+      record({ agent: 'bibit', type: 'skill', name: 'a', version: 'v1.0.0' }),
+    ])
+    expect(result.status).toBe('ready')
+    if (result.status !== 'ready') return
+    expect(result.items[0].versions[0]).toEqual({ version: 'v1.0.0', description: '', tags: [] })
+    expect(result.facets).toEqual({ agents: [], tags: [] })
   })
 
   it('normalizes description and tags, and keeps facets.agents empty', () => {

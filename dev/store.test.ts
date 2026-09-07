@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { ListPowersInput } from '../src/api/contracts'
+import type { ListPowersInput, ListPowersResult } from '../src/api/contracts'
 import type { PowerRecord } from '../src/api/apm'
 import {
   handleStoreRequest,
@@ -126,10 +126,10 @@ describe('handleStoreRequest', () => {
     ).rejects.toMatchObject({ code: 'unavailable', retryable: true, message: 'APC catalog is unavailable' })
   })
 
-  it('invokes apm for the selected agent and renders its records without invoking APC', async () => {
+  it('invokes apm for the selected agent and renders its identity-only records without invoking APC', async () => {
     const runApm = vi.fn<ApmRunner>(async (agent) => ({
       status: 'ok',
-      records: [{ agent, type: 'skill', name: 'demo', version: 'v1.0.0', tags: ['x'] }],
+      records: [{ agent, type: 'skill', name: 'demo', version: 'v1.0.0' }],
     }))
     const runApcCatalog = vi.fn<ApcCatalogRunner>(okApcRunner)
     const result = await handleStoreRequest(
@@ -139,7 +139,15 @@ describe('handleStoreRequest', () => {
     )
     expect(runApm).toHaveBeenCalledWith('bibit')
     expect(runApcCatalog).not.toHaveBeenCalled()
-    expect(result).toMatchObject({ status: 'ready', total: 1, items: [{ name: 'demo' }] })
+    expect(result).toMatchObject({
+      status: 'ready',
+      total: 1,
+      items: [{ name: 'demo' }],
+      facets: { agents: [], tags: [] },
+    })
+    const ready = result as ListPowersResult
+    if (ready.status !== 'ready') return
+    expect(ready.items[0].versions[0]).toEqual({ version: 'v1.0.0', description: '', tags: [] })
   })
 
   it('maps apm unavailability to a retryable unavailable error', async () => {

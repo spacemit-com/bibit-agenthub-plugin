@@ -814,7 +814,7 @@ Replace the agents.list.v1 demo contract with powers.list.v1. Document:
 
 - exact request and result unions from the spec;
 - Local Preview behavior;
-- future installed command apm list --installed --agent=all --all --json;
+- future installed command apm list --installed --agent=all --all --json;（已被取代：实际实现为固定 Agent 逐次 `apm list --installed --agent=<agent> --json`，见 `docs/development-and-deployment-guide.md` §10.4）
 - future APC endpoints resources/list and resources/tags;
 - Host response limit and runtime validation;
 - published integration blockers in ../bibit and the external Store service;
