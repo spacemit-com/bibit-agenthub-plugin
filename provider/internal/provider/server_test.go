@@ -97,6 +97,29 @@ func TestInitializeV1Only(t *testing.T) {
 	}
 }
 
+func TestInitializeAcceptsHostClientField(t *testing.T) {
+	// The Bibit host sends client: {"name":"Bibit"} in its initialize request.
+	// The provider must tolerate it: it is informational and not consumed.
+	input := "{\"jsonrpc\":\"2.0\",\"id\":\"init\",\"method\":\"bibit.initialize\",\"params\":{\"protocolName\":\"bibit-provider\",\"serviceId\":\"store\",\"supportedProtocolVersions\":[1],\"client\":{\"name\":\"Bibit\"}}}\n"
+	out, err := runInput(input, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := parseResponse(t, out)
+	if response.Error != nil {
+		t.Fatalf("expected initialize with host client field to succeed, got error: %s", out)
+	}
+	var result struct {
+		ProtocolVersion int `json:"protocolVersion"`
+	}
+	if err := json.Unmarshal(response.Result, &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.ProtocolVersion != 1 {
+		t.Fatal("must negotiate v1")
+	}
+}
+
 func TestInitializeV2OnlyRejected(t *testing.T) {
 	input := "{\"jsonrpc\":\"2.0\",\"id\":\"init\",\"method\":\"bibit.initialize\",\"params\":{\"protocolName\":\"bibit-provider\",\"serviceId\":\"store\",\"supportedProtocolVersions\":[2]}}\n"
 	out, err := runInput(input, nil)
