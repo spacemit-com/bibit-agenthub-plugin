@@ -73,26 +73,41 @@ bibit-agenthub-plugin/
 ├── vite.config.ts
 ├── index.html
 ├── dev/
-│   └── main.tsx
+│   ├── main.tsx
+│   ├── store.ts          # wire 校验 + settings 内存 echo
+│   ├── sources.ts        # 与 Go 同语义的 APM/APC transport
+│   └── *.test.ts
 ├── src/
 │   ├── feature.tsx
 │   ├── plugin.tsx
 │   ├── AgentHubPage.tsx
 │   ├── AgentHubSettingsPage.tsx
-│   ├── storeContracts.ts
-│   └── agentHub.css
-├── tests/
-│   ├── storeContracts.test.ts
-│   └── AgentHubPage.test.tsx
-├── demo/
-│   ├── cli/bibit-agenthub-mock-provider.py
-│   ├── fixtures/sample-agent.demo-agent
-│   ├── registry/agenthub-provider.json
-│   └── deploy-debug.sh
-├── vendor/
-│   └── bibit-feature-*-0.3.0-u6*.tgz
-├── .bibit-keys/
-├── artifacts/
+│   ├── agentHub.css
+│   ├── api/
+│   │   ├── contracts.ts          # 协议边界 DTO + wire 信封
+│   │   ├── apm.ts                # installed 解析/聚合
+│   │   ├── apc.ts                # market 解析
+│   │   ├── powerCatalogClient.ts # 共享缓存客户端
+│   │   └── catalogIntegrity.ts   # SHA-256 校验
+│   └── components/
+│       ├── PowerCard.tsx
+│       ├── PowerFilters.tsx
+│       └── PowerPagination.tsx
+├── provider/                      # 纯 Go 标准库 module（v1）
+│   ├── go.mod
+│   ├── Makefile
+│   ├── cmd/bibit-agenthub/        # 正式入口（含 --self-test）
+│   ├── cmd/provider-probe/        # stdio 驱动
+│   └── internal/provider/
+├── debian/
+│   ├── control                    # plugin(all) + cli(any)
+│   ├── rules
+│   ├── changelog
+│   ├── agenthub-provider.json     # Registry v2 drop-in
+│   └── vendor/                    # 公司签名 bundle（不提交）
+├── vendor/                        # bibit-feature-* tarball（锁定版本）
+├── .bibit-keys/                   # 忽略
+├── artifacts/                     # 忽略
 └── docs/
 ```
 
@@ -416,7 +431,7 @@ return () => controller.abort()
 - 不把 URL、header、authorization、token、API key、cookie、credential 或 secret 放入 `params`；
 - 不显示或记录原始凭据、请求 header 或后端内部堆栈。
 
-`powers.list.v1` 在插件 API 边界执行闭集运行时校验（`parseListPowersInput` / `parseListPowersResult`）：未知字段、非法 Power 类型、非 20 的 pageSize、版本乱序、重复或未排序 tags、market 携带 agent 等都会被拒绝。`settings.get.v1` / `settings.update.v1` 通过 `src/storeContracts.ts` 的 `parseAgentHubSettings` 执行运行时校验。校验失败或后端返回未知结构时映射为局部错误态（`incompatible`），不能让页面白屏。
+`powers.list.v1` 在插件 API 边界执行闭集运行时校验（`parseListPowersInput` / `parseListPowersResult`）：未知字段、非法 Power 类型、非 20 的 pageSize、版本乱序、重复或未排序 tags、market 携带 agent 等都会被拒绝。`settings.get.v1` / `settings.update.v1` 由 store 服务处理（dev 为内存 echo；settings 持久化不在本期范围）。校验失败或后端返回未知结构时映射为局部错误态（`incompatible`），不能让页面白屏。
 
 ## 10. Store 服务协议
 
@@ -629,54 +644,70 @@ token 由 Bibit 凭据存储提供。不得把 token 写入插件、Manifest、U
 
 ### 10.4 Installed 数据源（APM CLI）
 
-正式 Remote Store 尚未实现。Store 收到 `scope=installed` 时，针对前端所选 Agent 使用固定 argv 执行（禁止 shell 字符串拼接，且不做 `--agent=all` 发现）：
+Store 收到 `scope=installed` 时，前端发送 raw wire 输入（仅信封，业务过滤不进入 wire）：
+
+```text
+{scope:"installed", agent:"<selected>"}
+```
+
+Go Provider 用固定 argv（无 shell，且不做 `--agent=all` 发现）执行：
 
 ```text
 apm list --installed --agent=<selected> --json
 ```
 
-自 apm ADR-029 起，`list --json` 是完整机器接口：每条记录恒带 `description`（空为 `""`）与 `tags`（空为 `[]`、非 `null`），installed 记录多 `agent`；`--all` 改为「对已命名 Cloud Power 展开全部版本」且缺少 name 时直接报错，因此不再携带 `--all`。list 文本仍身份精简、`search --json` 无 tags、`show` 为 Cloud-only 单对象详情，均不受影响。
-
-前端 Agent 菜单固定为 bibit / codex / claude-code 三个选项（`claude-code` 即 apm 中 Claude 的 id），由插件常量提供，不依赖 `facets.agents` 做发现；每次请求只解析所选 agent 的返回。
-
-单条 APM JSON 记录映射为精确版本记录：
-
-```ts
-interface APMPowerRecord {
-  agent: string
-  type: PowerType
-  name: string
-  version: string
-  description?: string // list --json 恒带（空为 ""），保留为容忍旧版/未来输出
-  tags?: string[]
-}
-```
-
-Store 处理规则：缺失 description / tags 分别规范化为 `""` / `[]`（正常时 list --json 已传入真实元数据，installed 卡片据此展示描述与标签、`facets.tags` 派生自当前 type 记录集）；按 type、tags 过滤，再按 type、name 聚合；相同 type、name、version 重复记录去重；`facets.agents` 固定为空数组；`facets.tags` 来自当前 type 的完整记录集合（不受当前 tag 选择限制）；`apm` 无法执行时映射为可重试的 Host `unavailable` 错误；具体 Agent 未安装（exit 1、空 stdout）或已安装空清单（exit 0、`[]`）时渲染为空列表（items 与 total 为空，前端显示空内容）；stdout 非法时映射为 Host `service` 错误；不透传 CLI stderr、物理路径、环境变量、堆栈或命令内部错误。
-
-### 10.5 未来 Market 数据源（APC 公共接口）
-
-正式 APC 服务端尚未实现。未来 Store 收到 `scope=market` 时映射到 APC 系列级公共接口：
+返回 raw wire（原始 UTF-8 JSON 文本，Provider 不解析业务字段）：
 
 ```text
-GET /api/v1/resources/list?type=skill&tag=code-review&view=all&page=1&page_size=20&catalog_sha256=<snapshot>
-GET /api/v1/resources/tags?type=skill
+{scope:"installed", status:"data", listJson:"[...]"}
 ```
 
-`resources/list` 按 `(type, name)` 系列分页：`tag` 可重复 0–20 次并对精确版本做 OR 过滤；`view=all` / `latest`；`page>1` 必须携带首个响应的 `catalog_sha256`。`resources/tags` 按 type 返回该类型全部 published、可下载版本的 tag 清单，不分页、不接受额外查询参数。Store 只投影插件 DTO 所需字段（type、name、versions 的 version / description / tags），并保证 list、tags、version 来自同一 Published Catalog 快照。详见设计文档 §5 与 `../apc/docs/APC-API.md`。
+语义：
 
-### 10.6 发布前置项
+- apm 启动失败（含不存在）或非零退出 → 可重试的 `unavailable`，绝不伪造空清单；
+- exit 0 且 stdout 为 `[]` → 数据态空清单，前端渲染空内容；
+- stdout 非法 UTF-8 → `unavailable`；超 4 MiB → `resource_exhausted`；
+- 不透传 CLI stderr、物理路径、环境变量、堆栈或命令内部错误。
 
-原型行为实现完成后，正式发布仍依赖平台 owner，以下集成仍未实现：
+前端 Agent 菜单固定为 bibit / codex / claude-code 三个选项（`claude-code` 即 apm 中 Claude 的 id），由插件常量提供，不依赖 `facets.agents` 做发现；每次请求只解析所选 agent 的返回。`listJson` 由前端数据层用 `parseApmInstalledList` 解析为 `APMPowerRecord[]`，再经 `buildInstalledPowersResult` 完成 type/tags 过滤、按 type/name 聚合、去重、分页与 facets——这些聚合只存在于前端 `src/api/`，Provider 与 dev transport 不复制。
 
-- 批准 `service:store` capability grant；
-- 在 Bibit（`../bibit`）注册真实 Host adapter 与 external-service gateway；
-- 实现安全的 APM CLI bridge；
-- 实现 APC transport、timeout、认证与错误映射；
-- 完成 APC 系列级 `resources/list` 与 `resources/tags` 服务端；
-- 验证 `powers.list.v1` 单响应不超过 Feature Host 4 MiB 上限。
+### 10.5 Market 数据源（APC 公共接口）
 
-在这些前置项完成前，插件只能通过 Local Preview（§11.2）展示数据，不能宣称真实链路已接通。
+Store 收到 `scope=market` 时，前端发送 raw wire 输入：
+
+```text
+{scope:"market", knownSnapshot?:"<sha256>"}   // 首次省略；命中缓存后携带
+```
+
+Go Provider 每次请求先 `GET {base}/resources/version`；`catalog_sha256` 等于 `knownSnapshot` 时返回：
+
+```text
+{scope:"market", status:"not_modified", snapshot:"<sha256>"}
+```
+
+否则下载全量 `GET {base}/resources` 并返回：
+
+```text
+{scope:"market", status:"data", snapshot:"<sha256>", catalogJson:"{...}"}
+```
+
+APC 全量约束：只调用 `resources/version` 与 `resources`，不调用 `resources/list` 或 `resources/tags`；类型过滤、tag OR 过滤、系列聚合、分页与 facets 全在前端 `buildPowersResult` 完成。前端在解析 `catalogJson` 前先用 Web Crypto 对原始 UTF-8 字节计算 SHA-256 并与 `snapshot` 比对（`src/api/catalogIntegrity.ts`），不一致抛可重试 `unavailable` 且不写入缓存。默认 base 为 `https://developer.bianbu.xyz/api-server/apc/api/v1`；HTTP 客户端使用系统受信 CA，重定向 ≤5 跳且禁止 https→http 降级，无跳过 TLS 校验的开关。
+
+### 10.6 部署与发布前置项
+
+已实现并纳入两个 deb：
+
+- Go 标准库 Provider（v1，`powers.list.v1`），`bibit-agenthub-cli`（Architecture: any）拥有 `/usr/libexec/bibit/bibit-agenthub` 与 `/etc/bibit/external-services.d/agenthub.json`（Registry `version: 2`、`protocolVersions: [1]`、managed stdio）；
+- 前端 bundle 与 capability grant 仍在 `bibit-agenthub-plugin`（Architecture: all）；
+- 前端数据层在 dev 与生产共用，`dev/sources.ts` 与 Go Provider 语义一致。
+
+发布与板端验收仍依赖以下前置项，缺少时如实记录阻塞：
+
+- 按现有签名流程取得 0.2.2 的受信签名 bundle（开发签名不能代替 Release 信任链）；
+- 构建环境提供 ≥1.26.5 的 Go 工具链（目标 suite 的 `golang-go` 可能只有旧版本，需回填工具链或记录阻塞）；
+- 开发板安装两包并重启宿主，验证 Registry 加载、协议 v1 协商与两个 scope 真实数据。
+
+在这些前置项完成前，只能宣称协议与构建已验证，不能宣称板端真实链路已接通。
 
 ## 11. 独立开发调试
 
@@ -737,11 +768,12 @@ APC Base URL 默认测试环境 `https://developer.bianbu.xyz/api-server/apc/api
 ```bash
 npm run keygen
 npm run build:plugin
-python3 demo/cli/bibit-agenthub-mock-provider.py --self-test
-./demo/deploy-debug.sh /home/bianbu/bibit-agenthub-demo
+make -C provider build
+./artifacts/provider/<arch>/bibit-agenthub --self-test
+go run ./provider/cmd/provider-probe --executable <binary> --scope market
 ```
 
-`demo/deploy-debug.sh` 只写指定隔离目录，并输出 `XDG_DATA_HOME`、`JAN_DATA_FOLDER`、Provider Registry、capability grant、系统插件目录和开发 trust store 的完整环境变量前缀。把该前缀放到目标 Bibit `yarn dev:tauri` 或已构建 Debug binary 前；不要写入正式 `/etc`、`/usr` 或用户数据目录。
+调试只写指定隔离目录，输出 `XDG_DATA_HOME`、`JAN_DATA_FOLDER`、Provider Registry、capability grant、系统插件目录和开发 trust store 的完整环境变量前缀。把该前缀放到目标 Bibit `yarn dev:tauri` 或已构建 Debug binary 前；不要写入正式 `/etc`、`/usr` 或用户数据目录。
 
 真实 Provider 调试必须验证：
 
@@ -1049,7 +1081,7 @@ npm run build:plugin
 7. 非法 operation、超时、未授权和离线产生约定错误；
 8. 日志不包含 token 或完整凭据。
 
-当前 AgentHub CLI 路径还必须执行 `python3 demo/cli/bibit-agenthub-mock-provider.py --self-test`，并确认 `bibit.initialize` 协商 v2、五个 operation 完整、`jobs/cancellation/maxConcurrentJobs` 能力与 Registry 一致。HTTP 探针不能替代 CLI 协商和传输验收。
+当前 AgentHub CLI 路径还必须执行 `/usr/libexec/bibit/bibit-agenthub --self-test`（或本机二进制路径），并确认 `bibit.initialize` 协商 v1、`powers.list.v1` 完整、`invoke` 能力与 Registry 的 `protocolVersions: [1]` 一致。HTTP 探针不能替代 CLI 协商和传输验收。
 
 ### 16.3 Bibit 插件加载
 
@@ -1114,7 +1146,7 @@ Dev Host 当前只注入内存 Host API，不接受 `storeEndpoint` URL 参数�
 
 ### Bibit 中服务请求失败
 
-CLI 模式检查 Registry 是否为 `version: 2`、`transport: stdio`、固定绝对 executable、`lifecycle: managed` 和 `protocolVersions: [1,2]`，再检查 Provider stderr。HTTP 模式才检查 `baseUrl`、`authRef`、超时和 HTTP 状态；不要在 `baseUrl` 中重复写 `/bibit/v1/invoke`。
+CLI 模式检查 Registry 是否为 `version: 2`、`transport: stdio`、固定绝对 executable、`lifecycle: managed` 和 `protocolVersions: [1]`，再检查 Provider stderr。HTTP 模式才检查 `baseUrl`、`authRef`、超时和 HTTP 状态；不要在 `baseUrl` 中重复写 `/bibit/v1/invoke`。
 
 ### 返回成功但页面白屏
 
@@ -1159,8 +1191,8 @@ CLI 模式检查 Registry 是否为 `version: 2`、`transport: stdio`、固定�
 - v1 只支持 `desktop/main`；
 - 当前插件实现 APC Power 展示原型（筛选、系列卡、版本选择、每页 20 的分页、warning 与 Retry）和两个设置字段；
 - Power 安装、下载、提交、审核、下架、恢复以及搜索、详情尚未实现；
-- `powers.list.v1` DTO 已做闭集运行时校验；`settings.get.v1` / `settings.update.v1` 通过 `src/storeContracts.ts` 的 `parseAgentHubSettings` 做运行时校验；
-- 自动化测试使用 Vitest 覆盖 DTO、Mock、客户端、组件与页面行为，`tests/storeContracts.test.ts` 使用 Node 内置测试运行器；
+- `powers.list.v1` DTO 已做闭集运行时校验；`settings.get.v1` / `settings.update.v1` 由 store 服务处理（dev 为内存 echo，settings 持久化不在本期范围）；
+- 自动化测试使用 Vitest 覆盖 DTO、dev transport、客户端、组件与页面行为（`src/api/contracts.test.ts` 等与源文件同目录）；
 - 设置页复用目标 Bibit 同版本的 `@bibit/feature-ui`；市场页使用 `.agent-hub*` 命名空间内的独立 CSS；
 - 当前 `locales` 只声明 `en`，页面文案仍直接写在组件中；
 - 插件属于公司可信内部代码，不是不可信代码沙箱；
