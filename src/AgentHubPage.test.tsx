@@ -11,70 +11,94 @@ import {
   type FeaturePageProps,
 } from '@bibit/feature-sdk'
 import type { FeatureHostCapability } from '@bibit/feature-contracts'
-import type { ListPowersInput, PowerSeries, ReadyListPowersResult } from './api/contracts'
 import { AgentHubPage } from './AgentHubPage'
 
 afterEach(cleanup)
 
 type StoreRequest = FeatureServiceRequestV1<'store'>
 
-const codeReview: PowerSeries = {
+type WireParams = { scope: string; agent?: string; knownSnapshot?: string }
+
+async function sha256(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')
+}
+
+const codeReviewRecord = {
+  agent: 'bibit',
   type: 'skill',
   name: 'code-review',
-  versions: [{ version: 'v1.0.0', description: 'Peer review workflow.', tags: ['quality'] }],
+  version: 'v1.0.0',
+  description: 'Peer review workflow.',
+  tags: ['quality'],
 }
 
-const secondPageSkill: PowerSeries = {
-  type: 'skill',
-  name: 'second-page',
-  versions: [{ version: 'v1.0.0', description: 'Second page skill.', tags: [] }],
+const codeReviewList = JSON.stringify([codeReviewRecord])
+
+function installedData(listJson: string) {
+  return { scope: 'installed', status: 'data', listJson }
 }
 
-const pluginSeries: PowerSeries = {
-  type: 'plugin',
-  name: 'scan-guard',
-  versions: [{ version: 'v1.0.0', description: 'Guards dependency scans.', tags: [] }],
+function installedPage(count: number, agent = 'bibit'): string {
+  return JSON.stringify(
+    Array.from({ length: count }, (_, index) => ({
+      agent,
+      type: 'skill',
+      name: `skill-${String(index).padStart(2, '0')}`,
+      version: 'v1.0.0',
+      description: '',
+      tags: [],
+    }))
+  )
 }
 
-const marketSeries: PowerSeries = {
-  type: 'skill',
-  name: 'market-translate',
-  versions: [{ version: 'v1.0.0', description: 'Translates text.', tags: [] }],
+function marketCatalog(count: number, changed = false): string {
+  const items = Array.from({ length: count }, (_, index) => ({
+    name: `market-${String(index).padStart(2, '0')}`,
+    version: 'v1.0.0',
+    description: '',
+    tags: [],
+  }))
+  return JSON.stringify(changed ? { _changed: true, skills: { items } } : { skills: { items } })
 }
 
-const staleSeries: PowerSeries = {
-  type: 'skill',
-  name: 'stale-skill',
-  versions: [{ version: 'v1.0.0', description: 'Stale result.', tags: [] }],
+const marketCatalogJson = JSON.stringify({
+  skills: {
+    items: [{ name: 'market-translate', version: 'v1.0.0', description: 'Translates text.', tags: [] }],
+  },
+})
+
+let marketSnapshotPromise: Promise<string> | undefined
+function marketSnapshot(): Promise<string> {
+  marketSnapshotPromise ??= sha256(marketCatalogJson)
+  return marketSnapshotPromise
 }
 
-function readyResult(overrides: Partial<ReadyListPowersResult> = {}): ReadyListPowersResult {
+async function marketData() {
   return {
-    status: 'ready',
-    snapshot: 'snap-1',
-    items: [codeReview],
-    page: 1,
-    pageSize: 20,
-    total: 1,
-    facets: { agents: [], tags: [] },
-    warnings: [],
-    ...overrides,
+    scope: 'market',
+    status: 'data',
+    snapshot: await marketSnapshot(),
+    catalogJson: marketCatalogJson,
   }
 }
 
-function paramsOf(call: StoreRequest): ListPowersInput {
-  return call.params as unknown as ListPowersInput
+function wireParamsOf(call: StoreRequest): WireParams {
+  return call.params as WireParams
 }
 
-function makeStoreHost(
-  respond?: (input: StoreRequest) => unknown
-): { hostApi: FeatureHostApiV1; calls: StoreRequest[] } {
+function makeStoreHost(respond?: (input: StoreRequest) => unknown): {
+  hostApi: FeatureHostApiV1
+  calls: StoreRequest[]
+} {
   const calls: StoreRequest[] = []
   const service: FeatureServiceApiV1<'store'> = {
     async request<TResult>(input: StoreRequest): Promise<TResult> {
       calls.push(input)
       if (respond) return (await respond(input)) as TResult
-      return readyResult() as TResult
+      return installedData(codeReviewList) as TResult
     },
   }
   function getCapability<K extends FeatureHostCapability>(
@@ -110,8 +134,12 @@ function renderPage(hostApi: FeatureHostApiV1) {
   )
 }
 
+function pageNumber(): string {
+  return (screen.getByRole('spinbutton', { name: 'Page number' }) as HTMLInputElement).value
+}
+
 describe('AgentHubPage', () => {
-  it('resolves the default installed/Bibit/skill query and renders a card with pagination', async () => {
+  it('resolves the default installed query as a raw wire request and renders a card', async () => {
     const { hostApi, calls } = makeStoreHost()
     renderPage(hostApi)
 
@@ -119,18 +147,9 @@ describe('AgentHubPage', () => {
 
     expect(document.querySelector('.agent-hub__grid')).toBeTruthy()
     expect(document.querySelector('.power-pagination')).toBeTruthy()
-
     expect(calls).toHaveLength(1)
-    expect(calls[0].params).toEqual({
-      scope: 'installed',
-      agent: 'bibit',
-      type: 'skill',
-      tags: [],
-      page: 1,
-      pageSize: 20,
-    })
-    expect(screen.getByRole('heading', { name: 'code-review' })).toBeTruthy()
-    expect((screen.getByRole('spinbutton', { name: 'Page number' }) as HTMLInputElement).value).toBe('1')
+    expect(wireParamsOf(calls[0])).toEqual({ scope: 'installed', agent: 'bibit' })
+    expect(pageNumber()).toBe('1')
     expect(screen.getByText('/ 1 页')).toBeTruthy()
   })
 
@@ -141,7 +160,7 @@ describe('AgentHubPage', () => {
     const service: FeatureServiceApiV1<'store'> = {
       async request<TResult>(input: StoreRequest): Promise<TResult> {
         calls.push(input)
-        return readyResult() as TResult
+        return installedData(codeReviewList) as TResult
       },
     }
     const hostApi: FeatureHostApiV1 = {
@@ -163,109 +182,91 @@ describe('AgentHubPage', () => {
   })
 
   it('shows Loading Powers… then the empty copy when the result has no items', async () => {
-    let resolveEmpty!: (value: ReadyListPowersResult) => void
-    const { hostApi } = makeStoreHost(
-      () => new Promise<ReadyListPowersResult>((resolve) => (resolveEmpty = resolve))
-    )
+    let resolveEmpty!: (value: unknown) => void
+    const { hostApi } = makeStoreHost(() => new Promise((resolve) => (resolveEmpty = resolve)))
     renderPage(hostApi)
 
     expect(screen.getByText('Loading Powers…')).toBeTruthy()
 
-    resolveEmpty(readyResult({ items: [], total: 0 }))
+    resolveEmpty(installedData('[]'))
 
     expect(await screen.findByText('No Powers are available.')).toBeTruthy()
   })
 
   it('omits the agent and hides Agent controls when switching to the market', async () => {
     const user = userEvent.setup()
-    const { hostApi, calls } = makeStoreHost()
+    const { hostApi, calls } = makeStoreHost((input) => {
+      const params = wireParamsOf(input)
+      return params.scope === 'market' ? marketData() : installedData(codeReviewList)
+    })
     renderPage(hostApi)
     await screen.findByRole('heading', { name: 'code-review' })
 
     await user.click(screen.getByRole('button', { name: 'Power 市场' }))
-    await screen.findByRole('heading', { name: 'code-review' })
+    await screen.findByRole('heading', { name: 'market-translate' })
 
     expect(calls).toHaveLength(2)
-    expect(calls[1].params).toEqual({
-      scope: 'market',
-      type: 'skill',
-      tags: [],
-      page: 1,
-      pageSize: 20,
-    })
-    expect('agent' in calls[1].params).toBe(false)
+    expect(wireParamsOf(calls[1])).toEqual({ scope: 'market' })
+    expect('agent' in wireParamsOf(calls[1])).toBe(false)
     expect(screen.queryByRole('group', { name: 'Agent' })).toBeNull()
   })
 
   it('resets the page to 1 when selecting another installed Agent', async () => {
     const user = userEvent.setup()
     const { hostApi, calls } = makeStoreHost((input) => {
-      const params = paramsOf(input)
-      return readyResult({
-        page: params.page,
-        total: 40,
-        nextPage: params.page === 1 ? 2 : undefined,
-        items: [params.page === 2 ? secondPageSkill : codeReview],
-      })
+      const params = wireParamsOf(input)
+      return installedData(installedPage(25, params.agent ?? 'bibit'))
     })
     renderPage(hostApi)
-    await screen.findByRole('heading', { name: 'code-review' })
+    await screen.findByRole('heading', { name: 'skill-00' })
 
     await user.click(screen.getByRole('button', { name: 'Next page' }))
-    await screen.findByRole('heading', { name: 'second-page' })
+    await screen.findByRole('heading', { name: 'skill-20' })
+    expect(pageNumber()).toBe('2')
 
     await user.hover(screen.getByRole('button', { name: '我的 Power' }))
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'codex' }))
 
     await waitFor(() => {
-      const last = calls[calls.length - 1]
-      expect(paramsOf(last).agent).toBe('codex')
-      expect(paramsOf(last).page).toBe(1)
-      expect('snapshot' in paramsOf(last)).toBe(false)
+      expect(wireParamsOf(calls[calls.length - 1]).agent).toBe('codex')
+      expect(pageNumber()).toBe('1')
     })
-    await screen.findByRole('heading', { name: 'code-review' })
+    await screen.findByRole('heading', { name: 'skill-00' })
   })
 
-  it('jumps directly with the current snapshot', async () => {
+  it('jumps directly to a page number', async () => {
     const user = userEvent.setup()
-    const { hostApi, calls } = makeStoreHost((input) => {
-      const params = paramsOf(input)
-      return readyResult({
-        page: params.page,
-        total: 80,
-        nextPage: params.page < 4 ? params.page + 1 : undefined,
-        items: [params.page === 3 ? secondPageSkill : codeReview],
-      })
-    })
+    const { hostApi } = makeStoreHost(() => installedData(installedPage(45)))
     renderPage(hostApi)
-    await screen.findByRole('heading', { name: 'code-review' })
+    await screen.findByRole('heading', { name: 'skill-00' })
 
     const pageInput = screen.getByRole('spinbutton', { name: 'Page number' })
     await user.clear(pageInput)
     await user.type(pageInput, '3{Enter}')
-    await screen.findByRole('heading', { name: 'second-page' })
+    await screen.findByRole('heading', { name: 'skill-40' })
 
-    const last = paramsOf(calls[calls.length - 1])
-    expect(last.page).toBe(3)
-    expect(last.snapshot).toBe('snap-1')
+    expect(pageNumber()).toBe('3')
   })
 
   it('retains the selected installed Agent after visiting the market', async () => {
     const user = userEvent.setup()
-    const { hostApi, calls } = makeStoreHost()
+    const { hostApi, calls } = makeStoreHost((input) => {
+      const params = wireParamsOf(input)
+      return params.scope === 'market' ? marketData() : installedData(codeReviewList)
+    })
     renderPage(hostApi)
     await screen.findByRole('heading', { name: 'code-review' })
 
     await user.hover(screen.getByRole('button', { name: '我的 Power' }))
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'codex' }))
-    await waitFor(() => expect(paramsOf(calls[calls.length - 1]).agent).toBe('codex'))
+    await waitFor(() => expect(wireParamsOf(calls[calls.length - 1]).agent).toBe('codex'))
 
     await user.click(screen.getByRole('button', { name: 'Power 市场' }))
-    await waitFor(() => expect(paramsOf(calls[calls.length - 1]).scope).toBe('market'))
+    await waitFor(() => expect(wireParamsOf(calls[calls.length - 1]).scope).toBe('market'))
 
     await user.click(screen.getByRole('button', { name: '我的 Power' }))
     await waitFor(() => {
-      const last = paramsOf(calls[calls.length - 1])
+      const last = wireParamsOf(calls[calls.length - 1])
       expect(last.scope).toBe('installed')
       expect(last.agent).toBe('codex')
     })
@@ -273,127 +274,97 @@ describe('AgentHubPage', () => {
 
   it('clears tags and resets the page when selecting the plugin type', async () => {
     const user = userEvent.setup()
-    const { hostApi, calls } = makeStoreHost((input) => {
-      const params = paramsOf(input)
-      return readyResult({
-        page: params.page,
-        total: 40,
-        nextPage: params.page === 1 ? 2 : undefined,
-        facets: { agents: [], tags: ['alpha'] },
-        items: [params.type === 'plugin' ? pluginSeries : params.page === 2 ? secondPageSkill : codeReview],
-      })
-    })
+    const list = JSON.stringify([
+      ...Array.from({ length: 25 }, (_, index) => ({
+        agent: 'bibit',
+        type: 'skill',
+        name: `skill-${String(index).padStart(2, '0')}`,
+        version: 'v1.0.0',
+        description: '',
+        tags: ['alpha'],
+      })),
+      { agent: 'bibit', type: 'plugin', name: 'scan-guard', version: 'v1.0.0', description: '', tags: [] },
+    ])
+    const { hostApi } = makeStoreHost(() => installedData(list))
     renderPage(hostApi)
-    await screen.findByRole('heading', { name: 'code-review' })
+    await screen.findByRole('heading', { name: 'skill-00' })
 
     await user.click(screen.getByRole('button', { name: 'alpha' }))
-    await waitFor(() => expect(paramsOf(calls[calls.length - 1]).tags).toEqual(['alpha']))
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'alpha' }).getAttribute('aria-pressed')).toBe('true')
+    )
 
     await user.click(screen.getByRole('button', { name: 'Next page' }))
-    await screen.findByRole('heading', { name: 'second-page' })
+    await screen.findByRole('heading', { name: 'skill-20' })
 
     await user.click(screen.getByRole('button', { name: 'plugin' }))
-
-    await waitFor(() => {
-      const last = paramsOf(calls[calls.length - 1])
-      expect(last.type).toBe('plugin')
-      expect(last.tags).toEqual([])
-      expect(last.page).toBe(1)
-      expect('snapshot' in last).toBe(false)
-    })
     await screen.findByRole('heading', { name: 'scan-guard' })
+
+    expect(pageNumber()).toBe('1')
+    expect(screen.getByRole('button', { name: 'plugin' }).getAttribute('aria-pressed')).toBe('true')
   })
 
-  it('sends sorted OR tags when multiple tags are selected', async () => {
+  it('selects tags in sorted OR order', async () => {
     const user = userEvent.setup()
-    const { hostApi, calls } = makeStoreHost(() =>
-      readyResult({ facets: { agents: [], tags: ['alpha', 'beta', 'gamma'] } })
-    )
+    const list = JSON.stringify([
+      {
+        agent: 'bibit',
+        type: 'skill',
+        name: 'code-review',
+        version: 'v1.0.0',
+        description: '',
+        tags: ['alpha', 'beta', 'gamma'],
+      },
+    ])
+    const { hostApi } = makeStoreHost(() => installedData(list))
     renderPage(hostApi)
     await screen.findByRole('heading', { name: 'code-review' })
 
     await user.click(screen.getByRole('button', { name: 'beta' }))
-    await waitFor(() => expect(screen.getByRole('button', { name: 'alpha' })).toBeTruthy())
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'beta' }).getAttribute('aria-pressed')).toBe('true')
+    )
     await user.click(screen.getByRole('button', { name: 'alpha' }))
 
-    await waitFor(() => expect(paramsOf(calls[calls.length - 1]).tags).toEqual(['alpha', 'beta']))
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'alpha' }).getAttribute('aria-pressed')).toBe('true')
+      expect(screen.getByRole('button', { name: 'beta' }).getAttribute('aria-pressed')).toBe('true')
+    })
   })
 
-  it('sends page 2 with the current snapshot when Next is pressed', async () => {
+  it('resets to page 1 and drops the snapshot on reset_required', async () => {
     const user = userEvent.setup()
-    const { hostApi, calls } = makeStoreHost((input) => {
-      const params = paramsOf(input)
-      return readyResult({
-        page: params.page,
-        total: 40,
-        nextPage: params.page === 1 ? 2 : undefined,
-        items: [params.page === 2 ? secondPageSkill : codeReview],
-      })
+    const snapshotA = await sha256(marketCatalog(25))
+    const catalogB = marketCatalog(25, true)
+    const snapshotB = await sha256(catalogB)
+    const { hostApi } = makeStoreHost((input) => {
+      const params = wireParamsOf(input)
+      if (params.scope === 'installed') return installedData(codeReviewList)
+      if (params.knownSnapshot === snapshotA) {
+        return { scope: 'market', status: 'data', snapshot: snapshotB, catalogJson: catalogB }
+      }
+      return { scope: 'market', status: 'data', snapshot: snapshotA, catalogJson: marketCatalog(25) }
     })
     renderPage(hostApi)
     await screen.findByRole('heading', { name: 'code-review' })
 
-    await user.click(screen.getByRole('button', { name: 'Next page' }))
-    await screen.findByRole('heading', { name: 'second-page' })
-
-    await waitFor(() => {
-      const last = paramsOf(calls[calls.length - 1])
-      expect(last.page).toBe(2)
-      expect(last.snapshot).toBe('snap-1')
-    })
-  })
-
-  it('triggers a fresh page 1 request without a snapshot on reset_required', async () => {
-    const user = userEvent.setup()
-    const { hostApi, calls } = makeStoreHost((input) => {
-      const params = paramsOf(input)
-      if (params.page === 2) return { status: 'reset_required', reason: 'snapshot_changed' }
-      return readyResult({ total: 40, nextPage: 2 })
-    })
-    renderPage(hostApi)
-    await screen.findByRole('heading', { name: 'code-review' })
+    await user.click(screen.getByRole('button', { name: 'Power 市场' }))
+    await screen.findByRole('heading', { name: 'market-00' })
 
     await user.click(screen.getByRole('button', { name: 'Next page' }))
 
-    await waitFor(() => {
-      const last = paramsOf(calls[calls.length - 1])
-      expect(last.page).toBe(1)
-      expect('snapshot' in last).toBe(false)
-    })
-    await screen.findByRole('heading', { name: 'code-review' })
+    await waitFor(() => expect(pageNumber()).toBe('1'))
+    await screen.findByRole('heading', { name: 'market-00' })
   })
 
-  it('treats page-1 reset_required as an incompatible service error', async () => {
-    const { hostApi } = makeStoreHost(() => ({
-      status: 'reset_required',
-      reason: 'snapshot_changed',
-    }))
+  it('maps an invalid wire response to the incompatible fallback', async () => {
+    const { hostApi } = makeStoreHost(() => ({ status: 'reset_required', reason: 'snapshot_changed' }))
     renderPage(hostApi)
 
     expect(
       await screen.findByText('Power catalog service is incompatible with this plugin.')
     ).toBeTruthy()
     expect(screen.queryByText('Loading Powers…')).toBeNull()
-  })
-
-  it('renders warnings alongside valid cards', async () => {
-    const { hostApi } = makeStoreHost(() =>
-      readyResult({
-        warnings: [
-          {
-            code: 'installed-agent-unavailable',
-            agent: 'nova',
-            message: 'Some installed Powers for this agent are temporarily unavailable.',
-          },
-        ],
-      })
-    )
-    renderPage(hostApi)
-
-    await screen.findByRole('heading', { name: 'code-review' })
-    expect(
-      screen.getByText('Some installed Powers for this agent are temporarily unavailable.')
-    ).toBeTruthy()
   })
 
   it.each([
@@ -493,28 +464,26 @@ describe('AgentHubPage', () => {
 
   it('never lets a late older response replace a newer filter response', async () => {
     const user = userEvent.setup()
-    const resolvers: Array<(value: ReadyListPowersResult) => void> = []
-    const { hostApi, calls } = makeStoreHost(
-      () => new Promise<ReadyListPowersResult>((resolve) => resolvers.push(resolve))
-    )
+    const resolvers: Array<(value: unknown) => void> = []
+    const { hostApi, calls } = makeStoreHost(() => new Promise((resolve) => resolvers.push(resolve)))
     renderPage(hostApi)
 
     await waitFor(() => expect(calls).toHaveLength(1))
     await user.click(screen.getByRole('button', { name: 'Power 市场' }))
     await waitFor(() => expect(calls).toHaveLength(2))
 
-    resolvers[1](readyResult({ items: [marketSeries], facets: { agents: [], tags: [] } }))
+    resolvers[1](await marketData())
     await screen.findByRole('heading', { name: 'market-translate' })
 
-    resolvers[0](readyResult({ items: [staleSeries] }))
+    resolvers[0](installedData(codeReviewList))
 
-    await waitFor(() => expect(screen.queryByRole('heading', { name: 'stale-skill' })).toBeNull())
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'code-review' })).toBeNull())
     expect(screen.getByRole('heading', { name: 'market-translate' })).toBeTruthy()
   })
 
   it('renders the fixed installed Agent menu with bibit, codex, and claude-code', async () => {
     const user = userEvent.setup()
-    const { hostApi } = makeStoreHost(() => readyResult({ items: [], total: 0 }))
+    const { hostApi } = makeStoreHost(() => installedData('[]'))
     renderPage(hostApi)
     await screen.findByText('No Powers are available.')
 

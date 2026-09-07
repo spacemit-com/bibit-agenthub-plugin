@@ -7,7 +7,6 @@ import {
   parseListPowersResult,
   parsePowersWireInput,
   parsePowersWireResult,
-  toListPowersParams,
   type ListPowersInput,
   type ReadyListPowersResult,
 } from './contracts'
@@ -323,60 +322,6 @@ describe('parseListPowersInput', () => {
       page: 1,
       pageSize: 20,
     })
-  })
-})
-
-describe('toListPowersParams', () => {
-  it('projects a market input to JSON-safe params and omits agent/snapshot', () => {
-    const params = toListPowersParams({
-      scope: 'market',
-      type: 'skill',
-      tags: ['quality'],
-      page: 1,
-      pageSize: 20,
-    })
-    expect(params).toEqual({
-      scope: 'market',
-      type: 'skill',
-      tags: ['quality'],
-      page: 1,
-      pageSize: 20,
-    })
-    expect(Object.keys(params).sort()).toEqual(['page', 'pageSize', 'scope', 'tags', 'type'])
-  })
-
-  it('projects an installed page-2 input with agent and snapshot', () => {
-    const params = toListPowersParams({
-      scope: 'installed',
-      agent: 'bibit',
-      type: 'skill',
-      tags: ['quality'],
-      page: 2,
-      pageSize: 20,
-      snapshot: 'catalog-1',
-    })
-    expect(params).toEqual({
-      scope: 'installed',
-      agent: 'bibit',
-      type: 'skill',
-      tags: ['quality'],
-      page: 2,
-      pageSize: 20,
-      snapshot: 'catalog-1',
-    })
-  })
-
-  it('clones tags so later input mutation does not affect params', () => {
-    const input: ListPowersInput = {
-      scope: 'market',
-      type: 'skill',
-      tags: ['a'],
-      page: 1,
-      pageSize: 20,
-    }
-    const params = toListPowersParams(input)
-    input.tags.push('b')
-    expect(params.tags).toEqual(['a'])
   })
 })
 

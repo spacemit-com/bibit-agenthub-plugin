@@ -1,200 +1,157 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { ListPowersInput, ListPowersResult } from '../src/api/contracts'
-import type { PowerRecord } from '../src/api/apm'
+import type { FeatureServiceApiV1, FeatureServiceRequestV1 } from '@bibit/feature-sdk'
+import type { ListPowersInput } from '../src/api/contracts'
+import { listPowers } from '../src/api/powerCatalogClient'
 import {
   handleStoreRequest,
-  type ApcCatalogRunner,
-  type ApmRunner,
+  type InstalledSource,
+  type MarketSource,
 } from './store'
 
-function marketQuery(overrides: Partial<ListPowersInput> = {}): ListPowersInput {
-  return { scope: 'market', type: 'skill', tags: [], page: 1, pageSize: 20, ...overrides }
-}
+const marketWire = { scope: 'market' }
+const installedWire = { scope: 'installed', agent: 'bibit' }
 
-function installedParams(overrides: Record<string, unknown> = {}): Record<string, unknown> {
-  return {
-    scope: 'installed',
-    agent: 'bibit',
-    type: 'skill',
-    tags: [],
-    page: 1,
-    pageSize: 20,
-    ...overrides,
-  }
-}
-
-const okRunner: ApmRunner = async () => ({ status: 'ok', records: [] })
-
-const okApcRunner: ApcCatalogRunner = async () => ({
-  status: 'ok',
-  snapshot: 'catalog-sha-1',
-  records: [],
+const okInstalled: InstalledSource = async () => ({ scope: 'installed', status: 'data', listJson: '[]' })
+const okMarket: MarketSource = async () => ({
+  scope: 'market',
+  status: 'data',
+  snapshot: 'sha-1',
+  catalogJson: '{}',
 })
 
-const marketRecords: PowerRecord[] = [
-  { type: 'skill', name: 'transcribe', version: 'v1.3.0', description: 'Transcribes audio.', tags: ['transcribe'] },
-  { type: 'skill', name: 'translate', version: 'v2.0.0', description: 'Translates text.', tags: ['translate', 'writing'] },
-  { type: 'plugin', name: 'cache-warm', version: 'v1.0.0', description: 'Warms caches.', tags: ['perf'] },
-]
+function marketQuery(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return { ...marketWire, ...overrides }
+}
 
 describe('handleStoreRequest', () => {
   it('returns default settings for settings.get.v1', async () => {
     await expect(
-      handleStoreRequest({ operationId: 'settings.get.v1', params: {} }, okRunner, okApcRunner)
+      handleStoreRequest({ operationId: 'settings.get.v1', params: {} }, okInstalled, okMarket, new AbortController().signal)
     ).resolves.toEqual({ showExperimental: false, refreshMinutes: 15 })
   })
 
   it('echoes settings.update.v1 and persists the change', async () => {
     const next = { showExperimental: true, refreshMinutes: 30 }
     await expect(
-      handleStoreRequest({ operationId: 'settings.update.v1', params: next }, okRunner, okApcRunner)
+      handleStoreRequest({ operationId: 'settings.update.v1', params: next }, okInstalled, okMarket, new AbortController().signal)
     ).resolves.toEqual(next)
     await expect(
-      handleStoreRequest({ operationId: 'settings.get.v1', params: {} }, okRunner, okApcRunner)
+      handleStoreRequest({ operationId: 'settings.get.v1', params: {} }, okInstalled, okMarket, new AbortController().signal)
     ).resolves.toEqual(next)
   })
 
-  it('serves the market scope from the APC catalog without invoking apm', async () => {
-    const runApm = vi.fn<ApmRunner>(async () => ({ status: 'ok', records: [] }))
-    const runApcCatalog = vi.fn<ApcCatalogRunner>(async () => ({
-      status: 'ok',
-      snapshot: 'catalog-sha-1',
-      records: marketRecords,
-    }))
+  it('passes the market wire through to the source and returns the raw envelope', async () => {
+    const readMarket = vi.fn<MarketSource>(okMarket)
     const result = await handleStoreRequest(
-      { operationId: 'powers.list.v1', params: marketQuery() },
-      runApm,
-      runApcCatalog,
+      { operationId: 'powers.list.v1', params: marketWire },
+      okInstalled,
+      readMarket,
+      new AbortController().signal
     )
-    expect(result).toMatchObject({
-      status: 'ready',
-      snapshot: 'catalog-sha-1',
-      items: [{ name: 'transcribe' }, { name: 'translate' }],
-      total: 2,
-      facets: { agents: [], tags: ['transcribe', 'translate', 'writing'] },
-    })
-    expect(runApcCatalog).toHaveBeenCalledTimes(1)
-    expect(runApm).not.toHaveBeenCalled()
+    expect(readMarket).toHaveBeenCalledWith(undefined, expect.any(AbortSignal))
+    expect(result).toEqual({ scope: 'market', status: 'data', snapshot: 'sha-1', catalogJson: '{}' })
   })
 
-  it('filters the APC catalog by type on each market request', async () => {
-    const runApcCatalog = vi.fn<ApcCatalogRunner>(async () => ({
-      status: 'ok',
-      snapshot: 'catalog-sha-1',
-      records: marketRecords,
-    }))
+  it('passes the installed wire through to the source with its agent', async () => {
+    const readInstalled = vi.fn<InstalledSource>(okInstalled)
     const result = await handleStoreRequest(
-      { operationId: 'powers.list.v1', params: marketQuery({ type: 'plugin' }) },
-      okRunner,
-      runApcCatalog,
+      { operationId: 'powers.list.v1', params: installedWire },
+      readInstalled,
+      okMarket,
+      new AbortController().signal
     )
-    expect(result).toMatchObject({
-      status: 'ready',
-      items: [{ name: 'cache-warm' }],
-      total: 1,
-      facets: { agents: [], tags: ['perf'] },
-    })
-  })
-
-  it('re-fetches the APC catalog on every market request (no caching)', async () => {
-    const runApcCatalog = vi.fn<ApcCatalogRunner>(async () => ({
-      status: 'ok',
-      snapshot: 'catalog-sha-1',
-      records: marketRecords,
-    }))
-    await handleStoreRequest(
-      { operationId: 'powers.list.v1', params: marketQuery() },
-      okRunner,
-      runApcCatalog,
-    )
-    await handleStoreRequest(
-      { operationId: 'powers.list.v1', params: marketQuery({ page: 2, snapshot: 'catalog-sha-1' }) },
-      okRunner,
-      runApcCatalog,
-    )
-    expect(runApcCatalog).toHaveBeenCalledTimes(2)
-  })
-
-  it('maps APC catalog unavailability to a retryable unavailable error', async () => {
-    const runApcCatalog: ApcCatalogRunner = async () => ({ status: 'unavailable' })
-    await expect(
-      handleStoreRequest(
-        { operationId: 'powers.list.v1', params: marketQuery() },
-        okRunner,
-        runApcCatalog,
-      )
-    ).rejects.toMatchObject({ code: 'unavailable', retryable: true, message: 'APC catalog is unavailable' })
-  })
-
-  it('invokes apm for the selected agent and renders its description/tags without invoking APC', async () => {
-    const runApm = vi.fn<ApmRunner>(async (agent) => ({
-      status: 'ok',
-      records: [
-        {
-          agent,
-          type: 'skill',
-          name: 'demo',
-          version: 'v1.0.0',
-          description: 'a demo skill',
-          tags: ['alpha', 'beta'],
-        },
-      ],
-    }))
-    const runApcCatalog = vi.fn<ApcCatalogRunner>(okApcRunner)
-    const result = await handleStoreRequest(
-      { operationId: 'powers.list.v1', params: installedParams() },
-      runApm,
-      runApcCatalog,
-    )
-    expect(runApm).toHaveBeenCalledWith('bibit')
-    expect(runApcCatalog).not.toHaveBeenCalled()
-    expect(result).toMatchObject({
-      status: 'ready',
-      total: 1,
-      items: [{ name: 'demo' }],
-      facets: { agents: [], tags: ['alpha', 'beta'] },
-    })
-    const ready = result as ListPowersResult
-    if (ready.status !== 'ready') return
-    expect(ready.items[0].versions[0]).toEqual({
-      version: 'v1.0.0',
-      description: 'a demo skill',
-      tags: ['alpha', 'beta'],
-    })
-  })
-
-  it('maps apm unavailability to a retryable unavailable error', async () => {
-    const runApm: ApmRunner = async () => ({ status: 'unavailable' })
-    await expect(
-      handleStoreRequest(
-        { operationId: 'powers.list.v1', params: installedParams() },
-        runApm,
-        okApcRunner,
-      )
-    ).rejects.toMatchObject({ code: 'unavailable', retryable: true })
-  })
-
-  it('renders an empty ready result when apm reports not-installed', async () => {
-    const runApm: ApmRunner = async () => ({ status: 'not-installed' })
-    const result = await handleStoreRequest(
-      { operationId: 'powers.list.v1', params: installedParams() },
-      runApm,
-      okApcRunner,
-    )
-    expect(result).toMatchObject({ status: 'ready', items: [], total: 0, facets: { agents: [], tags: [] } })
+    expect(readInstalled).toHaveBeenCalledWith('bibit', expect.any(AbortSignal))
+    expect(result).toEqual({ scope: 'installed', status: 'data', listJson: '[]' })
   })
 
   it('rejects unknown operations as incompatible', async () => {
     await expect(
-      handleStoreRequest({ operationId: 'nope.v1', params: {} }, okRunner, okApcRunner)
+      handleStoreRequest({ operationId: 'nope.v1', params: {} }, okInstalled, okMarket, new AbortController().signal)
     ).rejects.toMatchObject({ code: 'incompatible' })
   })
 
-  it('rejects installed requests without an agent', async () => {
-    const params = { ...installedParams() }
-    delete params.agent
+  it('rejects an installed wire without an agent', async () => {
     await expect(
-      handleStoreRequest({ operationId: 'powers.list.v1', params }, okRunner, okApcRunner)
-    ).rejects.toThrow(/agent is required/)
+      handleStoreRequest({ operationId: 'powers.list.v1', params: { scope: 'installed' } }, okInstalled, okMarket, new AbortController().signal)
+    ).rejects.toThrow(/Invalid powers\.list\.v1/)
+  })
+
+  it('rejects a wire result outside the closed union', async () => {
+    const readMarket: MarketSource = async () => ({ scope: 'market', status: 'weird' }) as never
+    await expect(
+      handleStoreRequest({ operationId: 'powers.list.v1', params: marketWire }, okInstalled, readMarket, new AbortController().signal)
+    ).rejects.toThrow(/Invalid powers\.list\.v1/)
+  })
+})
+
+describe('raw envelope + listPowers end-to-end', () => {
+  it('paginates 25 series to 20 items and exposes the page-two-only tag facet', async () => {
+    const items = Array.from({ length: 25 }, (_, index) => ({
+      name: `skill-${index}`,
+      version: 'v1.0.0',
+      description: '',
+      tags: index === 20 ? ['only-on-page-two'] : [],
+    }))
+    const catalogJson = JSON.stringify({ skills: { items } })
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(catalogJson))
+    const snapshot = [...new Uint8Array(digest)]
+      .map((byte) => byte.toString(16).padStart(2, '0'))
+      .join('')
+
+    const readMarket: MarketSource = async () => ({ scope: 'market', status: 'data', snapshot, catalogJson })
+
+    const service: FeatureServiceApiV1<'store'> = {
+      async request<TResult>(input: FeatureServiceRequestV1<'store'>): Promise<TResult> {
+        return handleStoreRequest(
+          { operationId: input.operationId, params: input.params },
+          okInstalled,
+          readMarket,
+          input.signal ?? new AbortController().signal
+        ) as TResult
+      },
+    }
+
+    const input: ListPowersInput = { scope: 'market', type: 'skill', tags: [], page: 1, pageSize: 20 }
+    const result = await listPowers(service, input, new AbortController().signal)
+
+    expect(result.status).toBe('ready')
+    if (result.status === 'ready') {
+      expect(result.items).toHaveLength(20)
+      expect(result.facets.tags).toContain('only-on-page-two')
+    }
+  })
+
+  it('serves not_modified from the shared client cache across two requests', async () => {
+    const catalogJson = JSON.stringify({ skills: { items: [{ name: 'demo', version: 'v1.0.0' }] } })
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(catalogJson))
+    const snapshot = [...new Uint8Array(digest)]
+      .map((byte) => byte.toString(16).padStart(2, '0'))
+      .join('')
+
+    const readMarket = vi.fn<MarketSource>(async (knownSnapshot) =>
+      knownSnapshot === snapshot
+        ? { scope: 'market', status: 'not_modified', snapshot }
+        : { scope: 'market', status: 'data', snapshot, catalogJson }
+    )
+
+    const service: FeatureServiceApiV1<'store'> = {
+      async request<TResult>(input: FeatureServiceRequestV1<'store'>): Promise<TResult> {
+        return handleStoreRequest(
+          { operationId: input.operationId, params: input.params },
+          okInstalled,
+          readMarket,
+          input.signal ?? new AbortController().signal
+        ) as TResult
+      },
+    }
+
+    const input: ListPowersInput = { scope: 'market', type: 'skill', tags: [], page: 1, pageSize: 20 }
+    const first = await listPowers(service, input, new AbortController().signal)
+    const second = await listPowers(service, input, new AbortController().signal)
+
+    expect(first.status).toBe('ready')
+    expect(second.status).toBe('ready')
+    expect(readMarket).toHaveBeenNthCalledWith(1, undefined, expect.any(AbortSignal))
+    expect(readMarket).toHaveBeenNthCalledWith(2, snapshot, expect.any(AbortSignal))
   })
 })

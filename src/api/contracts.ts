@@ -451,7 +451,3 @@ export function parsePowersWireResult(value: unknown): PowersWireResult {
   }
   fail(WIRE_RESULT_PREFIX, 'invalid status')
 }
-
-export function toListPowersParams(input: ListPowersInput): Record<string, unknown> {
-  return parseListPowersInput(input) as unknown as Record<string, unknown>
-}

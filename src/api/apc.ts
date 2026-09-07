@@ -5,7 +5,8 @@ import type { PowerRecord } from './apm'
  * Parser for the APC public catalog (`GET /resources`, after following the CDN
  * redirect). APC owns its output schema, so unknown fields are tolerated; only the
  * fields the plugin consumes are required and normalized into `PowerRecord`s. This
- * module is pure (no network) and is consumed by the dev-only store transport.
+ * module is pure (no network): it parses the raw catalog text carried by the
+ * `powers.list.v1` wire result in `powerCatalogClient`.
  */
 
 const GROUP_TO_TYPE: Record<string, PowerType> = {
