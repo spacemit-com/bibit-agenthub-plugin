@@ -61,8 +61,22 @@ export type ListPowersResult =
 
 export type ReadyListPowersResult = Extract<ListPowersResult, { status: 'ready' }>
 
+// Raw wire envelope between the frontend data layer and the stdio provider. The
+// provider carries original JSON text (no business parsing), so these fields are
+// closed unions validated at the API boundary; business entries stay unparsed here.
+export type PowersWireInput =
+  | { scope: 'installed'; agent: string }
+  | { scope: 'market'; knownSnapshot?: string }
+
+export type PowersWireResult =
+  | { scope: 'installed'; status: 'data'; listJson: string }
+  | { scope: 'market'; status: 'data'; snapshot: string; catalogJson: string }
+  | { scope: 'market'; status: 'not_modified'; snapshot: string }
+
 const RESULT_PREFIX = 'Invalid powers.list.v1 result:'
 const REQUEST_PREFIX = 'Invalid powers.list.v1 request:'
+const WIRE_REQUEST_PREFIX = 'Invalid powers.list.v1 wire request:'
+const WIRE_RESULT_PREFIX = 'Invalid powers.list.v1 wire result:'
 
 const VERSION_PATTERN = /^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/
 
@@ -381,6 +395,61 @@ export function parseListPowersInput(value: unknown): ListPowersInput {
     ...(agent !== undefined ? { agent } : {}),
     ...(snapshot !== undefined ? { snapshot } : {}),
   }
+}
+
+const WIRE_INSTALLED_KEYS = new Set(['scope', 'agent'])
+const WIRE_MARKET_INPUT_KEYS = new Set(['scope', 'knownSnapshot'])
+const WIRE_INSTALLED_RESULT_KEYS = new Set(['scope', 'status', 'listJson'])
+const WIRE_MARKET_DATA_KEYS = new Set(['scope', 'status', 'snapshot', 'catalogJson'])
+const WIRE_MARKET_NOT_MODIFIED_KEYS = new Set(['scope', 'status', 'snapshot'])
+
+export function parsePowersWireInput(value: unknown): PowersWireInput {
+  const obj = assertObject(value, WIRE_REQUEST_PREFIX)
+  const scope = obj.scope
+  if (scope === 'installed') {
+    assertClosedKeys(obj, WIRE_INSTALLED_KEYS, WIRE_REQUEST_PREFIX)
+    return { scope: 'installed', agent: assertNonEmptyString(obj.agent, WIRE_REQUEST_PREFIX, 'agent') }
+  }
+  if (scope !== 'market') {
+    fail(WIRE_REQUEST_PREFIX, 'invalid scope')
+  }
+  assertClosedKeys(obj, WIRE_MARKET_INPUT_KEYS, WIRE_REQUEST_PREFIX)
+  if (Object.prototype.hasOwnProperty.call(obj, 'knownSnapshot')) {
+    return {
+      scope: 'market',
+      knownSnapshot: assertNonEmptyString(obj.knownSnapshot, WIRE_REQUEST_PREFIX, 'knownSnapshot'),
+    }
+  }
+  return { scope: 'market' }
+}
+
+export function parsePowersWireResult(value: unknown): PowersWireResult {
+  const obj = assertObject(value, WIRE_RESULT_PREFIX)
+  const scope = obj.scope
+  if (scope === 'installed') {
+    assertClosedKeys(obj, WIRE_INSTALLED_RESULT_KEYS, WIRE_RESULT_PREFIX)
+    if (obj.status !== 'data') {
+      fail(WIRE_RESULT_PREFIX, 'invalid status')
+    }
+    return { scope: 'installed', status: 'data', listJson: assertString(obj.listJson, WIRE_RESULT_PREFIX, 'listJson') }
+  }
+  if (scope !== 'market') {
+    fail(WIRE_RESULT_PREFIX, 'invalid scope')
+  }
+  if (obj.status === 'data') {
+    assertClosedKeys(obj, WIRE_MARKET_DATA_KEYS, WIRE_RESULT_PREFIX)
+    return {
+      scope: 'market',
+      status: 'data',
+      snapshot: assertNonEmptyString(obj.snapshot, WIRE_RESULT_PREFIX, 'snapshot'),
+      catalogJson: assertString(obj.catalogJson, WIRE_RESULT_PREFIX, 'catalogJson'),
+    }
+  }
+  if (obj.status === 'not_modified') {
+    assertClosedKeys(obj, WIRE_MARKET_NOT_MODIFIED_KEYS, WIRE_RESULT_PREFIX)
+    return { scope: 'market', status: 'not_modified', snapshot: assertNonEmptyString(obj.snapshot, WIRE_RESULT_PREFIX, 'snapshot') }
+  }
+  fail(WIRE_RESULT_PREFIX, 'invalid status')
 }
 
 export function toListPowersParams(input: ListPowersInput): Record<string, unknown> {

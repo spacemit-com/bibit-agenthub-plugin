@@ -5,6 +5,8 @@ import {
   POWER_TYPES,
   parseListPowersInput,
   parseListPowersResult,
+  parsePowersWireInput,
+  parsePowersWireResult,
   toListPowersParams,
   type ListPowersInput,
   type ReadyListPowersResult,
@@ -375,5 +377,154 @@ describe('toListPowersParams', () => {
     const params = toListPowersParams(input)
     input.tags.push('b')
     expect(params.tags).toEqual(['a'])
+  })
+})
+
+function expectWireRequestError(value: unknown): string {
+  let message = ''
+  try {
+    parsePowersWireInput(value)
+  } catch (error) {
+    expect(error).toBeInstanceOf(Error)
+    message = (error as Error).message
+  }
+  expect(message).toMatch(/^Invalid powers\.list\.v1 wire request:/)
+  return message
+}
+
+function expectWireResultError(value: unknown): string {
+  let message = ''
+  try {
+    parsePowersWireResult(value)
+  } catch (error) {
+    expect(error).toBeInstanceOf(Error)
+    message = (error as Error).message
+  }
+  expect(message).toMatch(/^Invalid powers\.list\.v1 wire result:/)
+  return message
+}
+
+describe('parsePowersWireInput', () => {
+  it('accepts a market input with a knownSnapshot', () => {
+    expect(parsePowersWireInput({ scope: 'market', knownSnapshot: 'abc' })).toEqual({
+      scope: 'market',
+      knownSnapshot: 'abc',
+    })
+  })
+
+  it('accepts a market input without a knownSnapshot', () => {
+    expect(parsePowersWireInput({ scope: 'market' })).toEqual({ scope: 'market' })
+  })
+
+  it('accepts an installed input with a non-empty agent', () => {
+    expect(parsePowersWireInput({ scope: 'installed', agent: 'bibit' })).toEqual({
+      scope: 'installed',
+      agent: 'bibit',
+    })
+  })
+
+  it('rejects legacy page projection fields on the wire', () => {
+    expect(() => parsePowersWireInput({ scope: 'market', page: 2 })).toThrow()
+  })
+
+  it('rejects an empty agent for installed scope', () => {
+    expect(() => parsePowersWireInput({ scope: 'installed', agent: '' })).toThrow()
+  })
+
+  it('rejects an agent field on market scope', () => {
+    expect(() => parsePowersWireInput({ scope: 'market', agent: 'bibit' })).toThrow()
+  })
+
+  it('rejects a knownSnapshot field on installed scope', () => {
+    expect(() => parsePowersWireInput({ scope: 'installed', agent: 'bibit', knownSnapshot: 'abc' })).toThrow()
+  })
+
+  it('rejects an empty knownSnapshot when present', () => {
+    expect(() => parsePowersWireInput({ scope: 'market', knownSnapshot: '' })).toThrow()
+  })
+
+  it('rejects an unknown scope', () => {
+    expect(() => parsePowersWireInput({ scope: 'nope' })).toThrow()
+  })
+
+  it('rejects null, arrays and primitives', () => {
+    expectWireRequestError(null)
+    expectWireRequestError([{ scope: 'market' }])
+    expectWireRequestError('market')
+  })
+})
+
+describe('parsePowersWireResult', () => {
+  it('parses an installed data result', () => {
+    expect(parsePowersWireResult({ scope: 'installed', status: 'data', listJson: '[]' })).toEqual({
+      scope: 'installed',
+      status: 'data',
+      listJson: '[]',
+    })
+  })
+
+  it('parses a market data result with raw JSON text', () => {
+    expect(
+      parsePowersWireResult({
+        scope: 'market',
+        status: 'data',
+        snapshot: 'abc',
+        catalogJson: '{"skills":{"items":[]}}',
+      })
+    ).toEqual({
+      scope: 'market',
+      status: 'data',
+      snapshot: 'abc',
+      catalogJson: '{"skills":{"items":[]}}',
+    })
+  })
+
+  it('parses a market not_modified result', () => {
+    expect(parsePowersWireResult({ scope: 'market', status: 'not_modified', snapshot: 'abc' })).toEqual({
+      scope: 'market',
+      status: 'not_modified',
+      snapshot: 'abc',
+    })
+  })
+
+  it('rejects the legacy rich result shape', () => {
+    expect(() => parsePowersWireResult({ status: 'ready', items: [] })).toThrow()
+  })
+
+  it('rejects not_modified with a catalogJson field', () => {
+    expect(() =>
+      parsePowersWireResult({ scope: 'market', status: 'not_modified', snapshot: 'abc', catalogJson: '{}' })
+    ).toThrow()
+  })
+
+  it('rejects data with a missing or empty snapshot', () => {
+    expect(() => parsePowersWireResult({ scope: 'market', status: 'data', catalogJson: '{}' })).toThrow()
+    expect(() =>
+      parsePowersWireResult({ scope: 'market', status: 'data', snapshot: '', catalogJson: '{}' })
+    ).toThrow()
+  })
+
+  it('rejects an installed result with an unexpected snapshot field', () => {
+    expect(() =>
+      parsePowersWireResult({ scope: 'installed', status: 'data', listJson: '[]', snapshot: 'abc' })
+    ).toThrow()
+  })
+
+  it('rejects a non-string JSON text field', () => {
+    expect(() => parsePowersWireResult({ scope: 'installed', status: 'data', listJson: 42 })).toThrow()
+    expect(() =>
+      parsePowersWireResult({ scope: 'market', status: 'data', snapshot: 'abc', catalogJson: {} })
+    ).toThrow()
+  })
+
+  it('rejects an unknown scope or status', () => {
+    expect(() => parsePowersWireResult({ scope: 'nope', status: 'data', listJson: '[]' })).toThrow()
+    expect(() => parsePowersWireResult({ scope: 'market', status: 'reset_required' })).toThrow()
+  })
+
+  it('rejects null, arrays and primitives', () => {
+    expectWireResultError(null)
+    expectWireResultError([])
+    expectWireResultError('ready')
   })
 })
