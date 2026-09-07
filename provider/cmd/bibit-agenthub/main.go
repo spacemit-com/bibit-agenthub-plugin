@@ -13,9 +13,11 @@ import (
 func main() {
 	args := os.Args[1:]
 	if len(args) == 1 && args[0] == "--self-test" {
-		// Self-test is wired in a later task; never report a false pass.
-		fmt.Fprintln(os.Stderr, "self-test: not implemented")
-		os.Exit(1)
+		if err := provider.SelfTest(); err != nil {
+			fmt.Fprintln(os.Stderr, "self-test:", err)
+			os.Exit(1)
+		}
+		return
 	}
 	if len(args) >= 1 && args[0] == "provider" {
 		runProvider(args[1:])
