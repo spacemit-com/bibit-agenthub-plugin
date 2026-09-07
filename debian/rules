@@ -36,3 +36,12 @@ override_dh_strip:
 	@# Pure Go binary is already stripped at build time (-ldflags="-s -w");
 	@# skip dh_strip so a wrong-architecture strip is never invoked.
 	@true
+
+override_dh_makeshlibs:
+	@# CGO_ENABLED=0 binary is fully static; skip shlibs scan so a
+	@# wrong-architecture objdump is never invoked.
+	@true
+
+override_dh_shlibdeps:
+	@# Static binary has no shared library dependencies to compute.
+	@true
