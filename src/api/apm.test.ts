@@ -25,23 +25,26 @@ function query(overrides: Partial<ListPowersInput> = {}): ListPowersInput {
 }
 
 describe('parseApmInstalledList', () => {
-  it('parses an identity-only record and tolerates unknown fields', () => {
+  it('parses a record with description and tags, tolerating unknown fields', () => {
     const parsed = parseApmInstalledList([
-      { agent: 'bibit', type: 'skill', name: 'a', version: 'v1.0.0', extra: true },
+      { agent: 'bibit', type: 'skill', name: 'a', version: 'v1.0.0', description: 'd', tags: ['x'], extra: true },
     ])
-    expect(parsed).toEqual([{ agent: 'bibit', type: 'skill', name: 'a', version: 'v1.0.0' }])
+    expect(parsed).toEqual([
+      { agent: 'bibit', type: 'skill', name: 'a', version: 'v1.0.0', description: 'd', tags: ['x'] },
+    ])
   })
 
-  it('tolerates optional metadata fields that the current apm list no longer emits', () => {
+  it('parses description and tags emitted by list --json and normalizes empties at build time', () => {
     const parsed = parseApmInstalledList([
       { agent: 'bibit', type: 'skill', name: 'a', version: 'v1.0.0', description: 'd', tags: ['x', 'y'] },
-      { agent: 'bibit', type: 'skill', name: 'b', version: 'v1.0.0' },
+      { agent: 'bibit', type: 'skill', name: 'b', version: 'v1.0.0', description: '', tags: [] },
     ])
     expect(parsed[0]).toEqual({
       agent: 'bibit', type: 'skill', name: 'a', version: 'v1.0.0', description: 'd', tags: ['x', 'y'],
     })
-    expect(parsed[1].description).toBeUndefined()
-    expect(parsed[1].tags).toBeUndefined()
+    expect(parsed[1]).toEqual({
+      agent: 'bibit', type: 'skill', name: 'b', version: 'v1.0.0', description: '', tags: [] },
+    )
   })
 
   it('rejects a non-array', () => {
@@ -90,7 +93,7 @@ describe('buildInstalledPowersResult', () => {
     expect(result.items[0].versions.map((v) => v.version)).toEqual(['v2.0.0', 'v1.5.0', 'v1.0.0'])
   })
 
-  it('normalizes identity-only records to empty description/tags and empty facets', () => {
+  it('normalizes missing metadata to empty description/tags and empty facets', () => {
     const result = buildInstalledPowersResult(query(), [
       record({ agent: 'bibit', type: 'skill', name: 'a', version: 'v1.0.0' }),
     ])

@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-09-07（后续）— list --json 恒带 description/tags，恢复 installed 描述与标签显示
+
+分类：功能变更
+
+用户需求：
+
+`../apm` 合入 ADR-029 后，`apm list --json` 成为完整机器接口：每条记录恒带 `description`（空为 `""`）与 `tags`（空为 `[]`、非 `null`），installed 记录多 `agent`，使前端通过 `list --installed` 批量获取本地资源时能拿到描述与标签；`show` 是 Cloud-only、单 name，覆盖不了本地清单与批量场景。上一轮"身份记录"对齐需要据此反转，恢复 installed 范围 description/tags 与 tag 过滤的展示。
+
+相关文件：
+
+- `src/api/apm.ts`：`APMPowerRecord`/`parseApmInstalledList` 注释改为"list --json 恒带 description/tags"，解析与聚合逻辑不变
+- `vite.config.ts`：注释同步（argv 保持 `apm list --installed --agent=<agent> --json`，不带 `--all`）
+- `src/api/contracts.ts`：`INSTALLED_AGENTS` 注释同步
+- `src/api/apm.test.ts`、`dev/store.test.ts`：installed 样例改回带元数据，补充 description/tags 传递与 `facets.tags` 派生断言
+- `docs/development-and-deployment-guide.md`：§10.4 / §11.2 恢复元数据契约与"切版本同步变化"冒烟说明
+
+解决方案或完成结果：
+
+installed 范围继续按所选 Agent 执行 `apm list --installed --agent=<agent> --json` 并解析记录；`APMPowerRecord.description?/tags?` 保持可选容忍字段，聚合时归一化 `""`/`[]`，正常元数据随 list --json 传入并展示。未安装（exit 1、空 stdout）与空清单（exit 0、`[]`）仍渲染空内容，spawn 失败仍映射可重试 unavailable；market（APC）与 settings 行为不变。
+
+验证结果或限制：
+
+`npm test`、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin` 均通过（exit 0）。协议边界为 `../apm` HEAD `73785da`（ADR-029 生效）；旧版 apm 若在 `--json` 下缺元数据，解析器仍容忍并归一化为空。
+
 ## 2026-09-07 — 对齐 apm list 身份记录契约
 
 分类：功能变更

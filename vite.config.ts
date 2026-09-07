@@ -22,11 +22,10 @@ const APC_INSECURE_TLS = true
 
 function runApmListInstalled(agent: string): Promise<ApmListResult> {
   return new Promise((resolve) => {
-    // Since apm feature-029, `list` output is identity-only and `--all` now means
-    // "expand all versions of a NAMED power" (it errors without a name), so the
-    // metadata-bearing `--all` invocation is gone. A not-installed agent exits 1
-    // with an empty stdout (mapped to `not-installed` below); an installed-but-empty
-    // agent exits 0 with `[]`.
+    // Since apm ADR-029, `list --json` always carries description/tags, and `--all`
+    // now means "expand all versions of a NAMED power" (it errors without a name),
+    // so it is dropped. A not-installed agent exits 1 with an empty stdout (mapped
+    // to `not-installed` below); an installed-but-empty agent exits 0 with `[]`.
     const argv = ['list', '--installed', '--agent=' + agent, '--json']
     const child = spawn('apm', argv, { shell: false, stdio: ['ignore', 'pipe', 'ignore'] })
 

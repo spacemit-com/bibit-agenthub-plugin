@@ -126,10 +126,19 @@ describe('handleStoreRequest', () => {
     ).rejects.toMatchObject({ code: 'unavailable', retryable: true, message: 'APC catalog is unavailable' })
   })
 
-  it('invokes apm for the selected agent and renders its identity-only records without invoking APC', async () => {
+  it('invokes apm for the selected agent and renders its description/tags without invoking APC', async () => {
     const runApm = vi.fn<ApmRunner>(async (agent) => ({
       status: 'ok',
-      records: [{ agent, type: 'skill', name: 'demo', version: 'v1.0.0' }],
+      records: [
+        {
+          agent,
+          type: 'skill',
+          name: 'demo',
+          version: 'v1.0.0',
+          description: 'a demo skill',
+          tags: ['alpha', 'beta'],
+        },
+      ],
     }))
     const runApcCatalog = vi.fn<ApcCatalogRunner>(okApcRunner)
     const result = await handleStoreRequest(
@@ -143,11 +152,15 @@ describe('handleStoreRequest', () => {
       status: 'ready',
       total: 1,
       items: [{ name: 'demo' }],
-      facets: { agents: [], tags: [] },
+      facets: { agents: [], tags: ['alpha', 'beta'] },
     })
     const ready = result as ListPowersResult
     if (ready.status !== 'ready') return
-    expect(ready.items[0].versions[0]).toEqual({ version: 'v1.0.0', description: '', tags: [] })
+    expect(ready.items[0].versions[0]).toEqual({
+      version: 'v1.0.0',
+      description: 'a demo skill',
+      tags: ['alpha', 'beta'],
+    })
   })
 
   it('maps apm unavailability to a retryable unavailable error', async () => {

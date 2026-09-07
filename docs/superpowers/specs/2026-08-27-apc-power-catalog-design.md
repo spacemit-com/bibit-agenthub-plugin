@@ -142,7 +142,7 @@ Feature 必须遵守 Bibit Feature SDK 边界：
 
 > 注：本节写于 2026-08-27，其中的 `--agent=all --all --json` 已被后续实现取代。
 > 实际 dev Store 固定为前端所选 Agent 逐次执行 `apm list --installed --agent=<agent> --json`
-> （不做 `--agent=all` 发现）；apm feature-029 后 list 输出为身份记录、`--all` 需 name，
+> （不做 `--agent=all` 发现）；apm ADR-029 后 `list --json` 恒带 description/tags、`--all` 需 name，
 > 详见 `docs/development-and-deployment-guide.md` §10.4 与 `docs/Changelog.md`。
 
 未来 Store 使用固定 argv 执行：

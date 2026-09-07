@@ -635,7 +635,7 @@ token 由 Bibit 凭据存储提供。不得把 token 写入插件、Manifest、U
 apm list --installed --agent=<selected> --json
 ```
 
-自 apm feature-029 起，`list` 输出为身份记录（每条只含 `agent`、`type`、`name`、`version`），`--all` 改为「对已命名 Cloud Power 展开全部版本」且缺少 name 时直接报错，因此不再携带 `--all`。已安装 Power 的 description/tags 仍持久化在 manifest 中，但 list 不再输出；详情统一由 Cloud-only 的 `apm show <name>` 提供，已安装范围不通过 CLI 读取元数据。
+自 apm ADR-029 起，`list --json` 是完整机器接口：每条记录恒带 `description`（空为 `""`）与 `tags`（空为 `[]`、非 `null`），installed 记录多 `agent`；`--all` 改为「对已命名 Cloud Power 展开全部版本」且缺少 name 时直接报错，因此不再携带 `--all`。list 文本仍身份精简、`search --json` 无 tags、`show` 为 Cloud-only 单对象详情，均不受影响。
 
 前端 Agent 菜单固定为 bibit / codex / claude-code 三个选项（`claude-code` 即 apm 中 Claude 的 id），由插件常量提供，不依赖 `facets.agents` 做发现；每次请求只解析所选 agent 的返回。
 
@@ -647,12 +647,12 @@ interface APMPowerRecord {
   type: PowerType
   name: string
   version: string
-  description?: string // 当前 apm list 不再输出，保留为容忍旧版/未来输出
+  description?: string // list --json 恒带（空为 ""），保留为容忍旧版/未来输出
   tags?: string[]
 }
 ```
 
-Store 处理规则：缺失 description / tags 分别规范化为 `""` / `[]`（当前 apm list 恒为身份记录，故 installed 范围卡片无 description/tags、`facets.tags` 为空）；按 type、tags 过滤，再按 type、name 聚合；相同 type、name、version 重复记录去重；`facets.agents` 固定为空数组；`facets.tags` 来自当前 type 的完整记录集合（不受当前 tag 选择限制）；`apm` 无法执行时映射为可重试的 Host `unavailable` 错误；具体 Agent 未安装（exit 1、空 stdout）或已安装空清单（exit 0、`[]`）时渲染为空列表（items 与 total 为空，前端显示空内容）；stdout 非法时映射为 Host `service` 错误；不透传 CLI stderr、物理路径、环境变量、堆栈或命令内部错误。
+Store 处理规则：缺失 description / tags 分别规范化为 `""` / `[]`（正常时 list --json 已传入真实元数据，installed 卡片据此展示描述与标签、`facets.tags` 派生自当前 type 记录集）；按 type、tags 过滤，再按 type、name 聚合；相同 type、name、version 重复记录去重；`facets.agents` 固定为空数组；`facets.tags` 来自当前 type 的完整记录集合（不受当前 tag 选择限制）；`apm` 无法执行时映射为可重试的 Host `unavailable` 错误；具体 Agent 未安装（exit 1、空 stdout）或已安装空清单（exit 0、`[]`）时渲染为空列表（items 与 total 为空，前端显示空内容）；stdout 非法时映射为 Host `service` 错误；不透传 CLI stderr、物理路径、环境变量、堆栈或命令内部错误。
 
 ### 10.5 未来 Market 数据源（APC 公共接口）
 
@@ -721,8 +721,8 @@ APC Base URL 默认测试环境 `https://developer.bianbu.xyz/api-server/apc/api
 - 默认进入“我的 Power / Bibit / skill”，第 1 页显示最多 20 张系列卡，翻页显示“第 X / Y 页”；
 - “Power 市场”隐藏 Agent 层，Agent 层固定显示 bibit / codex / claude-code 三个选项；
 - 切换 Agent / 类型会清空失效 tags 并回到第 1 页；
-- 选择多个 tag 时按 OR 过滤，tag 清单随上层筛选刷新（market 范围由 APC 元数据驱动；installed 范围恒为身份记录，无 tags）；
-- 同一系列切换版本时版本号随下拉变化（installed 范围多版本系列无 description/tags；market 的 APC 每 name 仅保留最新版，下拉恒为单版本）；
+- 选择多个 tag 时按 OR 过滤，tag 清单随上层筛选刷新；
+- 同一系列切换版本时 description 与 tags 同步变化；
 - 选择未安装任何 Power 的 Agent 时，页面显示空内容（No Powers are available.）；
 - 停止或未连接 Store 时页面显示局部错误与 Retry，恢复后 Retry 可恢复列表；
 - `Settings · settings` 可以读取当前 Mock 设置、保存后再次进入值一致；

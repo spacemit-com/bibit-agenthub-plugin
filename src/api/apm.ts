@@ -10,12 +10,10 @@ import {
 /**
  * A single record from `apm list --installed --agent=<agent> --json`.
  *
- * Since apm feature-029 (list all versions + show), `list` output is identity-only:
- * each record carries only `agent`, `type`, `name`, and `version`, and
- * `description`/`tags` are never part of list JSON even when the installed manifest
- * persists them (details moved to the Cloud-only `apm show`). They stay optional here
- * so older or future apm output is tolerated, and normalize to `''` / `[]` during
- * aggregation.
+ * Since apm ADR-029, `list --json` is a complete machine contract: each record always
+ * carries `description` (empty as `""`) and `tags` (empty as `[]`, never `null`), with
+ * installed records adding `agent`. They stay optional here so older or unexpected apm
+ * output is tolerated, and normalize to `''` / `[]` during aggregation.
  */
 export interface APMPowerRecord {
   agent: string
@@ -87,8 +85,8 @@ function parseApmPowerRecord(value: unknown): APMPowerRecord {
 
 /**
  * Parses and validates the JSON array returned by
- * `apm list --installed --agent=<agent> --json` (identity-only records since
- * apm feature-029).
+ * `apm list --installed --agent=<agent> --json` (records always carry
+ * `description`/`tags` since apm ADR-029).
  * Unknown fields are tolerated (apm owns its output schema); required identity
  * fields are type-checked, and missing `description`/`tags` normalize to `''`/`[]`.
  */
