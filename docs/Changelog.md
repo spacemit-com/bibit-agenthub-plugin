@@ -1,5 +1,39 @@
 # Changelog
 
+## 2026-09-07 — 实现 v1 Go Provider、前端目录缓存与双 deb 上板验收
+
+分类：功能变更
+
+提交（设计 `473fdab`，计划 `45abcf2`，实现/文档见下）：
+
+- `473fdab` 设计、`45abcf2` 计划
+- `e9a544b` raw wire 契约、`d390e5e` 有界 v1 协议、`6ab97c4` APM/APC、`d5805ee` 自检与 stdio 驱动
+- `e2ebdba` 前端缓存迁移、`e2e9b56` 双 deb、`7f717c3` 文档
+- `01d4bd1` vendor SDK 同步 0.3.0、`f3a5163` 交叉编译 strip 修复、`409a05e` Provider 接受宿主 client 字段
+
+用户需求：
+
+用独立 Go 标准库 stdio Provider 通过宿主 `service:store` 接通 APM installed 清单与 APC 公开全量目录，Provider 只做纯中间件（不解析业务字段、只比较 `catalog_sha256`），业务解析/过滤/聚合/去重/分页/facets/snapshot 判断全部留在前端数据层，dev 与生产共用同一实现。系统部署拆分为前端 bundle（`bibit-agenthub-plugin`，Architecture: all）与 CLI Provider（`bibit-agenthub-cli`，Architecture: any）两个 deb。
+
+相关文件：
+
+- 新增 `provider/` Go module：`internal/provider/{server,contracts,errors,config,apm,apc,process_linux,process_other,selftest}.go`、`cmd/bibit-agenthub`、`cmd/provider-probe`、`Makefile`
+- `src/api/{contracts,catalogIntegrity,powerCatalogClient,apc,apm}.ts`：wire 信封闭集、Web Crypto SHA-256 校验、`WeakMap` 缓存客户端
+- `dev/{sources,store}.ts`：与 Go 同语义的 transport 与 wire 校验 store；`vite.config.ts`、`dev/main.tsx`
+- `debian/{control,rules,changelog,agenthub-provider.json}`：双 deb + Registry v2 drop-in
+- `vendor/`：`@bibit/feature-*` 同步 0.3.0（`service:store` 规范名称）
+- 文档：`README.md`、两份部署指南、`AGENTS.md`、`debian/vendor/README.md`
+
+解决方案或完成结果：
+
+Provider 只声明 `powers.list.v1`、协商协议 v1；installed 每次执行 `apm list --installed --agent=<agent> --json`（退出码非 0 映射可重试 `unavailable`，绝不伪造空清单），market 每次查 `resources/version`、`catalog_sha256` 相同返回 `not_modified`、变化才下载 `resources`。前端 `WeakMap` 按 service + 缓存键隔离，generation 提交前复查、过期/取消的慢请求以 `cancelled` 结束不覆盖缓存。Registry 写入 `version:2`、`transport:stdio`、`lifecycle:managed`、`protocolVersions:[1]`、`requestTimeoutMs:30000`，CLI 包拥有 `/usr/libexec/bibit/bibit-agenthub` 与 `/etc/bibit/external-services.d/agenthub.json`。
+
+验证结果或限制：
+
+前端 `npm test` 161/161、`typecheck`、`build:dev`、`build:plugin` 全过；Go `go test ./...` + `go vet` 过；`--self-test` exit 0；provider-probe 对真实 APC 得到 market data（snapshot `152e5780…`、5738 字节）与 not_modified。两个 deb 实际构建（amd64 + riscv64），`readelf -h` 确认 RISC-V，`dpkg-deb --contents` 核对归属（CLI 无 probe/grant/bundle）。开发板 `bianbu@10.0.91.51`（riscv64）安装两包并激活插件 0.2.2，宿主 spawn provider 并协商 `protocol=1`（`provider_ready service=store provider=0.2.2 protocol=1 operations=1`），market 可浏览/筛选；installed 因板上无 `/usr/bin/apm` 正确降级为可重试 `unavailable`（页面显示 "Power catalog is unavailable"，非空清单伪造）。
+
+限制：正式发布仍需公司签名 bundle + 平台公钥登记（目标 Bibit `plugin-trusted-keys.json` 为空）；构建套件无 `golang-go ≥1.26.5`（本地 `/usr/local/bin/go` 1.26.5 交叉构建）；板上无 apm，installed 真实数据未验收；settings 持久化、v2 jobs/文件传输不在本期。
+
 ## 2026-09-07（后续）— list --json 恒带 description/tags，恢复 installed 描述与标签显示
 
 分类：功能变更
