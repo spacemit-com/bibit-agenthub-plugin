@@ -51,6 +51,7 @@ bibit-agenthub-cli_0.2.3_riscv64.deb    sha256 7db10b43e5e254e4627323df84c7c958b
 - `apm` 安装到 `/usr/bin/apm`（0755）；`~/.cache` 已 `chmod 700`；Provider `--self-test` 退出 0。
 - 重启正式 GUI `/usr/bin/bibit-gui`，`apm list --installed --agent=bibit --json` 返回 `[]`。
 - 系统插件升级不会自动 bump desired：编辑 `/home/bianbu/.local/share/BiBit/data/plugins/registry.json` 将 `desired["agent-hub"]="0.2.3"` 后重启，registry 收敛为 `active/current/desired=0.2.3`、`previous=0.2.2`，GUI 日志显示 `Loaded trusted plugins: agent-hub@0.2.3`。
+- 部署产物复验：`/usr/libexec/bibit/bibit-agenthub provider`（无 flags，默认 `/usr/bin/apm`、UID 解析 `/home/bianbu`）经 NDJSON 全链路通过 —— `bibit.initialize` 返回 `protocolVersion:1/providerVersion:0.2.3` 与四枚 operation；`powers.list.v1`(installed) 空→含 `foo-before-summary v0.0.1`→空；`powers.install.v1`/`powers.uninstall.v1` 均 `{status:"exited", exitCode:0}`；`powers.inspect.v1` 返回单条 `{agent,type,name,version,description,tags}`。版本字段按契约须带 `v` 前缀（`v0.0.1`），无前缀被正确拒绝为 `Invalid params`。
 
 ## 剩余阻塞：Bibit 宿主多 surface 轮换 feature instance token
 
