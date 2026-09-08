@@ -175,7 +175,7 @@ func handleInitialize(obj map[string]json.RawMessage, id json.RawMessage, initia
 		ProtocolVersion: 1,
 		ProviderVersion: providerVersion,
 		Capabilities:    providerCapabilities{Invoke: true},
-		Operations:      []string{operationPowersList},
+		Operations:      []string{operationPowersList, operationPowersInspect, operationPowersInstall, operationPowersUninstall},
 	}
 	return emitResponse(out, id, result, nil)
 }
@@ -195,13 +195,15 @@ func handleInvoke(ctx context.Context, obj map[string]json.RawMessage, id json.R
 	if params.ServiceID != serviceIDStore {
 		return emitResponse(out, id, nil, newRPCError(-32602, "Invalid params", "incompatible"))
 	}
-	if params.OperationID != operationPowersList {
-		return emitResponse(out, id, nil, newRPCError(-32601, "Method not found", "incompatible"))
-	}
 	if params.TimeoutMs < 1 || params.TimeoutMs > 300000 {
 		return emitResponse(out, id, nil, newRPCError(-32602, "Invalid params", "incompatible"))
 	}
-	wireInput, err := decodeWireInput(params.Params)
+	switch params.OperationID {
+	case operationPowersList, operationPowersInspect, operationPowersInstall, operationPowersUninstall:
+	default:
+		return emitResponse(out, id, nil, newRPCError(-32601, "Method not found", "incompatible"))
+	}
+	request, err := decodeOperationRequest(params.OperationID, params.Params)
 	if err != nil {
 		return emitResponse(out, id, nil, newRPCError(-32602, "Invalid params", "incompatible"))
 	}
@@ -211,7 +213,7 @@ func handleInvoke(ctx context.Context, obj map[string]json.RawMessage, id json.R
 
 	invokeCtx, cancel := context.WithTimeout(ctx, time.Duration(params.TimeoutMs)*time.Millisecond)
 	defer cancel()
-	result, invokeErr := invoke(invokeCtx, wireInput)
+	result, invokeErr := invoke(invokeCtx, request)
 	if invokeErr != nil {
 		pe, ok := invokeErr.(*ProviderError)
 		if !ok {
@@ -297,6 +299,40 @@ func rejectKeys(obj map[string]json.RawMessage, allowed ...string) error {
 		}
 	}
 	return nil
+}
+
+// decodeOperationRequest validates the params envelope for one known operation
+// and returns the typed, closed-union request. Unknown operations are rejected
+// by handleInvoke before this runs.
+func decodeOperationRequest(operationID string, raw json.RawMessage) (OperationRequest, error) {
+	switch operationID {
+	case operationPowersList:
+		wireInput, err := decodeWireInput(raw)
+		if err != nil {
+			return OperationRequest{}, err
+		}
+		return OperationRequest{OperationID: operationID, List: &wireInput}, nil
+	case operationPowersInspect:
+		target, err := decodePowerTarget(raw)
+		if err != nil {
+			return OperationRequest{}, err
+		}
+		return OperationRequest{OperationID: operationID, Target: &target}, nil
+	case operationPowersInstall:
+		install, err := decodeInstallInput(raw)
+		if err != nil {
+			return OperationRequest{}, err
+		}
+		return OperationRequest{OperationID: operationID, Install: &install}, nil
+	case operationPowersUninstall:
+		target, err := decodePowerTarget(raw)
+		if err != nil {
+			return OperationRequest{}, err
+		}
+		return OperationRequest{OperationID: operationID, Target: &target}, nil
+	default:
+		return OperationRequest{}, errors.New("unknown operation")
+	}
 }
 
 // --- JSON-RPC helpers ------------------------------------------------------

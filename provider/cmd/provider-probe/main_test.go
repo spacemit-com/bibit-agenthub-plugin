@@ -150,3 +150,72 @@ func TestParseFlagsRequiresExecutableAndScope(t *testing.T) {
 		t.Fatal("invalid scope must be rejected")
 	}
 }
+
+func TestProbeInspectOK(t *testing.T) {
+	bin := buildProvider(t)
+	home := t.TempDir()
+	apm := writeScript(t, "apm", "#!/bin/sh\nprintf '[]'\n")
+
+	report, err := runProbe(probeFlags{
+		executable: bin, operation: "powers.inspect.v1", agent: "bibit",
+		name: "demo", powerType: "skill", apmPath: apm, userHome: home,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Operation != "powers.inspect.v1" {
+		t.Fatalf("operation = %q", report.Operation)
+	}
+	if report.Status != "data" || report.RawBytes != 2 {
+		t.Fatalf("unexpected inspect report: %+v", report)
+	}
+	if report.ExitCode != nil {
+		t.Fatalf("inspect must not carry an exit code: %+v", report)
+	}
+}
+
+func TestProbeUninstallExitZero(t *testing.T) {
+	bin := buildProvider(t)
+	home := t.TempDir()
+	apm := writeScript(t, "apm", "#!/bin/sh\nexit 0\n")
+
+	report, err := runProbe(probeFlags{
+		executable: bin, operation: "powers.uninstall.v1", agent: "bibit",
+		name: "demo", powerType: "skill", apmPath: apm, userHome: home,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Status != "exited" || report.ExitCode == nil || *report.ExitCode != 0 {
+		t.Fatalf("unexpected uninstall report: %+v", report)
+	}
+}
+
+func TestProbeInstallExitOneIsResult(t *testing.T) {
+	bin := buildProvider(t)
+	home := t.TempDir()
+	apm := writeScript(t, "apm", "#!/bin/sh\nexit 1\n")
+
+	report, err := runProbe(probeFlags{
+		executable: bin, operation: "powers.install.v1", agent: "bibit",
+		name: "demo", powerType: "skill", version: "v1.0.0", apmPath: apm, userHome: home,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Status != "exited" || report.ExitCode == nil || *report.ExitCode != 1 {
+		t.Fatalf("unexpected install report: %+v", report)
+	}
+}
+
+func TestParseFlagsRequiresOperationFields(t *testing.T) {
+	if _, err := parseFlags([]string{"--executable", "x", "--operation", "powers.inspect.v1"}); err == nil {
+		t.Fatal("inspect without --name/--type must be rejected")
+	}
+	if _, err := parseFlags([]string{"--executable", "x", "--operation", "powers.install.v1", "--name", "demo", "--type", "skill"}); err == nil {
+		t.Fatal("install without --version must be rejected")
+	}
+	if _, err := parseFlags([]string{"--executable", "x", "--operation", "bogus.op"}); err == nil {
+		t.Fatal("unknown operation must be rejected")
+	}
+}

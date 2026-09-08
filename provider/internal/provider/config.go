@@ -108,17 +108,33 @@ func APMEnvironment(cfg Config) ([]string, error) {
 	}, nil
 }
 
-// NewInvoker wires the two data sources behind the provider's InvokeFunc, so the
-// server dispatches a validated WireInput to the matching scope.
+// NewInvoker wires the data sources behind the provider's InvokeFunc, so the
+// server dispatches a validated OperationRequest to the matching operation.
 func NewInvoker(cfg Config, client *http.Client) InvokeFunc {
-	return func(ctx context.Context, input WireInput) (WireResult, error) {
-		switch input.Scope {
-		case "installed":
-			return ReadInstalled(ctx, cfg, input.Agent)
-		case "market":
-			return ReadMarket(ctx, client, cfg.APCBaseURL, input.KnownSnapshot)
+	return func(ctx context.Context, req OperationRequest) (any, error) {
+		switch req.OperationID {
+		case operationPowersList:
+			if req.List == nil {
+				return nil, newProviderError("incompatible")
+			}
+			input := *req.List
+			switch input.Scope {
+			case "installed":
+				return ReadInstalled(ctx, cfg, input.Agent)
+			case "market":
+				return ReadMarket(ctx, client, cfg.APCBaseURL, input.KnownSnapshot)
+			default:
+				return nil, newProviderError("incompatible")
+			}
+		case operationPowersInspect:
+			if req.Target == nil {
+				return nil, newProviderError("incompatible")
+			}
+			return InspectPower(ctx, cfg, *req.Target)
+		case operationPowersInstall, operationPowersUninstall:
+			return MutatePower(ctx, cfg, req)
 		default:
-			return WireResult{}, newProviderError("incompatible")
+			return nil, newProviderError("incompatible")
 		}
 	}
 }

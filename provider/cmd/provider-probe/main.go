@@ -19,9 +19,13 @@ const maxRPCBytes = 4 << 20 // 4 MiB, matching the host response budget
 
 type probeFlags struct {
 	executable    string
+	operation     string
 	scope         string
 	agent         string
 	knownSnapshot string
+	name          string
+	powerType     string
+	version       string
 	apmPath       string
 	userHome      string
 	apcBaseURL    string
@@ -29,8 +33,10 @@ type probeFlags struct {
 
 type probeReport struct {
 	ProtocolVersion int    `json:"protocolVersion"`
-	Scope           string `json:"scope"`
-	Status          string `json:"status"`
+	Operation       string `json:"operation"`
+	Scope           string `json:"scope,omitempty"`
+	Status          string `json:"status,omitempty"`
+	ExitCode        *int   `json:"exitCode,omitempty"`
 	Snapshot        string `json:"snapshot,omitempty"`
 	RPCBytes        int    `json:"rpcBytes"`
 	RawBytes        int    `json:"rawBytes"`
@@ -60,9 +66,13 @@ func parseFlags(args []string) (probeFlags, error) {
 	fs := flag.NewFlagSet("provider-probe", flag.ContinueOnError)
 	var flags probeFlags
 	fs.StringVar(&flags.executable, "executable", "", "provider executable path (required)")
-	fs.StringVar(&flags.scope, "scope", "market", "wire scope: market|installed")
-	fs.StringVar(&flags.agent, "agent", "bibit", "installed agent id")
+	fs.StringVar(&flags.operation, "operation", "", "operation id: powers.inspect.v1|powers.install.v1|powers.uninstall.v1 (empty = list)")
+	fs.StringVar(&flags.scope, "scope", "market", "list wire scope: market|installed")
+	fs.StringVar(&flags.agent, "agent", "bibit", "target agent id")
 	fs.StringVar(&flags.knownSnapshot, "known-snapshot", "", "market known snapshot")
+	fs.StringVar(&flags.name, "name", "", "power name (inspect/install/uninstall)")
+	fs.StringVar(&flags.powerType, "type", "", "power type (inspect/install/uninstall)")
+	fs.StringVar(&flags.version, "version", "", "power version (install only)")
 	fs.StringVar(&flags.apmPath, "apm-path", "", "apm path override")
 	fs.StringVar(&flags.userHome, "user-home", "", "user home override")
 	fs.StringVar(&flags.apcBaseURL, "apc-base-url", "", "apc base url override")
@@ -72,10 +82,37 @@ func parseFlags(args []string) (probeFlags, error) {
 	if flags.executable == "" {
 		return flags, errors.New("--executable is required")
 	}
-	if flags.scope != "market" && flags.scope != "installed" {
-		return flags, fmt.Errorf("--scope must be market or installed, got %q", flags.scope)
+	if err := validateFlags(flags); err != nil {
+		return flags, err
 	}
 	return flags, nil
+}
+
+func validateFlags(flags probeFlags) error {
+	switch flags.operation {
+	case "":
+		if flags.scope != "market" && flags.scope != "installed" {
+			return fmt.Errorf("--scope must be market or installed, got %q", flags.scope)
+		}
+		return nil
+	case "powers.inspect.v1":
+		if flags.name == "" || flags.powerType == "" {
+			return errors.New("--name and --type are required for powers.inspect.v1")
+		}
+		return nil
+	case "powers.install.v1":
+		if flags.name == "" || flags.powerType == "" || flags.version == "" {
+			return errors.New("--name, --type and --version are required for powers.install.v1")
+		}
+		return nil
+	case "powers.uninstall.v1":
+		if flags.name == "" || flags.powerType == "" {
+			return errors.New("--name and --type are required for powers.uninstall.v1")
+		}
+		return nil
+	default:
+		return fmt.Errorf("--operation must be powers.inspect.v1, powers.install.v1 or powers.uninstall.v1, got %q", flags.operation)
+	}
 }
 
 func runProbe(flags probeFlags) (probeReport, error) {
@@ -137,9 +174,10 @@ func runProbe(flags probeFlags) (probeReport, error) {
 	}
 	report.ProtocolVersion = protocolVersion
 
+	operationID, wireInput, timeoutMs := buildInvoke(flags)
+	report.Operation = operationID
 	invokeID := "probe-invoke"
-	wireInput := buildWireInput(flags)
-	if _, err := fmt.Fprintf(stdin, "{\"jsonrpc\":\"2.0\",\"id\":%q,\"method\":\"bibit.invoke\",\"params\":{\"serviceId\":\"store\",\"operationId\":\"powers.list.v1\",\"params\":%s,\"timeoutMs\":30000}}\n", invokeID, wireInput); err != nil {
+	if _, err := fmt.Fprintf(stdin, "{\"jsonrpc\":\"2.0\",\"id\":%q,\"method\":\"bibit.invoke\",\"params\":{\"serviceId\":\"store\",\"operationId\":%q,\"params\":%s,\"timeoutMs\":%d}}\n", invokeID, operationID, wireInput, timeoutMs); err != nil {
 		return report, err
 	}
 	invokeLine, err := readBoundedLine(reader)
@@ -148,10 +186,26 @@ func runProbe(flags probeFlags) (probeReport, error) {
 	}
 	report.RPCBytes = len(invokeLine) // the full serialized line, newline included
 	report.RemainingBytes = maxRPCBytes - report.RPCBytes
-	if err := fillInvokeReport(invokeLine, invokeID, &report); err != nil {
+	if err := fillInvokeReport(invokeLine, invokeID, operationID, &report); err != nil {
 		return report, err
 	}
 	return report, nil
+}
+
+// buildInvoke returns the operation id, params envelope and timeout for one
+// probe run. An empty --operation keeps the original read-only list behavior;
+// write operations only run when explicitly requested.
+func buildInvoke(flags probeFlags) (operationID, wireInput string, timeoutMs int) {
+	switch flags.operation {
+	case "powers.inspect.v1":
+		return flags.operation, fmt.Sprintf("{\"agent\":%q,\"type\":%q,\"name\":%q}", flags.agent, flags.powerType, flags.name), 30000
+	case "powers.install.v1":
+		return flags.operation, fmt.Sprintf("{\"agent\":%q,\"type\":%q,\"name\":%q,\"version\":%q}", flags.agent, flags.powerType, flags.name, flags.version), 120000
+	case "powers.uninstall.v1":
+		return flags.operation, fmt.Sprintf("{\"agent\":%q,\"type\":%q,\"name\":%q}", flags.agent, flags.powerType, flags.name), 120000
+	default:
+		return "powers.list.v1", buildWireInput(flags), 30000
+	}
 }
 
 func buildWireInput(flags probeFlags) string {
@@ -187,6 +241,15 @@ type wireResult struct {
 	CatalogJSON *string `json:"catalogJson,omitempty"`
 }
 
+type inspectResult struct {
+	ListJSON string `json:"listJson"`
+}
+
+type mutationResult struct {
+	Status   string `json:"status"`
+	ExitCode int    `json:"exitCode"`
+}
+
 func parseResponse(line []byte) (rpcResponse, error) {
 	var response rpcResponse
 	if err := json.Unmarshal(bytes.TrimSpace(line), &response); err != nil {
@@ -218,7 +281,7 @@ func validateInitialize(line []byte, id string) (int, error) {
 	return result.ProtocolVersion, nil
 }
 
-func fillInvokeReport(line []byte, id string, report *probeReport) error {
+func fillInvokeReport(line []byte, id string, operationID string, report *probeReport) error {
 	response, err := parseResponse(line)
 	if err != nil {
 		return err
@@ -229,30 +292,50 @@ func fillInvokeReport(line []byte, id string, report *probeReport) error {
 	if response.Error != nil {
 		return fmt.Errorf("provider returned %s", errorCode(response.Error))
 	}
-	var result wireResult
-	if err := json.Unmarshal(response.Result, &result); err != nil {
-		return errors.New("invalid invoke result")
-	}
-	if result.Scope != report.Scope {
-		return errors.New("result scope mismatch")
-	}
-	report.Status = result.Status
-	switch result.Status {
-	case "data":
-		if result.Snapshot != "" {
+	switch operationID {
+	case "powers.list.v1":
+		var result wireResult
+		if err := json.Unmarshal(response.Result, &result); err != nil {
+			return errors.New("invalid invoke result")
+		}
+		if result.Scope != report.Scope {
+			return errors.New("result scope mismatch")
+		}
+		report.Status = result.Status
+		switch result.Status {
+		case "data":
+			if result.Snapshot != "" {
+				report.Snapshot = result.Snapshot
+			}
+			raw := result.ListJSON
+			if result.CatalogJSON != nil {
+				raw = result.CatalogJSON
+			}
+			if raw != nil {
+				report.RawBytes = len(*raw)
+			}
+		case "not_modified":
 			report.Snapshot = result.Snapshot
+		default:
+			return fmt.Errorf("unexpected status %q", result.Status)
 		}
-		raw := result.ListJSON
-		if result.CatalogJSON != nil {
-			raw = result.CatalogJSON
+	case "powers.inspect.v1":
+		var result inspectResult
+		if err := json.Unmarshal(response.Result, &result); err != nil {
+			return errors.New("invalid inspect result")
 		}
-		if raw != nil {
-			report.RawBytes = len(*raw)
+		report.Status = "data"
+		report.RawBytes = len(result.ListJSON)
+	case "powers.install.v1", "powers.uninstall.v1":
+		var result mutationResult
+		if err := json.Unmarshal(response.Result, &result); err != nil {
+			return errors.New("invalid mutation result")
 		}
-	case "not_modified":
-		report.Snapshot = result.Snapshot
+		report.Status = result.Status
+		code := result.ExitCode
+		report.ExitCode = &code
 	default:
-		return fmt.Errorf("unexpected status %q", result.Status)
+		return fmt.Errorf("unexpected operation %q", operationID)
 	}
 	return nil
 }

@@ -75,14 +75,14 @@ func TestInitializeV1ResultShape(t *testing.T) {
 	if !result.Capabilities.Invoke {
 		t.Fatal("capabilities.invoke must be true")
 	}
-	found := false
-	for _, op := range result.Operations {
-		if op == "powers.list.v1" {
-			found = true
-		}
+	want := []string{"powers.list.v1", "powers.inspect.v1", "powers.install.v1", "powers.uninstall.v1"}
+	if len(result.Operations) != len(want) {
+		t.Fatalf("operations = %v, want %v", result.Operations, want)
 	}
-	if !found {
-		t.Fatalf("operations must include powers.list.v1: %v", result.Operations)
+	for i := range want {
+		if result.Operations[i] != want[i] {
+			t.Fatalf("operations[%d] = %q, want %q (%v)", i, result.Operations[i], want[i], result.Operations)
+		}
 	}
 }
 
@@ -261,9 +261,9 @@ func TestShutdownTerminates(t *testing.T) {
 }
 
 func TestInvokeSuccessEchoesWireResult(t *testing.T) {
-	invoke := func(_ context.Context, input WireInput) (WireResult, error) {
-		if input.Scope != "installed" || input.Agent != "bibit" {
-			t.Fatalf("unexpected wire input: %+v", input)
+	invoke := func(_ context.Context, req OperationRequest) (any, error) {
+		if req.OperationID != "powers.list.v1" || req.List == nil || req.List.Scope != "installed" || req.List.Agent != "bibit" {
+			t.Fatalf("unexpected operation request: %+v", req)
 		}
 		listJSON := "[]"
 		return WireResult{Scope: "installed", Status: "data", ListJSON: &listJSON}, nil
@@ -356,8 +356,8 @@ func TestTimeoutMsValidation(t *testing.T) {
 }
 
 func TestUnknownErrorDoesNotLeakContent(t *testing.T) {
-	invoke := func(context.Context, WireInput) (WireResult, error) {
-		return WireResult{}, errors.New("SECRET_MARKER: /home/user/.ssh/id_rsa")
+	invoke := func(context.Context, OperationRequest) (any, error) {
+		return nil, errors.New("SECRET_MARKER: /home/user/.ssh/id_rsa")
 	}
 	input := initRequest +
 		"{\"jsonrpc\":\"2.0\",\"id\":\"req\",\"method\":\"bibit.invoke\",\"params\":{\"serviceId\":\"store\",\"operationId\":\"powers.list.v1\",\"params\":{\"scope\":\"market\"},\"timeoutMs\":30000}}\n"
@@ -376,9 +376,9 @@ func TestUnknownErrorDoesNotLeakContent(t *testing.T) {
 }
 
 func TestInvokeTimeoutMapsToTimeout(t *testing.T) {
-	invoke := func(ctx context.Context, _ WireInput) (WireResult, error) {
+	invoke := func(ctx context.Context, _ OperationRequest) (any, error) {
 		<-ctx.Done()
-		return WireResult{}, ctx.Err()
+		return nil, ctx.Err()
 	}
 	input := initRequest +
 		"{\"jsonrpc\":\"2.0\",\"id\":\"req\",\"method\":\"bibit.invoke\",\"params\":{\"serviceId\":\"store\",\"operationId\":\"powers.list.v1\",\"params\":{\"scope\":\"market\"},\"timeoutMs\":10}}\n"
@@ -403,7 +403,7 @@ func TestOverLongInputLineStops(t *testing.T) {
 }
 
 func TestOutputBudgetOverflowBecomesResourceExhausted(t *testing.T) {
-	invoke := func(context.Context, WireInput) (WireResult, error) {
+	invoke := func(context.Context, OperationRequest) (any, error) {
 		big := strings.Repeat("x", maxOutputBytes)
 		return WireResult{Scope: "market", Status: "data", Snapshot: "abc", CatalogJSON: &big}, nil
 	}
@@ -428,4 +428,138 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func TestInspectInvokeDispatch(t *testing.T) {
+	invoke := func(_ context.Context, req OperationRequest) (any, error) {
+		if req.OperationID != "powers.inspect.v1" || req.Target == nil ||
+			req.Target.Agent != "bibit" || req.Target.Type != "skill" || req.Target.Name != "demo" {
+			t.Fatalf("unexpected operation request: %+v", req)
+		}
+		return InspectResult{ListJSON: "[]"}, nil
+	}
+	input := initRequest +
+		`{"jsonrpc":"2.0","id":"req","method":"bibit.invoke","params":{"serviceId":"store","operationId":"powers.inspect.v1","params":{"agent":"bibit","type":"skill","name":"demo"},"timeoutMs":30000}}` + "\n"
+	out, err := runInput(input, invoke)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	response := parseResponse(t, lines[1])
+	if response.Error != nil {
+		t.Fatalf("expected success: %s", lines[1])
+	}
+	var result InspectResult
+	if err := json.Unmarshal(response.Result, &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.ListJSON != "[]" {
+		t.Fatalf("unexpected result: %+v", result)
+	}
+}
+
+func TestInstallInvokeDispatch(t *testing.T) {
+	invoke := func(_ context.Context, req OperationRequest) (any, error) {
+		if req.OperationID != "powers.install.v1" || req.Install == nil ||
+			req.Install.Agent != "bibit" || req.Install.Type != "skill" ||
+			req.Install.Name != "demo" || req.Install.Version != "v1.0.0" {
+			t.Fatalf("unexpected operation request: %+v", req)
+		}
+		return MutationResult{Status: "exited", ExitCode: 1}, nil
+	}
+	input := initRequest +
+		`{"jsonrpc":"2.0","id":"req","method":"bibit.invoke","params":{"serviceId":"store","operationId":"powers.install.v1","params":{"agent":"bibit","type":"skill","name":"demo","version":"v1.0.0"},"timeoutMs":120000}}` + "\n"
+	out, err := runInput(input, invoke)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	response := parseResponse(t, lines[1])
+	if response.Error != nil {
+		t.Fatalf("expected success: %s", lines[1])
+	}
+	var result MutationResult
+	if err := json.Unmarshal(response.Result, &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "exited" || result.ExitCode != 1 {
+		t.Fatalf("unexpected result: %+v", result)
+	}
+}
+
+func TestUninstallInvokeDispatch(t *testing.T) {
+	invoke := func(_ context.Context, req OperationRequest) (any, error) {
+		if req.OperationID != "powers.uninstall.v1" || req.Target == nil ||
+			req.Target.Agent != "bibit" || req.Target.Type != "skill" || req.Target.Name != "demo" {
+			t.Fatalf("unexpected operation request: %+v", req)
+		}
+		return MutationResult{Status: "exited", ExitCode: 0}, nil
+	}
+	input := initRequest +
+		`{"jsonrpc":"2.0","id":"req","method":"bibit.invoke","params":{"serviceId":"store","operationId":"powers.uninstall.v1","params":{"agent":"bibit","type":"skill","name":"demo"},"timeoutMs":120000}}` + "\n"
+	out, err := runInput(input, invoke)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if parseResponse(t, lines[1]).Error != nil {
+		t.Fatalf("expected success: %s", lines[1])
+	}
+}
+
+func TestOperationInputValidation(t *testing.T) {
+	cases := []struct {
+		name        string
+		operationID string
+		params      string
+	}{
+		{"install missing version", "powers.install.v1", `{"agent":"bibit","type":"skill","name":"demo"}`},
+		{"install bad version", "powers.install.v1", `{"agent":"bibit","type":"skill","name":"demo","version":"1.0.0"}`},
+		{"install extra key", "powers.install.v1", `{"agent":"bibit","type":"skill","name":"demo","version":"v1.0.0","force":true}`},
+		{"uninstall carries version", "powers.uninstall.v1", `{"agent":"bibit","type":"skill","name":"demo","version":"v1.0.0"}`},
+		{"inspect extra key", "powers.inspect.v1", `{"agent":"bibit","type":"skill","name":"demo","version":"v1.0.0"}`},
+		{"agent all", "powers.inspect.v1", `{"agent":"all","type":"skill","name":"demo"}`},
+		{"unknown agent", "powers.inspect.v1", `{"agent":"gpt","type":"skill","name":"demo"}`},
+		{"agent type non-bibit", "powers.inspect.v1", `{"agent":"codex","type":"agent","name":"demo"}`},
+		{"bad type", "powers.inspect.v1", `{"agent":"bibit","type":"package","name":"demo"}`},
+		{"non-canonical name", "powers.inspect.v1", `{"agent":"bibit","type":"skill","name":"Demo"}`},
+		{"option injection name", "powers.inspect.v1", `{"agent":"bibit","type":"skill","name":"--help"}`},
+		{"missing agent", "powers.inspect.v1", `{"type":"skill","name":"demo"}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			input := initRequest +
+				`{"jsonrpc":"2.0","id":"req","method":"bibit.invoke","params":{"serviceId":"store","operationId":"` + tc.operationID + `","params":` + tc.params + `,"timeoutMs":30000}}` + "\n"
+			out, err := runInput(input, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			lines := strings.Split(strings.TrimSpace(out), "\n")
+			response := parseResponse(t, lines[1])
+			if response.Error == nil || response.Error.Code != -32602 {
+				t.Fatalf("expected -32602 for %q, got: %s", tc.name, lines[1])
+			}
+		})
+	}
+}
+
+func TestInvalidOperationRequestDoesNotSpawn(t *testing.T) {
+	called := 0
+	invoke := func(context.Context, OperationRequest) (any, error) {
+		called++
+		return nil, nil
+	}
+	input := initRequest +
+		`{"jsonrpc":"2.0","id":"req","method":"bibit.invoke","params":{"serviceId":"store","operationId":"powers.install.v1","params":{"agent":"codex","type":"agent","name":"demo","version":"v1.0.0"},"timeoutMs":120000}}` + "\n"
+	out, err := runInput(input, invoke)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if parseResponse(t, lines[1]).Error == nil {
+		t.Fatalf("expected validation error: %s", lines[1])
+	}
+	if called != 0 {
+		t.Fatalf("invoke must not run for invalid requests, called %d times", called)
+	}
 }
