@@ -4,6 +4,8 @@
 报告方：bibit-agenthub-plugin 团队
 影响版本：板端 bi-bit 0.1.3（riscv64，正式 release 构建）
 
+> **状态：已在 bi-bit 0.1.4 修复并验证。** 用 `~/Downloads/bi-bit_0.1.4_riscv64.deb`（sha256 `4b2e81b4…3125`）升级板端宿主后，启动日志仅一条 `Loaded trusted plugins`（0.1.3 为两条）、无 `restricted to the main window`、无 `request_unauthorized`，插件 `powers.list/install/uninstall` 在真实 GUI 内全闭环通过。详见 `docs/verification/2026-09-08-power-management.md` 的「阻塞解决与真实 GUI 闭环验证（bi-bit 0.1.4）」。
+
 ## 现象
 
 Agent Hub 插件（`bibit-agenthub-plugin` 0.2.3，开发签名）在板端正式 GUI 内，market 页与设置页均无法加载，页面报「Power catalog authorization is required / Could not load」。原生日志：

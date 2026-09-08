@@ -1,6 +1,6 @@
 # Changelog
 
-## 2026-09-08 — Power 详情与安装/卸载，双 deb 上板部署（真实 GUI 闭环受 Bibit 宿主阻塞）
+## 2026-09-08 — Power 详情与安装/卸载，双 deb 上板部署，真实 GUI 闭环在 Bibit 0.1.4 通过
 
 分类：功能变更
 
@@ -27,7 +27,9 @@ Provider 声明 list/inspect/install/uninstall 四枚 operation（协议 v1、`p
 
 前端 `npm test` 161→272 全绿，`typecheck`/`build:dev`/`build:plugin`/`git diff --check` 通过；Go `go test ./...`/`go vet ./...`/`go build`/`--self-test` 退出 0。双 deb 构建并上板：`bibit-agenthub-plugin_0.2.3_all.deb`（sha256 `f3f77aef…9fba`）、`bibit-agenthub-cli_0.2.3_riscv64.deb`（sha256 `7db10b43…ba37`），`apm` 装入 `/usr/bin/apm`，Provider 装入 `/usr/libexec/bibit/bibit-agenthub`。板端部署后的正式产物经 NDJSON 全链路通过：initialize → list（空/含 `foo-before-summary v0.0.1`/空）→ install/uninstall `exitCode:0` → inspect 单条。开发阶段按指示使用开发签名。
 
-限制：真实 Bibit GUI 内 UI 闭环（market 详情→安装→installed→卸载）未完成——板端 bi-bit 0.1.3 存在宿主多 surface 轮换 feature-instance token 的问题（`voice-overlay` 与 `main` 都执行 `loadTrustedPluginEntries`→`trusted_plugin_prepare_active`，后者 `force_rotate=true` 轮换 token，使主窗口插件 token 失效，任何 `service:*` 请求均 `request_unauthorized`）。根因与修复建议见 `docs/verification/2026-09-08-bibit-host-token-rotation.md`，待宿主修复后补做 GUI 闭环。
+限制（已解决）：真实 Bibit GUI 内 UI 闭环最初被板端 bi-bit 0.1.3 的宿主缺陷阻塞——`voice-overlay` 与 `main` 两个 surface 都执行 `loadTrustedPluginEntries`→`trusted_plugin_prepare_active`，后者 `force_rotate=true` 轮换 feature-instance token，使主窗口插件 token 失效，任何 `service:*` 请求均 `request_unauthorized`。根因与修复建议见 `docs/verification/2026-09-08-bibit-host-token-rotation.md`。
+
+随后用 `~/Downloads/bi-bit_0.1.4_riscv64.deb`（sha256 `4b2e81b4…3125`）升级板端宿主到 0.1.4 后，阻塞消除：启动日志仅一条 `Loaded trusted plugins: agent-hub@0.2.3`（0.1.3 为两条）、无 `restricted to the main window` 报错、无 `request_unauthorized`，`external_service.provider_ready service=store provider=0.2.3 protocol=1 operations=4` 正常出现。真实 GUI 全闭环验证通过：market 详情→安装（`apm list --installed --agent=bibit` 含 `foo-before-summary v0.0.1`）→「我的 Power」卡片→卸载（installed 清空）→market 详情恢复「未安装 + 安装」且显示「卸载完成」。详见 `docs/verification/2026-09-08-power-management.md` 的「板端真实 GUI 闭环验证（Bibit 0.1.4）」。板端 0.1.3 二进制已备份至 `/home/bianbu/bibit-backup-0.1.3/`。
 
 ## 2026-09-07 — 实现 v1 Go Provider、前端目录缓存与双 deb 上板验收
 
