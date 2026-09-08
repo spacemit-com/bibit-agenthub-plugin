@@ -7,16 +7,26 @@ ifeq ($(filter $(DEB_HOST_ARCH),$(SUPPORTED_ARCHS)),)
 $(error Unsupported DEB_HOST_ARCH "$(DEB_HOST_ARCH)"; supported: $(SUPPORTED_ARCHS))
 endif
 
+# Signing key for the frontend bundle. CI injects a GitLab File variable
+# (AGENT_HUB_SIGNING_KEY) whose value is the private-key path; local builds
+# fall back to the development key under .bibit-keys/.
+AGENT_HUB_SIGNING_KEY ?= .bibit-keys/agent-hub-development-private.pem
+PLUGIN_VERSION := $(shell node -p "require('./package.json').version")
+
 %:
 	dh $@
 
 override_dh_auto_build:
-	test -f debian/vendor/agent-hub.bibit-plugin.tgz
 	test -f debian/agenthub-feature-grants.json
+	test -f "$(AGENT_HUB_SIGNING_KEY)"
 	$(MAKE) -C provider build GOARCH=$(DEB_HOST_ARCH)
+	npm ci
+	npx bibit-plugin build --key "$(AGENT_HUB_SIGNING_KEY)" --key-id agent-hub-development
+	cp artifacts/agent-hub-$(PLUGIN_VERSION).bibit-plugin.tgz debian/vendor/agent-hub.bibit-plugin.tgz
 
 override_dh_auto_clean:
 	$(MAKE) -C provider clean
+	rm -f debian/vendor/agent-hub.bibit-plugin.tgz
 
 override_dh_auto_install:
 	install -Dm0644 \

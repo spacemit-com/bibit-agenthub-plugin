@@ -1,3 +1,3 @@
 module bibit-agenthub-provider
 
-go 1.26.5
+go 1.26.0
