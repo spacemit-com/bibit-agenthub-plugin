@@ -23,7 +23,7 @@ const (
 	// maxIDLength bounds a JSON-RPC string id; the host uses 1..128.
 	maxIDLength = 128
 
-	providerVersion = "0.2.2"
+	providerVersion = "0.2.3"
 )
 
 var errLineTooLong = errors.New("provider: input line exceeds limit")

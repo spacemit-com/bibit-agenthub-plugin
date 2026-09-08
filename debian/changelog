@@ -1,3 +1,13 @@
+bibit-agenthub-plugin (0.2.3) resolute-porting; urgency=medium
+
+  * Add power details and installation management: powers.inspect.v1,
+    powers.install.v1, and powers.uninstall.v1 across the frontend and the
+    v1 stdio provider.
+  * Raise the managed store request timeout to 120 seconds so writes are
+    not truncated by the previous 30-second read budget.
+
+ -- liangjunzhao <junzhao.liang@spacemit.com>  Mon, 08 Sep 2026 18:30:00 +0800
+
 bibit-agenthub-plugin (0.2.2) resolute-porting; urgency=medium
 
   * Ship the standalone v1 stdio provider as a second package

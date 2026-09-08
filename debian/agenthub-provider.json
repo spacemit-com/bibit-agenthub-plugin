@@ -7,7 +7,7 @@
       "args": ["provider"],
       "lifecycle": "managed",
       "protocolVersions": [1],
-      "requestTimeoutMs": 30000
+      "requestTimeoutMs": 120000
     }
   }
 }
