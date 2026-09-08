@@ -6,56 +6,31 @@ import {
   parsePowersWireResult,
   type ListPowersInput,
   type ListPowersResult,
-  type PowersWireInput,
 } from './contracts'
 import { verifyCatalogText } from './catalogIntegrity'
 import { parseApcCatalog } from './apc'
-import {
-  buildInstalledPowersResult,
-  buildPowersResult,
-  parseApmInstalledList,
-  type APMPowerRecord,
-  type PowerRecord,
-} from './apm'
+import { buildInstalledPowersResult, buildPowersResult, type PowerRecord } from './apm'
+import { getInstallationStore } from './installationStore'
 
-type CacheEntry =
-  | { kind: 'market'; snapshot: string; records: PowerRecord[] }
-  | { kind: 'installed'; records: APMPowerRecord[] }
+type CacheEntry = { kind: 'market'; snapshot: string; records: PowerRecord[] }
 
 interface CacheSlot {
   entry?: CacheEntry
   generation: number
 }
 
-type PlatformCode = 'cancelled' | 'incompatible' | 'unavailable'
+type PlatformCode = 'cancelled' | 'incompatible'
 
 function platformError(code: PlatformCode, message: string, retryable: boolean): never {
   throw { version: 1, code, message, retryable }
 }
 
-function cacheKey(input: ListPowersInput): string {
-  return input.scope === 'market' ? 'market' : `installed:${input.agent ?? ''}`
-}
-
-function toPowersWireInput(input: ListPowersInput, entry: CacheEntry | undefined): PowersWireInput {
-  if (input.scope === 'installed') {
-    if (input.agent === undefined) {
-      throw new Error('Invalid powers.list.v1 request: installed scope requires an agent')
-    }
-    return { scope: 'installed', agent: input.agent }
-  }
-  if (entry?.kind === 'market') {
-    return { scope: 'market', knownSnapshot: entry.snapshot }
-  }
-  return { scope: 'market' }
-}
-
 /**
- * The cache is a WeakMap keyed by the current service instance so it dies with the
- * capability handle. Within a service there is one market slot and one slot per
- * agent for installed. Each slot carries a generation that is bumped only on a
- * successful commit; a slower in-flight request detects a newer commit and ends
- * as cancelled instead of overwriting fresher data.
+ * The market cache is a WeakMap keyed by the current service instance so it dies
+ * with the capability handle. Each slot carries a generation that is bumped only
+ * on a successful commit; a slower in-flight request detects a newer commit and
+ * ends as cancelled instead of overwriting fresher data. Installed data is not
+ * cached here: it is delegated to the shared installation store.
  */
 const caches = new WeakMap<FeatureServiceApiV1<'store'>, Map<string, CacheSlot>>()
 
@@ -87,12 +62,21 @@ export async function listPowers(
   signal: AbortSignal
 ): Promise<ListPowersResult> {
   const query = parseListPowersInput(input)
-  const key = cacheKey(query)
-  const slot = slotFor(service, key)
+
+  if (query.scope === 'installed') {
+    if (query.agent === undefined) {
+      throw new Error('Invalid powers.list.v1 request: installed scope requires an agent')
+    }
+    const records = await getInstallationStore(service).refreshAgent(query.agent, signal)
+    return parseListPowersResult(buildInstalledPowersResult(query, records))
+  }
+
+  const slot = slotFor(service, 'market')
   const entry = slot.entry
   const generation = slot.generation
 
-  const wireInput = toPowersWireInput(query, entry)
+  const wireInput =
+    entry?.kind === 'market' ? { scope: 'market', knownSnapshot: entry.snapshot } : { scope: 'market' }
   const wireResult = parsePowersWireResult(
     await service.request<Record<string, unknown>>({
       serviceId: 'store',
@@ -106,14 +90,8 @@ export async function listPowers(
   if (signal.aborted) {
     platformError('cancelled', 'Request was cancelled.', false)
   }
-  if (wireResult.scope !== query.scope) {
+  if (wireResult.scope !== 'market') {
     platformError('incompatible', 'Provider returned an unexpected scope.', false)
-  }
-
-  if (wireResult.scope === 'installed') {
-    const records = parseApmInstalledList(JSON.parse(wireResult.listJson))
-    commitCache(slot, generation, signal, { kind: 'installed', records })
-    return parseListPowersResult(buildInstalledPowersResult(query, records))
   }
 
   if (wireResult.status === 'not_modified') {
