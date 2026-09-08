@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-09-08 — Power 详情与安装/卸载，双 deb 上板部署（真实 GUI 闭环受 Bibit 宿主阻塞）
+
+分类：功能变更
+
+设计 `e218a13`；计划 `docs/superpowers/plans/2026-09-08-power-details-install.md`。实现/文档提交：`3cca5f5`（operation 契约）、`5a85718`（Go v1 Provider 执行 APM）、`9ace521`（共享安装状态与写互斥）、`bbf690e`（详情弹窗与卸载接线）、`6511356`（dev 与正式 Provider 同契约）、`1aebdf3`（grant、超时、双 deb）、`06adfe1` `b963adc` `88ddcde` `2b9f1a7` `50af82c` `3634357`（验证与文档）。
+
+用户需求：
+
+为 Agent Hub 增加 Power 详情（inspect）与安装/卸载（install/uninstall），经 Go v1 Provider 的 `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` 走 `service:store` 执行 APM 命令；前端用可订阅的安装状态仓库管理写互斥、串行写入与事后确认；dev 传输层与正式 Provider 保持同一 wire 契约；追加 operation grant、写请求 120000ms 超时与双 deb，并在真实 Bibit 中验证完整操作闭环。
+
+相关文件：
+
+- 新 `src/api/powerOperations.ts`/`installationStore.ts`/`operationMessages.ts` 及测试：闭集 parser、可订阅状态、写互斥与安全文案
+- 新 `src/components/PowerDetailsDialog.tsx` 及测试；`PowerCard.tsx`、`AgentHubPage.tsx`、`agentHub.css` 受控化接线
+- `provider/internal/provider/{contracts,server,config,operations,apm,process_linux,selftest}.go` 及测试：operation 联合分派与 APM 子进程执行
+- `dev/store.ts`/`sources.ts`/`vite.config.ts`/`dev/main.tsx`：dev 与 Go 同 argv/env/返回规则
+- `debian/agenthub-feature-grants.json`/`agenthub-provider.json`：追加 inspect/install/uninstall、120000ms 上限
+- 文档：`docs/verification/2026-09-08-power-management.md`、`docs/verification/2026-09-08-bibit-host-token-rotation.md`
+
+解决方案或完成结果：
+
+Provider 声明 list/inspect/install/uninstall 四枚 operation（协议 v1、`providerVersion:0.2.3`）；installed 每次 `apm list --installed --agent=<agent> --json`，inspect 执行 `apm list <name> --installed --json --agent --type` 并按目标 agent/type/name 校验记录归属，install/uninstall 执行明确 argv、非零退出码作为 `{status:"exited",exitCode}` 正常结果回传（不读 stderr、不猜失败原因），版本号强制 `vMAJOR.MINOR.PATCH`。前端 `installationStore` 用 epoch 丢弃迟到查询、写前检查、串行执行、事后独立预算刷新；详情弹窗共享版本选择，installed 仅卸载、market 打开详情。grant 追加三枚 operation 但 capability 仍只有 `service:store`；Registry 写请求上限 120000ms。
+
+验证结果或限制：
+
+前端 `npm test` 161→272 全绿，`typecheck`/`build:dev`/`build:plugin`/`git diff --check` 通过；Go `go test ./...`/`go vet ./...`/`go build`/`--self-test` 退出 0。双 deb 构建并上板：`bibit-agenthub-plugin_0.2.3_all.deb`（sha256 `f3f77aef…9fba`）、`bibit-agenthub-cli_0.2.3_riscv64.deb`（sha256 `7db10b43…ba37`），`apm` 装入 `/usr/bin/apm`，Provider 装入 `/usr/libexec/bibit/bibit-agenthub`。板端部署后的正式产物经 NDJSON 全链路通过：initialize → list（空/含 `foo-before-summary v0.0.1`/空）→ install/uninstall `exitCode:0` → inspect 单条。开发阶段按指示使用开发签名。
+
+限制：真实 Bibit GUI 内 UI 闭环（market 详情→安装→installed→卸载）未完成——板端 bi-bit 0.1.3 存在宿主多 surface 轮换 feature-instance token 的问题（`voice-overlay` 与 `main` 都执行 `loadTrustedPluginEntries`→`trusted_plugin_prepare_active`，后者 `force_rotate=true` 轮换 token，使主窗口插件 token 失效，任何 `service:*` 请求均 `request_unauthorized`）。根因与修复建议见 `docs/verification/2026-09-08-bibit-host-token-rotation.md`，待宿主修复后补做 GUI 闭环。
+
 ## 2026-09-07 — 实现 v1 Go Provider、前端目录缓存与双 deb 上板验收
 
 分类：功能变更
