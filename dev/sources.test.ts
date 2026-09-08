@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { createServer, type Server } from 'node:http'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { readInstalled, readMarket, withDeadline } from './sources'
+import { inspectSource, mutateSource, readInstalled, readMarket, withDeadline } from './sources'
 
 function writeExecutable(name: string, content: string): string {
   const dir = mkdtempSync(join(tmpdir(), 'agenthub-sources-'))
@@ -161,6 +161,61 @@ describe('readMarket', () => {
       message: 'APC catalog is unavailable',
     })
     await new Promise((resolve) => server.close(resolve))
+  })
+})
+
+describe('inspectSource', () => {
+  it('passes the inspect argv to the apm CLI and returns the raw output', async () => {
+    const apm = writeExecutable('apm', '#!/bin/sh\nprintf "%s" "$*"\n')
+    process.env.APM_PATH = apm
+
+    const result = await inspectSource({ agent: 'bibit', type: 'skill', name: 'demo' }, freshSignal())
+
+    expect(result).toEqual({ listJson: 'list demo --installed --json --agent=bibit --type=skill' })
+  })
+
+  it('maps a non-zero inspect exit to the fixed unavailable error', async () => {
+    const apm = writeExecutable('apm', '#!/bin/sh\nexit 2\n')
+    process.env.APM_PATH = apm
+
+    await expect(inspectSource({ agent: 'bibit', type: 'skill', name: 'demo' }, freshSignal())).rejects.toMatchObject({
+      code: 'unavailable',
+      message: 'apm CLI is unavailable',
+    })
+  })
+})
+
+describe('mutateSource', () => {
+  it('reports a non-zero write exit as a normal result', async () => {
+    const apm = writeExecutable('apm', '#!/bin/sh\nexit 3\n')
+    process.env.APM_PATH = apm
+
+    const result = await mutateSource({ kind: 'uninstall', input: { agent: 'bibit', type: 'skill', name: 'demo' } }, freshSignal())
+
+    expect(result).toEqual({ status: 'exited', exitCode: 3 })
+  })
+
+  it('passes the install argv to the apm CLI', async () => {
+    const log = join(tmpdir(), `agenthub-argv-${Date.now()}-${Math.random()}.log`)
+    const apm = writeExecutable('apm', `#!/bin/sh\nprintf '%s' "$*" > '${log}'\n`)
+    process.env.APM_PATH = apm
+
+    await mutateSource(
+      { kind: 'install', input: { agent: 'bibit', type: 'skill', name: 'demo', version: 'v1.0.0' } },
+      freshSignal()
+    )
+
+    expect(readFileSync(log, 'utf8')).toBe('install demo=v1.0.0 --agent=bibit --type=skill')
+  })
+
+  it('passes the uninstall argv to the apm CLI', async () => {
+    const log = join(tmpdir(), `agenthub-argv-${Date.now()}-${Math.random()}.log`)
+    const apm = writeExecutable('apm', `#!/bin/sh\nprintf '%s' "$*" > '${log}'\n`)
+    process.env.APM_PATH = apm
+
+    await mutateSource({ kind: 'uninstall', input: { agent: 'bibit', type: 'skill', name: 'demo' } }, freshSignal())
+
+    expect(readFileSync(log, 'utf8')).toBe('uninstall demo --agent=bibit --type=skill')
   })
 })
 

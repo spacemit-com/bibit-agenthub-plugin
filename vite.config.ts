@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { defineConfig, type Plugin } from 'vite'
 import { handleStoreRequest, StoreError } from './dev/store'
-import { readInstalled, readMarket } from './dev/sources'
+import { inspectSource, mutateSource, readInstalled, readMarket } from './dev/sources'
 
 const MAX_BODY_BYTES = 1024 * 1024
 
@@ -72,8 +72,7 @@ function devStorePlugin(): Plugin {
           requestId = body.requestId
           const result = await handleStoreRequest(
             { operationId: body.operationId, params: body.params },
-            readInstalled,
-            readMarket,
+            { readInstalled, readMarket, inspect: inspectSource, mutate: mutateSource },
             controller.signal
           )
           sendJson(response, { protocolVersion: 1, requestId, ok: true, result })

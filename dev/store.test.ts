@@ -4,8 +4,11 @@ import type { ListPowersInput } from '../src/api/contracts'
 import { listPowers } from '../src/api/powerCatalogClient'
 import {
   handleStoreRequest,
+  type InspectSource,
   type InstalledSource,
   type MarketSource,
+  type MutateSource,
+  type StoreSources,
 } from './store'
 
 const marketWire = { scope: 'market' }
@@ -18,6 +21,12 @@ const okMarket: MarketSource = async () => ({
   snapshot: 'sha-1',
   catalogJson: '{}',
 })
+const okInspect: InspectSource = async () => ({ listJson: '[]' })
+const okMutate: MutateSource = async () => ({ status: 'exited', exitCode: 0 })
+
+function sources(overrides: Partial<StoreSources> = {}): StoreSources {
+  return { readInstalled: okInstalled, readMarket: okMarket, inspect: okInspect, mutate: okMutate, ...overrides }
+}
 
 function marketQuery(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return { ...marketWire, ...overrides }
@@ -26,17 +35,17 @@ function marketQuery(overrides: Record<string, unknown> = {}): Record<string, un
 describe('handleStoreRequest', () => {
   it('returns default settings for settings.get.v1', async () => {
     await expect(
-      handleStoreRequest({ operationId: 'settings.get.v1', params: {} }, okInstalled, okMarket, new AbortController().signal)
+      handleStoreRequest({ operationId: 'settings.get.v1', params: {} }, sources(), new AbortController().signal)
     ).resolves.toEqual({ showExperimental: false, refreshMinutes: 15 })
   })
 
   it('echoes settings.update.v1 and persists the change', async () => {
     const next = { showExperimental: true, refreshMinutes: 30 }
     await expect(
-      handleStoreRequest({ operationId: 'settings.update.v1', params: next }, okInstalled, okMarket, new AbortController().signal)
+      handleStoreRequest({ operationId: 'settings.update.v1', params: next }, sources(), new AbortController().signal)
     ).resolves.toEqual(next)
     await expect(
-      handleStoreRequest({ operationId: 'settings.get.v1', params: {} }, okInstalled, okMarket, new AbortController().signal)
+      handleStoreRequest({ operationId: 'settings.get.v1', params: {} }, sources(), new AbortController().signal)
     ).resolves.toEqual(next)
   })
 
@@ -44,8 +53,7 @@ describe('handleStoreRequest', () => {
     const readMarket = vi.fn<MarketSource>(okMarket)
     const result = await handleStoreRequest(
       { operationId: 'powers.list.v1', params: marketWire },
-      okInstalled,
-      readMarket,
+      sources({ readMarket }),
       new AbortController().signal
     )
     expect(readMarket).toHaveBeenCalledWith(undefined, expect.any(AbortSignal))
@@ -56,8 +64,7 @@ describe('handleStoreRequest', () => {
     const readInstalled = vi.fn<InstalledSource>(okInstalled)
     const result = await handleStoreRequest(
       { operationId: 'powers.list.v1', params: installedWire },
-      readInstalled,
-      okMarket,
+      sources({ readInstalled }),
       new AbortController().signal
     )
     expect(readInstalled).toHaveBeenCalledWith('bibit', expect.any(AbortSignal))
@@ -66,21 +73,73 @@ describe('handleStoreRequest', () => {
 
   it('rejects unknown operations as incompatible', async () => {
     await expect(
-      handleStoreRequest({ operationId: 'nope.v1', params: {} }, okInstalled, okMarket, new AbortController().signal)
+      handleStoreRequest({ operationId: 'nope.v1', params: {} }, sources(), new AbortController().signal)
     ).rejects.toMatchObject({ code: 'incompatible' })
   })
 
   it('rejects an installed wire without an agent', async () => {
     await expect(
-      handleStoreRequest({ operationId: 'powers.list.v1', params: { scope: 'installed' } }, okInstalled, okMarket, new AbortController().signal)
+      handleStoreRequest({ operationId: 'powers.list.v1', params: { scope: 'installed' } }, sources(), new AbortController().signal)
     ).rejects.toThrow(/Invalid powers\.list\.v1/)
   })
 
   it('rejects a wire result outside the closed union', async () => {
     const readMarket: MarketSource = async () => ({ scope: 'market', status: 'weird' }) as never
     await expect(
-      handleStoreRequest({ operationId: 'powers.list.v1', params: marketWire }, okInstalled, readMarket, new AbortController().signal)
+      handleStoreRequest({ operationId: 'powers.list.v1', params: marketWire }, sources({ readMarket }), new AbortController().signal)
     ).rejects.toThrow(/Invalid powers\.list\.v1/)
+  })
+
+  it('routes inspect to the source with the parsed target', async () => {
+    const inspect = vi.fn<InspectSource>(okInspect)
+    const result = await handleStoreRequest(
+      { operationId: 'powers.inspect.v1', params: { agent: 'bibit', type: 'skill', name: 'demo' } },
+      sources({ inspect }),
+      new AbortController().signal
+    )
+    expect(inspect).toHaveBeenCalledWith({ agent: 'bibit', type: 'skill', name: 'demo' }, expect.any(AbortSignal))
+    expect(result).toEqual({ listJson: '[]' })
+  })
+
+  it('routes install to the source as an install intent with the version', async () => {
+    const mutate = vi.fn<MutateSource>(okMutate)
+    const result = await handleStoreRequest(
+      {
+        operationId: 'powers.install.v1',
+        params: { agent: 'bibit', type: 'skill', name: 'demo', version: 'v1.0.0' },
+      },
+      sources({ mutate }),
+      new AbortController().signal
+    )
+    expect(mutate).toHaveBeenCalledWith(
+      { kind: 'install', input: { agent: 'bibit', type: 'skill', name: 'demo', version: 'v1.0.0' } },
+      expect.any(AbortSignal)
+    )
+    expect(result).toEqual({ status: 'exited', exitCode: 0 })
+  })
+
+  it('routes uninstall to the source as an uninstall intent without a version', async () => {
+    const mutate = vi.fn<MutateSource>(okMutate)
+    const result = await handleStoreRequest(
+      { operationId: 'powers.uninstall.v1', params: { agent: 'bibit', type: 'skill', name: 'demo' } },
+      sources({ mutate }),
+      new AbortController().signal
+    )
+    expect(mutate).toHaveBeenCalledWith(
+      { kind: 'uninstall', input: { agent: 'bibit', type: 'skill', name: 'demo' } },
+      expect.any(AbortSignal)
+    )
+    expect(result).toEqual({ status: 'exited', exitCode: 0 })
+  })
+
+  it('rejects an install input without a canonical version', async () => {
+    await expect(
+      handleStoreRequest(
+        { operationId: 'powers.install.v1', params: { agent: 'bibit', type: 'skill', name: 'demo', version: 'nope' } },
+        sources(),
+        new AbortController().signal
+      )
+    ).rejects.toThrow(/version/)
   })
 })
 
@@ -104,8 +163,7 @@ describe('raw envelope + listPowers end-to-end', () => {
       async request<TResult>(input: FeatureServiceRequestV1<'store'>): Promise<TResult> {
         return handleStoreRequest(
           { operationId: input.operationId, params: input.params },
-          okInstalled,
-          readMarket,
+          sources({ readMarket }),
           input.signal ?? new AbortController().signal
         ) as TResult
       },
@@ -138,8 +196,7 @@ describe('raw envelope + listPowers end-to-end', () => {
       async request<TResult>(input: FeatureServiceRequestV1<'store'>): Promise<TResult> {
         return handleStoreRequest(
           { operationId: input.operationId, params: input.params },
-          okInstalled,
-          readMarket,
+          sources({ readMarket }),
           input.signal ?? new AbortController().signal
         ) as TResult
       },

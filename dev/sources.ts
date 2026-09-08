@@ -3,18 +3,21 @@ import { get as httpGet } from 'node:http'
 import { get as httpsGet } from 'node:https'
 import type { IncomingMessage } from 'node:http'
 import type { PowersWireResult } from '../src/api/contracts'
+import type { InspectResult, MutationIntent, MutationResult, PowerTarget } from '../src/api/powerOperations'
 import { StoreError } from './store'
 
 /**
  * Dev-only Node transport with the same semantics as the Go provider: it never
- * parses business fields, carries the raw UTF-8 JSON text through, applies a
- * 30-second deadline and a 4 MiB response budget, and trusts only the platform CA.
- * This file is consumed by vite.config.ts and never reaches the plugin bundle.
+ * parses business fields, carries the raw UTF-8 JSON text through, applies the
+ * per-operation deadline (read 30 s / write 120 s) and a 4 MiB response budget,
+ * and trusts only the platform CA. This file is consumed by vite.config.ts and
+ * never reaches the plugin bundle.
  */
 
 const DEFAULT_APC_BASE_URL = 'https://developer.bianbu.xyz/api-server/apc/api/v1'
 const MAX_BYTES = 4 * 1024 * 1024
-const TIMEOUT_MS = 30_000
+const READ_TIMEOUT_MS = 30_000
+const WRITE_TIMEOUT_MS = 120_000
 
 // Read at call time so tests can override the endpoints without racing module load.
 function apcBaseUrl(): string {
@@ -58,7 +61,7 @@ function apcUnavailable(): StoreError {
   return new StoreError('unavailable', true, APC_UNAVAILABLE)
 }
 
-function runApm(agent: string, signal: AbortSignal): Promise<string> {
+function runApmProcess(argv: string[], signal: AbortSignal): Promise<{ stdout: string; exitCode: number }> {
   return new Promise((resolve, reject) => {
     if (signal.aborted) {
       reject(apmUnavailable())
@@ -66,11 +69,8 @@ function runApm(agent: string, signal: AbortSignal): Promise<string> {
     }
     // Since apm ADR-029, `list --json` always carries description/tags, and `--all`
     // means "expand all versions of a NAMED power", so it is dropped. A non-zero
-    // exit (including a not-installed agent) is never faked into an empty list.
-    const argv = ['list', '--installed', '--agent=' + agent, '--json']
-    // `detached` puts the child in its own process group so cancellation can kill
-    // the whole group (matching the Go provider's Setpgid + kill(-pid) hygiene)
-    // instead of stranding grandchildren that keep the stdout pipe open.
+    // exit is returned to the caller so read operations can reject and write
+    // operations can report it as a normal result.
     const child = spawn(apmPath(), argv, {
       shell: false,
       stdio: ['ignore', 'pipe', 'ignore'],
@@ -133,21 +133,53 @@ function runApm(agent: string, signal: AbortSignal): Promise<string> {
           reject(apmUnavailable())
           return
         }
-        if (code !== 0) {
-          reject(apmUnavailable())
-          return
-        }
-        resolve(stdout)
+        resolve({ stdout, exitCode: code ?? -1 })
       })
     })
   })
 }
 
 export async function readInstalled(agent: string, signal: AbortSignal): Promise<PowersWireResult> {
-  const deadline = withDeadline(signal, TIMEOUT_MS)
+  const deadline = withDeadline(signal, READ_TIMEOUT_MS)
   try {
-    const listJson = await runApm(agent, deadline.signal)
-    return { scope: 'installed', status: 'data', listJson }
+    const { stdout, exitCode } = await runApmProcess(
+      ['list', '--installed', '--agent=' + agent, '--json'],
+      deadline.signal
+    )
+    if (exitCode !== 0) {
+      throw apmUnavailable()
+    }
+    return { scope: 'installed', status: 'data', listJson: stdout }
+  } finally {
+    deadline.cleanup()
+  }
+}
+
+export async function inspectSource(target: PowerTarget, signal: AbortSignal): Promise<InspectResult> {
+  const deadline = withDeadline(signal, READ_TIMEOUT_MS)
+  try {
+    const { stdout, exitCode } = await runApmProcess(
+      ['list', target.name, '--installed', '--json', '--agent=' + target.agent, '--type=' + target.type],
+      deadline.signal
+    )
+    if (exitCode !== 0) {
+      throw apmUnavailable()
+    }
+    return { listJson: stdout }
+  } finally {
+    deadline.cleanup()
+  }
+}
+
+export async function mutateSource(intent: MutationIntent, signal: AbortSignal): Promise<MutationResult> {
+  const deadline = withDeadline(signal, WRITE_TIMEOUT_MS)
+  try {
+    const argv =
+      intent.kind === 'install'
+        ? ['install', intent.input.name + '=' + intent.input.version, '--agent=' + intent.input.agent, '--type=' + intent.input.type]
+        : ['uninstall', intent.input.name, '--agent=' + intent.input.agent, '--type=' + intent.input.type]
+    const { exitCode } = await runApmProcess(argv, deadline.signal)
+    return { status: 'exited', exitCode }
   } finally {
     deadline.cleanup()
   }
@@ -237,7 +269,7 @@ export async function readMarket(
   knownSnapshot: string | undefined,
   signal: AbortSignal
 ): Promise<PowersWireResult> {
-  const deadline = withDeadline(signal, TIMEOUT_MS)
+  const deadline = withDeadline(signal, READ_TIMEOUT_MS)
   try {
     const snapshot = await fetchVersion(deadline.signal)
     if (snapshot === knownSnapshot) {
