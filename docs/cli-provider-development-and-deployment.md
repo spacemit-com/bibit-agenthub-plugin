@@ -7,7 +7,7 @@ AgentHub UI -> Feature SDK -> Bibit external-service gateway
             -> Provider Protocol v1 -> AgentHub CLI (Go)
 ```
 
-CLI 是纯 Go 标准库实现（`provider/` 独立 module），只声明 Provider Protocol v1 与单个 operation `powers.list.v1`。上传/下载、job、文件传输、settings 归属均不在本期 CLI 范围内。
+CLI 是纯 Go 标准库实现（`provider/` 独立 module），只声明 Provider Protocol v1 与四个 operation `powers.list.v1` / `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1`。上传/下载、job、文件传输、settings 归属均不在本期 CLI 范围内。
 
 ## 1. 系统入口与进程约束
 
@@ -39,7 +39,7 @@ Provider 从 stdin 读取 UTF-8 NDJSON，stdout 只输出完整单行 JSON-RPC 2
 支持传输的 Provider 返回：
 
 ```json
-{"jsonrpc":"2.0","id":"session:initialize","result":{"protocolVersion":1,"providerVersion":"0.2.2","capabilities":{"invoke":true},"operations":["powers.list.v1"]}}
+{"jsonrpc":"2.0","id":"session:initialize","result":{"protocolVersion":1,"providerVersion":"0.2.3","capabilities":{"invoke":true},"operations":["powers.list.v1","powers.inspect.v1","powers.install.v1","powers.uninstall.v1"]}}
 ```
 
 初始化前拒绝 `bibit.invoke`。Provider 只声明 `invoke`，不声明 v2 的 `jobs`/`cancellation`/`maxConcurrentJobs`。`bibit.shutdown` 通知结束会话，`bibit.cancel`（v2 保留字）在 v1 会话中被忽略。
@@ -87,6 +87,41 @@ apm list --installed --agent=<selected> --json
 
 每次请求先 `GET {base}/resources/version`；`catalog_sha256` 等于 `knownSnapshot` 时返回 `not_modified`，否则下载 `GET {base}/resources` 全量目录并回传同一 snapshot。默认 base 为 `https://developer.bianbu.xyz/api-server/apc/api/v1`。不调用 `resources/list` 或 `resources/tags`。HTTP 客户端使用系统受信 CA，重定向 ≤5 跳且禁止 https→http 降级，无跳过 TLS 校验的开关。
 
+### 3.3 powers.inspect.v1
+
+```json
+{"jsonrpc":"2.0","id":"req-2","method":"bibit.invoke","params":{"serviceId":"store","operationId":"powers.inspect.v1","params":{"agent":"bibit","type":"skill","name":"demo"},"timeoutMs":30000}}
+```
+
+固定 argv（无 shell）：
+
+```text
+apm list demo --installed --json --agent=bibit --type=skill
+```
+
+exit 0 时透传 `{listJson: stdout}`（原始 UTF-8 JSON）；apm 不存在或非零退出 → `unavailable`。目标是否已安装由前端预检逻辑判断，Provider 只透传命令输出。
+
+### 3.4 powers.install.v1 / powers.uninstall.v1
+
+```json
+{"jsonrpc":"2.0","id":"req-3","method":"bibit.invoke","params":{"serviceId":"store","operationId":"powers.install.v1","params":{"agent":"bibit","type":"skill","name":"demo","version":"v1.0.0"},"timeoutMs":120000}}
+{"jsonrpc":"2.0","id":"req-4","method":"bibit.invoke","params":{"serviceId":"store","operationId":"powers.uninstall.v1","params":{"agent":"bibit","type":"skill","name":"demo"},"timeoutMs":120000}}
+```
+
+固定 argv（无 shell）：
+
+```text
+apm install demo=v1.0.0 --agent=bibit --type=skill
+apm uninstall demo --agent=bibit --type=skill
+```
+
+写入语义：
+
+- 写超时 120 秒；Provider 用 `context.WithTimeout` 预留 1000ms 子进程清理预算，超时后 kill 整个进程组并映射 `timeout`；
+- 非零退出是正常结果，返回 `{status:"exited", exitCode:N}`，由前端 `operationMessage` 映射为固定失败文案，Provider 不透传 stderr；
+- apm 启动失败（含不存在）→ `{status:"unavailable"}`；
+- 安装的 `version` 必须是规范版本 `v<major>.<minor>.<patch>`，卸载/详情不带 version；`name` 必须满足 APM 规范命名（1–64 字节小写 kebab）。
+
 ## 4. 错误闭集
 
 Provider 错误的 `data.code` 仅使用平台闭集：
@@ -104,7 +139,7 @@ provider_crashed resource_exhausted unknown
 /usr/libexec/bibit/bibit-agenthub --self-test
 ```
 
-自检离线运行 4 项子检查：初始化与 v1 协商、纯 v2 不支持路径、invoke 错误映射、malformed NDJSON（`-32700`），exit 0 表示通过。不要求真实 APM 或公网服务。
+自检离线运行 5 项子检查：初始化与 v1 协商、power operations（inspect/install/uninstall 的 argv 与结果形状）、纯 v2 不支持路径、invoke 错误映射、malformed NDJSON（`-32700`），exit 0 表示通过。不要求真实 APM 或公网服务。
 
 ## 6. Registry 与双 deb
 
@@ -120,7 +155,7 @@ Registry 严格对齐宿主 `RawConnectionRegistry`（serde camelCase）：
       "args": ["provider"],
       "lifecycle": "managed",
       "protocolVersions": [1],
-      "requestTimeoutMs": 30000
+      "requestTimeoutMs": 120000
     }
   }
 }
@@ -153,4 +188,4 @@ CLI 包不依赖 APM 或 bi-bit；APM 缺失允许降级为 `unavailable` 而非
 1. `make -C provider test vet`；`make -C provider build GOARCH=riscv64` 后 `readelf -h` 确认 RISC-V。
 2. `/usr/libexec/bibit/bibit-agenthub --self-test`（或本机二进制路径）exit 0。
 3. `go run ./cmd/provider-probe --executable <binary> --scope market` 记录 snapshot，再用该 snapshot 复调确认 `not_modified`。
-4. 板端安装两包后，宿主协商 `protocol=1`，页面 installed/market 真实数据、翻页/筛选每次 version 检查、缓存命中不下载全量。
+4. 板端安装两包后，宿主协商 `protocol=1`，页面 installed/market 真实数据、翻页/筛选每次 version 检查、缓存命中不下载全量，详情与安装/卸载走 `apm`（读 30s / 写 120s）。

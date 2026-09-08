@@ -21,7 +21,7 @@
 - `pages.home`：显示在 Bibit 主导航的 Agent Hub 页面；
 - `settings.settings`：显示在 Bibit 设置子菜单的 Agent Hub 设置页面。
 
-当前 Demo 已实现 APC Power 展示原型：通过 `powers.list.v1` 提供“我的 Power / Power 市场”两种数据范围、Agent / 类型 / tags 分层筛选、系列级卡片、版本选择与每页 20 张卡片的分页，并配套 Local Preview。设置页仍提供实验 Agent 开关和刷新间隔两个字段。Power 安装、下载、提交、审核、下架、恢复以及搜索、详情等能力尚未实现，这些属于 Agent Hub 模块团队后续定制范围。
+当前 Demo 已实现 APC Power 展示与安装原型：通过 `powers.list.v1` 提供“我的 Power / Power 市场”两种数据范围、Agent / 类型 / tags 分层筛选、系列级卡片、版本选择与每页 20 张卡片的分页，并配套 Local Preview；通过 `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` 提供详情查看与单版本安装/卸载闭环。设置页仍提供实验 Agent 开关和刷新间隔两个字段。Power 下载、提交、审核、下架、恢复以及搜索等能力尚未实现，这些属于 Agent Hub 模块团队后续定制范围。
 
 当前插件使用平台随目标 Bibit 一并发布的 `@bibit/feature-ui@0.3.0`，复用 `FeatureSettingsPage`、`Button`、状态组件和图标，并通过 Bibit 主题 token 适配明暗主题。该包必须与 React 及其余 SDK 一起锁定升级；不得直接导入 Bibit 私有 UI 源码。
 
@@ -424,14 +424,14 @@ return () => controller.abort()
 
 - capability 不存在时显示 Agent Hub 局部错误，不直接回退到 `fetch`；
 - `serviceId` 固定为 `store`；
-- `operationId` 必须带版本，页面数据只使用 `powers.list.v1`；
-- `params` 必须是 JSON object，由 `toListPowersParams` 投影为字段闭集；
-- timeout 必须在 `1..300000` 毫秒内，默认值为 30000 毫秒；
+- `operationId` 必须带版本，页面数据使用 `powers.list.v1`，详情/安装/卸载使用 `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1`；
+- `params` 必须是 JSON object，由 `toListPowersParams` / `parsePowerTarget` / `parseInstallInput` 投影为字段闭集；
+- timeout 必须在 `1..300000` 毫秒内；读取默认 30000 毫秒，写入（安装/卸载）默认 120000 毫秒；
 - 单个请求最大 1 MiB，单个响应最大 4 MiB；正式发布前必须验证 `powers.list.v1` 单响应不超过 Host 的 4 MiB 上限；
 - 不把 URL、header、authorization、token、API key、cookie、credential 或 secret 放入 `params`；
 - 不显示或记录原始凭据、请求 header 或后端内部堆栈。
 
-`powers.list.v1` 在插件 API 边界执行闭集运行时校验（`parseListPowersInput` / `parseListPowersResult`）：未知字段、非法 Power 类型、非 20 的 pageSize、版本乱序、重复或未排序 tags、market 携带 agent 等都会被拒绝。`settings.get.v1` / `settings.update.v1` 由 store 服务处理（dev 为内存 echo；settings 持久化不在本期范围）。校验失败或后端返回未知结构时映射为局部错误态（`incompatible`），不能让页面白屏。
+`powers.list.v1` 在插件 API 边界执行闭集运行时校验（`parseListPowersInput` / `parseListPowersResult`）：未知字段、非法 Power 类型、非 20 的 pageSize、版本乱序、重复或未排序 tags、market 携带 agent 等都会被拒绝。`powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` 用 `parsePowerTarget` / `parseInstallInput` 校验（安装必须带规范版本，卸载/详情不带版本；agent/type/name 必须满足规范命名）。`settings.get.v1` / `settings.update.v1` 由 store 服务处理（dev 为内存 echo；settings 持久化不在本期范围）。校验失败或后端返回未知结构时映射为局部错误态（`incompatible`），不能让页面白屏。
 
 ## 10. Store 服务协议
 
@@ -440,12 +440,15 @@ return () => controller.abort()
 | operationId | params | result |
 | --- | --- | --- |
 | `powers.list.v1` | `ListPowersInput` | `ListPowersResult`（`ready` 或 `reset_required` 联合） |
+| `powers.inspect.v1` | `PowerTarget` | `InspectResult`（`listJson`） |
+| `powers.install.v1` | `InstallInput` | `MutationResult`（`exited`/`unavailable` 联合） |
+| `powers.uninstall.v1` | `PowerTarget` | `MutationResult`（`exited`/`unavailable` 联合） |
 | `settings.get.v1` | `{}` | `AgentHubSettingsV1` |
 | `settings.update.v1` | `AgentHubSettingsV1` | `AgentHubSettingsV1` |
 | `agents.upload.v1` | Job input `{displayName}` + input FileGrant | `{agentId,displayName,bytes,sha256}` |
 | `agents.download.v1` | Job input `{agentId}` + output FileGrant | `{agentId,bytes,sha256}` |
 
-`powers.list.v1` 是页面唯一的业务数据 operation。请求与结果类型（与 `src/api/contracts.ts` 一致）：
+`powers.list.v1` 是页面的业务数据 operation；`powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` 是详情与写入 operation，均通过共享安装状态 `installationStore` 驱动页面（见 10.5）。请求与结果类型（与 `src/api/contracts.ts` 一致）：
 
 ```ts
 export const POWER_TYPES = ['skill', 'plugin', 'mcp', 'agent'] as const
@@ -671,7 +674,40 @@ apm list --installed --agent=<selected> --json
 
 前端 Agent 菜单固定为 bibit / codex / claude-code 三个选项（`claude-code` 即 apm 中 Claude 的 id），由插件常量提供，不依赖 `facets.agents` 做发现；每次请求只解析所选 agent 的返回。`listJson` 由前端数据层用 `parseApmInstalledList` 解析为 `APMPowerRecord[]`，再经 `buildInstalledPowersResult` 完成 type/tags 过滤、按 type/name 聚合、去重、分页与 facets——这些聚合只存在于前端 `src/api/`，Provider 与 dev transport 不复制。
 
-### 10.5 Market 数据源（APC 公共接口）
+### 10.5 Power 详情与安装/卸载（APM CLI）
+
+详情与写入共用 `service:store` 三个 operation，Go Provider 与 dev transport 使用与 10.4 相同的固定 argv（无 shell、不重序列化）：
+
+```text
+apm list <name> --installed --json --agent=<agent> --type=<type>          # powers.inspect.v1
+apm install <name>=<version> --agent=<agent> --type=<type>               # powers.install.v1
+apm uninstall <name> --agent=<agent> --type=<type>                       # powers.uninstall.v1
+```
+
+wire 输入闭集：
+
+```text
+{agent:"<agent>", type:"<type>", name:"<name>"}                          // inspect / uninstall
+{agent:"<agent>", type:"<type>", name:"<name>", version:"v<x>.<y>.<z>"}  // install（规范版本）
+```
+
+wire 结果闭集：
+
+```text
+{listJson:"[...]"}                     // inspect 透传 apm 单目标输出
+{status:"exited", exitCode:<int>}      // install/uninstall：非零退出是正常结果
+{status:"unavailable"}                 // apm 不可用，交由前端固定文案
+```
+
+语义与前端状态机（`src/api/installationStore.ts`）：
+
+- 写超时 120 秒；Provider 保留 1000ms 子进程清理预算，宿主写超时按 `min(request.timeout_ms, connection.request_timeout_ms)` 截断；
+- 安装/卸载是“先预检、后执行、再刷新”的生命周期：preflight（install 会先 inspect 目标，已安装则拒绝）→ running → reconciling（重新读取 installed）→ settled；刷新失败不吞掉已执行命令，页面显示固定“状态确认失败”文案并可刷新；
+- 前端对写结果只区分 `exited` 与 `unavailable`，非零 `exitCode` 返回为正常结果，由 `operationMessage` 映射为固定文案（如“安装失败”/“卸载失败”），不透传 CLI stderr 或物理路径；
+- 共享安装状态以 `JSON.stringify([agent,type,name])` 为条目键，跨详情弹窗与列表卡片复用同一份 state；全局写锁确保同一时刻只有一个变更在途，重复点击被阻止；
+- 卸载的中断语义：发起后即进入 running 并阻止重复提交；若页面卸载或详情关闭，请求被取消但写命令可能已完成，重开页面靠刷新 installed 恢复真实状态。
+
+### 10.6 Market 数据源（APC 公共接口）
 
 Store 收到 `scope=market` 时，前端发送 raw wire 输入：
 
@@ -693,19 +729,19 @@ Go Provider 每次请求先 `GET {base}/resources/version`；`catalog_sha256` �
 
 APC 全量约束：只调用 `resources/version` 与 `resources`，不调用 `resources/list` 或 `resources/tags`；类型过滤、tag OR 过滤、系列聚合、分页与 facets 全在前端 `buildPowersResult` 完成。前端在解析 `catalogJson` 前先用 Web Crypto 对原始 UTF-8 字节计算 SHA-256 并与 `snapshot` 比对（`src/api/catalogIntegrity.ts`），不一致抛可重试 `unavailable` 且不写入缓存。默认 base 为 `https://developer.bianbu.xyz/api-server/apc/api/v1`；HTTP 客户端使用系统受信 CA，重定向 ≤5 跳且禁止 https→http 降级，无跳过 TLS 校验的开关。
 
-### 10.6 部署与发布前置项
+### 10.7 部署与发布前置项
 
 已实现并纳入两个 deb：
 
-- Go 标准库 Provider（v1，`powers.list.v1`），`bibit-agenthub-cli`（Architecture: any）拥有 `/usr/libexec/bibit/bibit-agenthub` 与 `/etc/bibit/external-services.d/agenthub.json`（Registry `version: 2`、`protocolVersions: [1]`、managed stdio）；
-- 前端 bundle 与 capability grant 仍在 `bibit-agenthub-plugin`（Architecture: all）；
+- Go 标准库 Provider（v1，`powers.list.v1` / `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1`），`bibit-agenthub-cli`（Architecture: any）拥有 `/usr/libexec/bibit/bibit-agenthub` 与 `/etc/bibit/external-services.d/agenthub.json`（Registry `version: 2`、`protocolVersions: [1]`、managed stdio、`requestTimeoutMs: 120000`）；
+- 前端 bundle 与 capability grant 仍在 `bibit-agenthub-plugin`（Architecture: all）；grant 的 store operations 追加 inspect/install/uninstall，capability 仍只有 `service:store`，不新增 job/file grant；
 - 前端数据层在 dev 与生产共用，`dev/sources.ts` 与 Go Provider 语义一致。
 
 发布与板端验收仍依赖以下前置项，缺少时如实记录阻塞：
 
-- 按现有签名流程取得 0.2.2 的受信签名 bundle（开发签名不能代替 Release 信任链）；
+- 按现有签名流程取得 0.2.3 的受信签名 bundle（开发签名不能代替 Release 信任链）；
 - 构建环境提供 ≥1.26.5 的 Go 工具链（目标 suite 的 `golang-go` 可能只有旧版本，需回填工具链或记录阻塞）；
-- 开发板安装两包并重启宿主，验证 Registry 加载、协议 v1 协商与两个 scope 真实数据。
+- 开发板安装两包并重启宿主，验证 Registry 加载、协议 v1 协商、两个 scope 真实数据与详情/安装/卸载闭环。
 
 在这些前置项完成前，只能宣称协议与构建已验证，不能宣称板端真实链路已接通。
 
@@ -741,7 +777,7 @@ npm run typecheck
 npm run dev
 ```
 
-浏览器打开 Vite 输出地址。Feature Dev Host 读取真实 Manifest 和 Feature Module，并通过 `dev/main.tsx` 的 `serviceConnections` 把 `powers.list.v1` 路由到 Vite 中间件（`vite.config.ts` → `dev/store.ts`）提供的 Store。`scope=installed` 会真实执行 PATH 中的 `apm list --installed --agent=<selected> --json`（身份记录）；`scope=market` 会每次请求真实拉取 APC 公开目录（`GET /resources/version` 取快照 + `GET /resources` 跟随重定向取全量列表），再按 `type` 过滤聚合；`settings.get.v1` / `settings.update.v1` 使用内存设置。此模式不启动、不编译 Bibit，也不要求远程 Store 后端在线；未安装 `apm` 时 installed 页显示可重试的 unavailable 错误，APC 不可达时 market 页显示可重试的 unavailable 错误。
+浏览器打开 Vite 输出地址。Feature Dev Host 读取真实 Manifest 和 Feature Module，并通过 `dev/main.tsx` 的 `serviceConnections` 把 `powers.list.v1` / `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` 路由到 Vite 中间件（`vite.config.ts` → `dev/store.ts`）提供的 Store。`scope=installed` 会真实执行 PATH 中的 `apm list --installed --agent=<selected> --json`（身份记录）；详情/安装/卸载分别执行 `apm list <name> --installed ...` / `apm install <name>=<version> ...` / `apm uninstall <name> ...`（argv 与 Go Provider 一致，读 30s / 写 120s）；`scope=market` 会每次请求真实拉取 APC 公开目录（`GET /resources/version` 取快照 + `GET /resources` 跟随重定向取全量列表），再按 `type` 过滤聚合；`settings.get.v1` / `settings.update.v1` 使用内存设置。此模式不启动、不编译 Bibit，也不要求远程 Store 后端在线；未安装 `apm` 时 installed 页显示可重试的 unavailable 错误，APC 不可达时 market 页显示可重试的 unavailable 错误。
 
 market 每次点击类型/标签、翻页都重新拉取并解析 APC 全量列表（无本地 fixture、无跨请求缓存），覆盖 skill / plugin / mcp / agent 四种 Power 类型；installed 由真实 apm 输出驱动，Agent 菜单固定为 bibit / codex / claude-code 三个选项。两种 scope 复用同一套筛选、聚合、分页、facets 与 snapshot 规则，与未来 Remote Store 一致。
 
@@ -1189,9 +1225,10 @@ CLI 模式检查 Registry 是否为 `version: 2`、`transport: stdio`、固定�
 ## 19. 当前已知边界
 
 - v1 只支持 `desktop/main`；
-- 当前插件实现 APC Power 展示原型（筛选、系列卡、版本选择、每页 20 的分页、warning 与 Retry）和两个设置字段；
-- Power 安装、下载、提交、审核、下架、恢复以及搜索、详情尚未实现；
-- `powers.list.v1` DTO 已做闭集运行时校验；`settings.get.v1` / `settings.update.v1` 由 store 服务处理（dev 为内存 echo，settings 持久化不在本期范围）；
+- 当前插件实现 APC Power 展示原型（筛选、系列卡、版本选择、每页 20 的分页、warning 与 Retry）、详情弹窗与单版本安装/卸载，和两个设置字段；
+- Power 下载、提交、审核、下架、恢复以及搜索尚未实现；
+- `powers.list.v1` / `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` DTO 已做闭集运行时校验；`settings.get.v1` / `settings.update.v1` 由 store 服务处理（dev 为内存 echo，settings 持久化不在本期范围）；
+- 安装/卸载依赖 Agent 自身 `apm` CLI；无 `apm` 时详情与写入降级为可重试 `unavailable`，页面显示固定“操作不可用”文案；
 - 自动化测试使用 Vitest 覆盖 DTO、dev transport、客户端、组件与页面行为（`src/api/contracts.test.ts` 等与源文件同目录）；
 - 设置页复用目标 Bibit 同版本的 `@bibit/feature-ui`；市场页使用 `.agent-hub*` 命名空间内的独立 CSS；
 - 当前 `locales` 只声明 `en`，页面文案仍直接写在组件中；
