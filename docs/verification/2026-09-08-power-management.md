@@ -45,12 +45,25 @@ bibit-agenthub-cli_0.2.3_riscv64.deb    sha256 7db10b43e5e254e4627323df84c7c958b
 - 前端包（all）：grant `store` operations 含四枚 powers + settings，capability 仍只有 `service:store`；bundle 为开发签名 `agent-hub.bibit-plugin.tgz`。
 - CLI 包（riscv64）：`/usr/libexec/bibit/bibit-agenthub`（ELF riscv64、statically linked、stripped、0755）+ Registry `requestTimeoutMs:120000`。
 
-## 剩余项（阻塞 GUI 内 UI 闭环）
+## 板端部署（bianbu@10.0.91.51，已取得 sudo）
 
-后端链路已在本机/板端验证，但以下板端部署步骤需要 root（`sudo -n` 提示需交互密码，`ssh root` 被拒）：
+- 双 deb 经 `sudo dpkg -i` 安装成功：`bibit-agenthub-plugin 0.2.3`（0.2.2→0.2.3）、`bibit-agenthub-cli 0.2.3`；`/etc/bibit/feature-capability-grants.d/agenthub.json` 与 `/etc/bibit/external-services.d/agenthub.json` 落盘。
+- `apm` 安装到 `/usr/bin/apm`（0755）；`~/.cache` 已 `chmod 700`；Provider `--self-test` 退出 0。
+- 重启正式 GUI `/usr/bin/bibit-gui`，`apm list --installed --agent=bibit --json` 返回 `[]`。
+- 系统插件升级不会自动 bump desired：编辑 `/home/bianbu/.local/share/BiBit/data/plugins/registry.json` 将 `desired["agent-hub"]="0.2.3"` 后重启，registry 收敛为 `active/current/desired=0.2.3`、`previous=0.2.2`，GUI 日志显示 `Loaded trusted plugins: agent-hub@0.2.3`。
 
-1. `dpkg -i` 安装两个 0.2.3 deb（写入 `/usr/lib/bibit/plugins`、`/usr/libexec/bibit`、`/etc/bibit/…`）；
-2. 将 `apm` 放到 Provider 默认路径 `/usr/bin/apm`（或在 Registry args 追加 `--apm-path`）；
-3. 重启唯一正式 Bibit GUI（`/usr/bin/bibit-gui`，非 systemd 单元，PPID 为 init）。
+## 剩余阻塞：Bibit 宿主多 surface 轮换 feature instance token
 
-因此 UI 闭环 A/B（market 详情→安装→installed→卸载→恢复）尚未在 Bibit GUI 内执行，不宣称 Bibit 中可用。待获得板端 root/sudo 后即可完成上述部署与 UI 闭环，并补 `docs/Changelog.md` 完成记录。
+market 页面仍显示 `Power catalog authorization is required`（原生日志 `external_service.request_unauthorized feature=agent-hub version=0.2.3 service=store operation=powers.list.v1`）。根因不在插件，而在板端 Bibit 宿主（bi-bit 0.1.3）：
+
+- 板端进程启动两个 webview surface：`surface-diag` 日志为 `window=main surface=main` 与 `window=voice-overlay surface=voice-overlay`。
+- `web-app/src/main.tsx` 的 `boot()` 仅对 `voice-ball` 提前返回，`voice-overlay` 与 `main` 一样执行 `loadTrustedPluginEntries()` → `trusted_plugin_prepare_active`。
+- 原生 `trusted_plugin_prepare_active`（`src-tauri/src/trusted_plugins.rs`）末尾对每个插件 `attach_feature_instance(plugin, true)`（`force_rotate=true`），每次调用都生成新 token 覆盖旧 binding；`trusted_plugin_bootstrap` 才带 `ensure_main_surface`（`voice-overlay` 报 `plugin access is restricted to the main window`）。
+- 时序：main 先 `prepare_active`（token T1）并 bootstrap 成功取得 T1 → voice-overlay 再 `prepare_active` 轮换为 T2 → main 插件持 T1 失效，后续 `validate_feature_instance_version_capability` 的 `binding.token != token` 判定 false，从而 `request_unauthorized`。
+- drop-in grant 本身已正确合并：前端 grant 检查放行（请求到达原生），原生 `feature_capability_grants_list` 与授权用同一 `runtime_grants()`，`powers.list.v1` 在合并集合内；失败点在 token 校验而非 grant。
+- 决定性证据：设置页（Integrations → Agent Hub settings）加载 `settings.get.v1` —— 该 operation 同时存在于编译期 grant 与 drop-in grant，仍报 `external_service.request_unauthorized feature=agent-hub version=0.2.3 service=store operation=settings.get.v1`，设置页显示 `Could not load`。证明任何 operation（含编译期内置）都因 token 校验失败而被拒，与 grant 无关。
+- Settings → Extensions 页确认插件已激活（`Agent Hub v0.2.3`），仅有 `Roll back` / `Deactivate` 动作，无重投 token 的入口；bootstrap 只在 webview 启动时消费一次 token，重启必然再次被 voice-overlay 的 `prepare_active` 轮换。
+
+宿主修复建议（Bibit 侧，非本插件）：`main.tsx` 仅在 `surface === 'main'` 时 `loadTrustedPluginEntries()`；或原生 `trusted_plugin_prepare_active` 增加 `ensure_main_surface` 门禁。
+
+因此 UI 闭环 A/B（market 详情→安装→installed→卸载→恢复）仍无法在板端正式 Bibit GUI 内完成，不宣称 Bibit 中可用。待宿主修复后补做 UI 闭环，并补 `docs/Changelog.md` 完成记录。
