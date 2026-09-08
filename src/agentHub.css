@@ -14,7 +14,7 @@
 }
 
 .agent-hub *, .agent-hub *::before, .agent-hub *::after { box-sizing: border-box; }
-.agent-hub > * { width: min(100%, 1460px); margin-inline: auto; }
+.agent-hub > :not(.agent-hub-dialog) { width: min(100%, 1460px); margin-inline: auto; }
 
 [data-power-type='skill']  { --type: #6d55cf; --type-soft: #f2efff; --type-line: #b8acf0; }
 [data-power-type='plugin'] { --type: #16775c; --type-soft: #eef9f5; --type-line: #a9d8ca; }
@@ -131,7 +131,7 @@
 }
 .power-card {
   display: grid;
-  grid-template-rows: auto auto minmax(96px, 1fr) 62px;
+  grid-template-rows: auto auto minmax(96px, 1fr) auto;
   min-width: 0;
   min-height: 310px;
   padding: 20px;
@@ -149,9 +149,6 @@
 .power-card__description { min-height: 0; margin: 0; overflow-y: auto; color: var(--hub-muted); }
 .power-card__tags { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; min-height: 0; margin-top: 14px; overflow-x: auto; overflow-y: hidden; }
 .power-card__tag { flex: 0 0 auto; padding: 5px 9px; border-radius: 999px; background: var(--type-soft); color: var(--type); font-size: 11px; font-weight: 700; }
-.power-card__actions { display: flex; gap: 8px; margin-top: 16px; }
-.power-card__action--danger { border-color: #d99592; background: #fff1f0; color: #9d2d26; }
-.power-card__action:disabled { cursor: not-allowed; opacity: .5; }
 .power-card__notice { margin: 12px 0 0; color: var(--hub-muted); font-size: 12px; }
 .power-card[data-clickable='true'] { cursor: pointer; }
 
@@ -213,7 +210,11 @@
 
 /* ===== Details dialog ===== */
 .agent-hub-dialog {
+  position: fixed;
+  inset: 0;
+  margin: auto;
   width: min(560px, calc(100vw - 48px));
+  height: fit-content;
   padding: 0;
   border: 1px solid var(--hub-border);
   border-radius: 16px;
@@ -236,8 +237,10 @@
 .agent-hub-dialog__status { margin-top: 18px; }
 .agent-hub-dialog__notice { padding: 12px; border-radius: 8px; background: #eef3fb; color: #53627c; }
 .agent-hub-dialog__footer { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 24px; border-top: 1px solid var(--hub-border); }
-.agent-hub-dialog__install { border-color: #6550d8; background: #6550d8; color: #fff; }
-.agent-hub-dialog__uninstall { border-color: #d99592; background: #fff1f0; color: #9d2d26; }
+.agent-hub-dialog__install { border-color: #16a34a; background: #16a34a; color: #fff; }
+.agent-hub-dialog__install:hover:not(:disabled) { border-color: #15803d; background: #15803d; }
+.agent-hub-dialog__uninstall { border-color: #dc2626; background: #dc2626; color: #fff; }
+.agent-hub-dialog__uninstall:hover:not(:disabled) { border-color: #b91c1c; background: #b91c1c; }
 .agent-hub-dialog button:disabled { cursor: not-allowed; opacity: .5; }
 
 /* ===== Settings page (retained, visually isolated) ===== */

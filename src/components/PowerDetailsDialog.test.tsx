@@ -43,6 +43,7 @@ const props = {
   selectedVersion: 'v2.0.0',
   agent: 'bibit',
   installation: { status: 'ready' as const, records: [] as APMPowerRecord[] },
+  readOnly: false,
   onVersionChange: vi.fn(),
   onAgentChange: vi.fn(),
   onInstall: vi.fn(),
@@ -101,6 +102,36 @@ describe('PowerDetailsDialog', () => {
     expect(screen.getByRole('button', { name: '安装' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: '卸载' })).toBeNull()
     expect((screen.getByLabelText('Version') as HTMLSelectElement).disabled).toBe(false)
+  })
+
+  it('locks agent and version and hides install when readOnly even if not installed', () => {
+    render(<PowerDetailsDialog {...props} readOnly installation={{ status: 'ready', records: [] }} />)
+
+    expect((screen.getByLabelText('Agent') as HTMLSelectElement).disabled).toBe(true)
+    expect((screen.getByLabelText('Version') as HTMLSelectElement).disabled).toBe(true)
+    expect(screen.queryByRole('button', { name: '安装' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '卸载' })).toBeNull()
+  })
+
+  it('keeps the uninstall action while readOnly with an installed record', () => {
+    render(
+      <PowerDetailsDialog
+        {...props}
+        readOnly
+        installation={{ status: 'ready', records: [record('v1.0.0')] }}
+      />
+    )
+
+    expect((screen.getByLabelText('Agent') as HTMLSelectElement).disabled).toBe(true)
+    expect((screen.getByLabelText('Version') as HTMLSelectElement).disabled).toBe(true)
+    expect(screen.getByRole('button', { name: '卸载' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '安装' })).toBeNull()
+  })
+
+  it('has no footer when there is no install or uninstall action', () => {
+    render(<PowerDetailsDialog {...props} installation={{ status: 'checking' }} />)
+
+    expect(document.querySelector('.agent-hub-dialog__footer')).toBeNull()
   })
 
   it.each([
@@ -167,6 +198,17 @@ describe('PowerDetailsDialog', () => {
     fireEvent(dialog as HTMLElement, new Event('cancel', { cancelable: true }))
 
     expect(onClose).toHaveBeenCalled()
+  })
+
+  it('closes from the close button without rendering a footer cancel button', async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    render(<PowerDetailsDialog {...props} onClose={onClose} />)
+
+    await user.click(screen.getByRole('button', { name: 'Close' }))
+
+    expect(onClose).toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: '关闭' })).toBeNull()
   })
 
   it('calls install and uninstall handlers', async () => {

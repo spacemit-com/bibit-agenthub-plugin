@@ -27,7 +27,6 @@ const series: PowerSeries = {
 function renderCard(overrides: Partial<PowerCardProps> = {}) {
   const onVersionChange = vi.fn()
   const onDetails = vi.fn()
-  const onUninstall = vi.fn()
   const result = render(
     <PowerCard
       series={series}
@@ -35,11 +34,10 @@ function renderCard(overrides: Partial<PowerCardProps> = {}) {
       onVersionChange={onVersionChange}
       busy={false}
       onDetails={onDetails}
-      onUninstall={onUninstall}
       {...overrides}
     />
   )
-  return { result, onVersionChange, onDetails, onUninstall }
+  return { result, onVersionChange, onDetails }
 }
 
 describe('PowerCard', () => {
@@ -106,28 +104,17 @@ describe('PowerCard', () => {
     expect(onDetails).not.toHaveBeenCalled()
   })
 
-  it('opens details from the explicit button without double-firing the card handler', () => {
-    const { onDetails } = renderCard()
+  it('does not open details when the card is not clickable', () => {
+    renderCard({ onDetails: undefined })
 
-    fireEvent.click(screen.getByRole('button', { name: '详情' }))
-
-    expect(onDetails).toHaveBeenCalledTimes(1)
+    const card = document.querySelector('.power-card')
+    expect(card?.getAttribute('data-clickable')).toBeNull()
   })
 
-  it('calls onUninstall from the button without opening details', () => {
-    const { onDetails, onUninstall } = renderCard()
-
-    fireEvent.click(screen.getByRole('button', { name: '卸载' }))
-
-    expect(onUninstall).toHaveBeenCalledTimes(1)
-    expect(onDetails).not.toHaveBeenCalled()
-  })
-
-  it('disables the version select and uninstall button while busy', () => {
+  it('disables the version select while busy', () => {
     renderCard({ busy: true })
 
     expect((screen.getByLabelText('Version') as HTMLSelectElement).disabled).toBe(true)
-    expect((screen.getByRole('button', { name: '卸载' }) as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('renders the notice when provided', () => {

@@ -5,7 +5,6 @@ export interface PowerCardProps {
   selectedVersion: string
   onVersionChange(version: string): void
   onDetails?: () => void
-  onUninstall?: () => void
   busy: boolean
   notice?: string
 }
@@ -15,7 +14,6 @@ export function PowerCard({
   selectedVersion,
   onVersionChange,
   onDetails,
-  onUninstall,
   busy,
   notice,
 }: PowerCardProps) {
@@ -57,33 +55,6 @@ export function PowerCard({
             {tag}
           </span>
         ))}
-      </div>
-      <div className="power-card__actions">
-        {onDetails && (
-          <button
-            type="button"
-            className="power-card__action"
-            onClick={(event) => {
-              event.stopPropagation()
-              onDetails()
-            }}
-          >
-            详情
-          </button>
-        )}
-        {onUninstall && (
-          <button
-            type="button"
-            className="power-card__action power-card__action--danger"
-            disabled={busy}
-            onClick={(event) => {
-              event.stopPropagation()
-              onUninstall()
-            }}
-          >
-            卸载
-          </button>
-        )}
       </div>
       {notice && (
         <p className="power-card__notice" role="status">

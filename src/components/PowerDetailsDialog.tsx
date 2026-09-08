@@ -9,6 +9,7 @@ export interface PowerDetailsDialogProps {
   installation: InstallationState
   active?: ActiveMutation
   notice?: string
+  readOnly: boolean
   onVersionChange(version: string): void
   onAgentChange(agent: string): void
   onInstall(): void
@@ -30,6 +31,7 @@ export function PowerDetailsDialog({
   installation,
   active,
   notice,
+  readOnly,
   onVersionChange,
   onAgentChange,
   onInstall,
@@ -62,7 +64,10 @@ export function PowerDetailsDialog({
   const busy = active !== undefined
   const agentOptions = series.type === 'agent' ? ['bibit'] : INSTALLED_AGENTS
   const agentValidForInstall = series.type !== 'agent' || agent === 'bibit'
+  const targetLocked = busy || isInstalled || readOnly
   const writeEnabled = installation.status === 'ready' && !busy
+  const showInstall = installation.status === 'ready' && !isInstalled && agentValidForInstall && !readOnly
+  const showUninstall = installation.status === 'ready' && isInstalled
 
   const close = () => onClose()
 
@@ -93,7 +98,7 @@ export function PowerDetailsDialog({
           {series.type === 'agent' && agent !== 'bibit' ? (
             <div>
               <p className="agent-hub-dialog__hint">该类型仅支持 bibit Agent。</p>
-              <button type="button" disabled={busy} onClick={() => onAgentChange('bibit')}>
+              <button type="button" disabled={targetLocked} onClick={() => onAgentChange('bibit')}>
                 切换到 bibit
               </button>
             </div>
@@ -101,7 +106,7 @@ export function PowerDetailsDialog({
             <select
               aria-label="Agent"
               value={agent}
-              disabled={busy || isInstalled}
+              disabled={targetLocked}
               onChange={(event) => onAgentChange(event.target.value)}
             >
               {agentOptions.map((value) => (
@@ -118,7 +123,7 @@ export function PowerDetailsDialog({
           <select
             aria-label="Version"
             value={current.version}
-            disabled={busy || isInstalled}
+            disabled={targetLocked}
             onChange={(event) => onVersionChange(event.target.value)}
           >
             {series.versions.map((version) => (
@@ -159,21 +164,20 @@ export function PowerDetailsDialog({
           )}
         </div>
       </div>
-      <footer className="agent-hub-dialog__footer">
-        <button type="button" className="agent-hub-dialog__cancel" onClick={close}>
-          关闭
-        </button>
-        {installation.status === 'ready' && !isInstalled && agentValidForInstall && (
-          <button type="button" className="agent-hub-dialog__install" disabled={!writeEnabled} onClick={onInstall}>
-            安装
-          </button>
-        )}
-        {installation.status === 'ready' && isInstalled && (
-          <button type="button" className="agent-hub-dialog__uninstall" disabled={!writeEnabled} onClick={onUninstall}>
-            卸载
-          </button>
-        )}
-      </footer>
+      {(showInstall || showUninstall) && (
+        <footer className="agent-hub-dialog__footer">
+          {showInstall && (
+            <button type="button" className="agent-hub-dialog__install" disabled={!writeEnabled} onClick={onInstall}>
+              安装
+            </button>
+          )}
+          {showUninstall && (
+            <button type="button" className="agent-hub-dialog__uninstall" disabled={!writeEnabled} onClick={onUninstall}>
+              卸载
+            </button>
+          )}
+        </footer>
+      )}
     </dialog>
   )
 }

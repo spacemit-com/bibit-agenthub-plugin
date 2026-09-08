@@ -319,10 +319,6 @@ export function AgentHubPage(_: FeaturePageProps) {
     })
   }
 
-  const uninstallCard = (series: PowerSeries) => {
-    runMutation({ kind: 'uninstall', input: { agent, type: series.type, name: series.name } })
-  }
-
   const isBusyFor = (targetAgent: string, series: PowerSeries) => {
     const active = installationSnapshot.active
     if (!active) return false
@@ -397,8 +393,7 @@ export function AgentHubPage(_: FeaturePageProps) {
                         ? installationSnapshot.notices.get(itemKey(agent, series.type, series.name))
                         : undefined
                     }
-                    onDetails={scope === 'market' ? () => openDetails(series) : undefined}
-                    onUninstall={scope === 'installed' ? () => uninstallCard(series) : undefined}
+                    onDetails={() => openDetails(series)}
                   />
                 ))}
               </section>
@@ -420,6 +415,7 @@ export function AgentHubPage(_: FeaturePageProps) {
           installation={dialogInstallation}
           active={installationSnapshot.active}
           notice={dialogNotice}
+          readOnly={scope === 'installed'}
           onVersionChange={(version) => changeVersion(dialog, version)}
           onAgentChange={changeDialogAgent}
           onInstall={installSelected}
