@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import {
   useFeatureCapability,
   type FeaturePageProps,
@@ -10,9 +10,16 @@ import {
   type ListPowersInput,
   type PowerType,
   type ReadyListPowersResult,
+  type PowerSeries,
 } from './api/contracts'
 import { listPowers } from './api/powerCatalogClient'
+import {
+  getInstallationStore,
+  type InstallationSnapshot,
+} from './api/installationStore'
+import { type MutationIntent } from './api/powerOperations'
 import { PowerCard } from './components/PowerCard'
+import { PowerDetailsDialog } from './components/PowerDetailsDialog'
 import { PowerFilters } from './components/PowerFilters'
 import { PowerPagination } from './components/PowerPagination'
 import './agentHub.css'
@@ -92,6 +99,24 @@ function toSafeError(reason: unknown): { message: string; retryable: boolean } {
   }
 }
 
+function itemKey(agent: string, type: string, name: string): string {
+  return JSON.stringify([agent, type, name])
+}
+
+function versionKey(type: string, name: string): string {
+  return JSON.stringify([type, name])
+}
+
+const EMPTY_SNAPSHOT: InstallationSnapshot = {
+  revision: 0,
+  items: new Map(),
+  fullLists: new Map(),
+  notices: new Map(),
+}
+
+const noopSubscribe = () => () => {}
+const noopSnapshot = () => EMPTY_SNAPSHOT
+
 export function AgentHubPage(_: FeaturePageProps) {
   const store = useFeatureCapability('service:store')
   const [scope, setScope] = useState<PowerScope>('installed')
@@ -104,8 +129,49 @@ export function AgentHubPage(_: FeaturePageProps) {
   const [view, setView] = useState<ViewState>({ status: 'loading' })
   const generationRef = useRef(0)
 
+  const [selectedVersions, setSelectedVersions] = useState<ReadonlyMap<string, string>>(new Map())
+  const [dialog, setDialog] = useState<PowerSeries | null>(null)
+  const [dialogAgent, setDialogAgent] = useState('bibit')
+
+  const executeControllerRef = useRef<AbortController | null>(null)
+  const inspectControllerRef = useRef<AbortController | null>(null)
+
+  const installationStore = store ? getInstallationStore(store) : undefined
+  const installationSnapshot = useSyncExternalStore(
+    installationStore ? installationStore.subscribe : noopSubscribe,
+    installationStore ? installationStore.getSnapshot : noopSnapshot
+  )
+
+  // ---- store-driven view refresh after a mutation completes ----
+  const wasActiveRef = useRef(false)
   useEffect(() => {
-    const controller = new AbortController()
+    const isActive = installationSnapshot.active !== undefined
+    if (wasActiveRef.current && !isActive) {
+      setPage(1)
+      setRetry((value) => value + 1)
+    }
+    wasActiveRef.current = isActive
+  }, [installationSnapshot.active, installationSnapshot.revision])
+
+  // ---- window focus refreshes the read view ----
+  useEffect(() => {
+    const onFocus = () => {
+      if (!installationSnapshot.active) setRetry((value) => value + 1)
+    }
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [installationSnapshot.active])
+
+  // ---- page lifecycle: abort everything and invalidate the agent ----
+  useEffect(() => {
+    return () => {
+      executeControllerRef.current?.abort()
+      inspectControllerRef.current?.abort()
+    }
+  }, [])
+
+  useEffect(() => {
+    const listController = new AbortController()
     const generation = ++generationRef.current
     setView({ status: 'loading' })
 
@@ -115,7 +181,7 @@ export function AgentHubPage(_: FeaturePageProps) {
         message: 'Store capability is not available.',
         retryable: true,
       })
-      return () => controller.abort()
+      return () => listController.abort()
     }
 
     const input: ListPowersInput = {
@@ -128,9 +194,9 @@ export function AgentHubPage(_: FeaturePageProps) {
       ...(page > 1 && snapshot !== undefined ? { snapshot } : {}),
     }
 
-    void listPowers(store, input, controller.signal)
+    void listPowers(store, input, listController.signal)
       .then((result) => {
-        if (controller.signal.aborted || generation !== generationRef.current) return
+        if (listController.signal.aborted || generation !== generationRef.current) return
         if (result.status === 'reset_required') {
           if (page === 1) {
             setView({ status: 'error', message: 'Power catalog service is incompatible with this plugin.', retryable: false })
@@ -144,11 +210,11 @@ export function AgentHubPage(_: FeaturePageProps) {
         setView({ status: 'ready', data: result })
       })
       .catch((reason: unknown) => {
-        if (controller.signal.aborted || generation !== generationRef.current) return
+        if (listController.signal.aborted || generation !== generationRef.current) return
         setView({ status: 'error', ...toSafeError(reason) })
       })
 
-    return () => controller.abort()
+    return () => listController.abort()
   }, [store, scope, agent, type, tags, page, retry])
 
   const changeScope = (next: PowerScope) => {
@@ -177,10 +243,113 @@ export function AgentHubPage(_: FeaturePageProps) {
   const changePage = (nextPage: number) => setPage(nextPage)
   const retryLoad = () => setRetry((value) => value + 1)
 
+  const selectedVersionFor = useCallback(
+    (series: PowerSeries) => selectedVersions.get(versionKey(series.type, series.name)) ?? series.versions[0].version,
+    [selectedVersions]
+  )
+
+  const changeVersion = (series: PowerSeries, version: string) => {
+    setSelectedVersions((prev) => {
+      const next = new Map(prev)
+      next.set(versionKey(series.type, series.name), version)
+      return next
+    })
+  }
+
+  const inspectTarget = useCallback(
+    (targetAgent: string, series: PowerSeries) => {
+      if (!installationStore) return
+      inspectControllerRef.current?.abort()
+      const controller = new AbortController()
+      inspectControllerRef.current = controller
+      void installationStore
+        .inspect({ agent: targetAgent, type: series.type, name: series.name }, controller.signal)
+        .catch(() => {})
+    },
+    [installationStore]
+  )
+
+  const openDetails = (series: PowerSeries) => {
+    const targetAgent = scope === 'installed' ? agent : 'bibit'
+    setDialogAgent(targetAgent)
+    setDialog(series)
+    inspectTarget(targetAgent, series)
+  }
+
+  const closeDetails = () => {
+    inspectControllerRef.current?.abort()
+    inspectControllerRef.current = null
+    setDialog(null)
+  }
+
+  const changeDialogAgent = (next: string) => {
+    setDialogAgent(next)
+    if (dialog) inspectTarget(next, dialog)
+  }
+
+  const runMutation = useCallback(
+    (intent: MutationIntent) => {
+      if (!installationStore) return
+      executeControllerRef.current?.abort()
+      const controller = new AbortController()
+      executeControllerRef.current = controller
+      void installationStore.execute(intent, controller.signal)
+    },
+    [installationStore]
+  )
+
+  const installSelected = () => {
+    if (!dialog) return
+    runMutation({
+      kind: 'install',
+      input: {
+        agent: dialogAgent,
+        type: dialog.type,
+        name: dialog.name,
+        version: selectedVersionFor(dialog),
+      },
+    })
+  }
+
+  const uninstallDialog = () => {
+    if (!dialog) return
+    runMutation({
+      kind: 'uninstall',
+      input: { agent: dialogAgent, type: dialog.type, name: dialog.name },
+    })
+  }
+
+  const uninstallCard = (series: PowerSeries) => {
+    runMutation({ kind: 'uninstall', input: { agent, type: series.type, name: series.name } })
+  }
+
+  const isBusyFor = (targetAgent: string, series: PowerSeries) => {
+    const active = installationSnapshot.active
+    if (!active) return false
+    return (
+      active.intent.input.agent === targetAgent &&
+      active.intent.input.type === series.type &&
+      active.intent.input.name === series.name
+    )
+  }
+
+  const retryInspect = () => {
+    if (dialog) inspectTarget(dialogAgent, dialog)
+  }
+
   const facets = view.status === 'ready' ? view.data.facets : { agents: [], tags: [] }
   const agents = scope === 'installed' ? INSTALLED_AGENTS : []
   const totalPages =
     view.status === 'ready' ? Math.max(1, Math.ceil(view.data.total / POWER_PAGE_SIZE)) : 1
+
+  const dialogInstallation =
+    dialog !== null
+      ? installationSnapshot.items.get(itemKey(dialogAgent, dialog.type, dialog.name)) ?? { status: 'unknown' }
+      : null
+  const dialogNotice =
+    dialog !== null
+      ? installationSnapshot.notices.get(itemKey(dialogAgent, dialog.type, dialog.name))
+      : undefined
 
   return (
     <main className="agent-hub">
@@ -217,7 +386,20 @@ export function AgentHubPage(_: FeaturePageProps) {
             <>
               <section className="agent-hub__grid" aria-label="Available Powers">
                 {view.data.items.map((series) => (
-                  <PowerCard key={`${series.type}-${series.name}`} series={series} />
+                  <PowerCard
+                    key={`${series.type}-${series.name}`}
+                    series={series}
+                    selectedVersion={selectedVersionFor(series)}
+                    onVersionChange={(version) => changeVersion(series, version)}
+                    busy={isBusyFor(agent, series)}
+                    notice={
+                      scope === 'installed'
+                        ? installationSnapshot.notices.get(itemKey(agent, series.type, series.name))
+                        : undefined
+                    }
+                    onDetails={scope === 'market' ? () => openDetails(series) : undefined}
+                    onUninstall={scope === 'installed' ? () => uninstallCard(series) : undefined}
+                  />
                 ))}
               </section>
               <PowerPagination
@@ -229,6 +411,22 @@ export function AgentHubPage(_: FeaturePageProps) {
             </>
           )}
         </>
+      )}
+      {dialog && dialogInstallation && (
+        <PowerDetailsDialog
+          series={dialog}
+          selectedVersion={selectedVersionFor(dialog)}
+          agent={dialogAgent}
+          installation={dialogInstallation}
+          active={installationSnapshot.active}
+          notice={dialogNotice}
+          onVersionChange={(version) => changeVersion(dialog, version)}
+          onAgentChange={changeDialogAgent}
+          onInstall={installSelected}
+          onUninstall={uninstallDialog}
+          onRetry={retryInspect}
+          onClose={closeDetails}
+        />
       )}
     </main>
   )

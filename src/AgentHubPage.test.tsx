@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {
   FeatureHostApiProvider,
@@ -14,6 +14,19 @@ import type { FeatureHostCapability } from '@bibit/feature-contracts'
 import { AgentHubPage } from './AgentHubPage'
 
 afterEach(cleanup)
+
+beforeAll(() => {
+  if (!HTMLDialogElement.prototype.showModal) {
+    HTMLDialogElement.prototype.showModal = function () {
+      this.setAttribute('open', '')
+    }
+  }
+  if (!HTMLDialogElement.prototype.close) {
+    HTMLDialogElement.prototype.close = function () {
+      this.removeAttribute('open')
+    }
+  }
+})
 
 type StoreRequest = FeatureServiceRequestV1<'store'>
 
@@ -492,5 +505,142 @@ describe('AgentHubPage', () => {
     expect(screen.getByRole('menuitemradio', { name: 'bibit' })).toBeTruthy()
     expect(screen.getByRole('menuitemradio', { name: 'codex' })).toBeTruthy()
     expect(screen.getByRole('menuitemradio', { name: 'claude-code' })).toBeTruthy()
+  })
+
+  describe('power details and installation', () => {
+    const twoVersionMarketJson = JSON.stringify({
+      skills: {
+        items: [
+          { name: 'market-translate', version: 'v2.0.0', description: 'Translates v2.', tags: ['modern'] },
+          { name: 'market-translate', version: 'v1.0.0', description: 'Translates v1.', tags: ['classic'] },
+        ],
+      },
+    })
+
+    function twoVersionMarketData() {
+      return sha256(twoVersionMarketJson).then((snapshot) => ({
+        scope: 'market',
+        status: 'data',
+        snapshot,
+        catalogJson: twoVersionMarketJson,
+      }))
+    }
+
+    it('shares the selected version between the card and the details dialog', async () => {
+      const user = userEvent.setup()
+      const { hostApi } = makeStoreHost((input) => {
+        const params = wireParamsOf(input)
+        if (input.operationId === 'powers.list.v1') {
+          return params.scope === 'market' ? twoVersionMarketData() : installedData('[]')
+        }
+        if (input.operationId === 'powers.inspect.v1') return { listJson: '[]' }
+        if (input.operationId === 'powers.install.v1' || input.operationId === 'powers.uninstall.v1') {
+          return { status: 'exited', exitCode: 0 }
+        }
+        throw new Error('unexpected op ' + input.operationId)
+      })
+      renderPage(hostApi)
+      await user.click(screen.getByRole('button', { name: 'Power 市场' }))
+      await screen.findByRole('heading', { name: 'market-translate' })
+
+      await user.selectOptions(screen.getByLabelText('Version'), 'v1.0.0')
+      expect(screen.getByText('Translates v1.')).toBeTruthy()
+
+      await user.click(screen.getByRole('button', { name: '详情' }))
+      const dialog = within(document.querySelector('dialog') as HTMLElement)
+      expect(dialog.getByText('Translates v1.')).toBeTruthy()
+      expect((dialog.getByLabelText('Version') as HTMLSelectElement).value).toBe('v1.0.0')
+
+      await user.selectOptions(dialog.getByLabelText('Version'), 'v2.0.0')
+      await user.click(dialog.getByRole('button', { name: '关闭' }))
+
+      await waitFor(() => expect(screen.getByText('Translates v2.')).toBeTruthy())
+    })
+
+    it('installs the selected version from the market details dialog', async () => {
+      const user = userEvent.setup()
+      let installed: unknown[] = []
+      let installCall: StoreRequest | undefined
+      const { hostApi } = makeStoreHost((input) => {
+        const params = wireParamsOf(input)
+        if (input.operationId === 'powers.list.v1') {
+          return params.scope === 'market' ? marketData() : installedData(JSON.stringify(installed))
+        }
+        if (input.operationId === 'powers.inspect.v1') return { listJson: JSON.stringify(installed) }
+        if (input.operationId === 'powers.install.v1') {
+          installCall = input
+          installed = [{ agent: 'bibit', type: 'skill', name: 'market-translate', version: 'v1.0.0', description: '', tags: [] }]
+          return { status: 'exited', exitCode: 0 }
+        }
+        if (input.operationId === 'powers.uninstall.v1') return { status: 'exited', exitCode: 0 }
+        throw new Error('unexpected op ' + input.operationId)
+      })
+      renderPage(hostApi)
+      await user.click(screen.getByRole('button', { name: 'Power 市场' }))
+      await screen.findByRole('heading', { name: 'market-translate' })
+
+      await user.click(screen.getByRole('button', { name: '详情' }))
+      const dialog = within(document.querySelector('dialog') as HTMLElement)
+      await dialog.findByText('未安装')
+
+      await user.click(dialog.getByRole('button', { name: '安装' }))
+
+      expect(await dialog.findByText('安装完成')).toBeTruthy()
+      expect(installCall?.operationId).toBe('powers.install.v1')
+      expect(installCall?.params).toEqual({
+        agent: 'bibit',
+        type: 'skill',
+        name: 'market-translate',
+        version: 'v1.0.0',
+      })
+    })
+
+    it('uninstalls directly from an installed card', async () => {
+      const user = userEvent.setup()
+      let installed: unknown[] = [codeReviewRecord]
+      let uninstallCall: StoreRequest | undefined
+      const { hostApi } = makeStoreHost((input) => {
+        if (input.operationId === 'powers.list.v1') return installedData(JSON.stringify(installed))
+        if (input.operationId === 'powers.inspect.v1') return { listJson: JSON.stringify(installed) }
+        if (input.operationId === 'powers.install.v1') return { status: 'exited', exitCode: 0 }
+        if (input.operationId === 'powers.uninstall.v1') {
+          uninstallCall = input
+          installed = []
+          return { status: 'exited', exitCode: 0 }
+        }
+        throw new Error('unexpected op ' + input.operationId)
+      })
+      renderPage(hostApi)
+      await screen.findByRole('heading', { name: 'code-review' })
+
+      await user.click(screen.getByRole('button', { name: '卸载' }))
+
+      await waitFor(() => expect(uninstallCall?.operationId).toBe('powers.uninstall.v1'))
+      expect(uninstallCall?.params).toEqual({ agent: 'bibit', type: 'skill', name: 'code-review' })
+    })
+
+    it('shows uninstall on installed cards and details on market cards', async () => {
+      const user = userEvent.setup()
+      const { hostApi } = makeStoreHost((input) => {
+        const params = wireParamsOf(input)
+        if (input.operationId === 'powers.list.v1') {
+          return params.scope === 'market' ? marketData() : installedData(codeReviewList)
+        }
+        if (input.operationId === 'powers.inspect.v1') return { listJson: codeReviewList }
+        if (input.operationId === 'powers.install.v1' || input.operationId === 'powers.uninstall.v1') {
+          return { status: 'exited', exitCode: 0 }
+        }
+        throw new Error('unexpected op ' + input.operationId)
+      })
+      renderPage(hostApi)
+      await screen.findByRole('heading', { name: 'code-review' })
+      expect(screen.getByRole('button', { name: '卸载' })).toBeTruthy()
+      expect(screen.queryByRole('button', { name: '详情' })).toBeNull()
+
+      await user.click(screen.getByRole('button', { name: 'Power 市场' }))
+      await screen.findByRole('heading', { name: 'market-translate' })
+      expect(screen.getByRole('button', { name: '详情' })).toBeTruthy()
+      expect(screen.queryByRole('button', { name: '卸载' })).toBeNull()
+    })
   })
 })

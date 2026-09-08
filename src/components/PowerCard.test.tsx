@@ -1,8 +1,9 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { useState } from 'react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { PowerSeries } from '../api/contracts'
-import { PowerCard } from './PowerCard'
+import { PowerCard, type PowerCardProps } from './PowerCard'
 
 afterEach(cleanup)
 
@@ -23,73 +24,115 @@ const series: PowerSeries = {
   ],
 }
 
+function renderCard(overrides: Partial<PowerCardProps> = {}) {
+  const onVersionChange = vi.fn()
+  const onDetails = vi.fn()
+  const onUninstall = vi.fn()
+  const result = render(
+    <PowerCard
+      series={series}
+      selectedVersion="v2.0.0"
+      onVersionChange={onVersionChange}
+      busy={false}
+      onDetails={onDetails}
+      onUninstall={onUninstall}
+      {...overrides}
+    />
+  )
+  return { result, onVersionChange, onDetails, onUninstall }
+}
+
 describe('PowerCard', () => {
   it('renders the series type and name', () => {
-    render(<PowerCard series={series} />)
+    renderCard()
 
     expect(screen.getByText('skill')).toBeTruthy()
     expect(screen.getByRole('heading', { name: 'code-review' })).toBeTruthy()
   })
 
   it('uses the type palette hook and hides the visible Version label', () => {
-    const { container } = render(<PowerCard series={series} />)
+    const { result } = renderCard()
 
-    const card = container.querySelector('.power-card')
+    const card = result.container.querySelector('.power-card')
     expect(card?.getAttribute('data-power-type')).toBe('skill')
     expect(screen.queryByText('Version')).toBeNull()
     expect((screen.getByLabelText('Version') as HTMLSelectElement).value).toBe('v2.0.0')
   })
 
-  it('renders description as text and Tags as chips', () => {
-    render(<PowerCard series={series} />)
+  it('renders the selected version description and tags', () => {
+    renderCard({ selectedVersion: 'v2.0.0' })
 
-    expect(screen.getByText('Peer review with a quality gate.').tagName).toBe('P')
-    const tags = screen.getByTestId('power-card-tags')
-    expect(within(tags).getByText('code-review')).toBeTruthy()
-    expect(within(tags).getByText('quality')).toBeTruthy()
-  })
-
-  it('defaults the version select, description, and tag chips to the first version', () => {
-    render(<PowerCard series={series} />)
-
-    expect((screen.getByLabelText('Version') as HTMLSelectElement).value).toBe('v2.0.0')
     expect(screen.getByText('Peer review with a quality gate.')).toBeTruthy()
     const tags = screen.getByTestId('power-card-tags')
-    expect(within(tags).getByText('code-review')).toBeTruthy()
     expect(within(tags).getByText('quality')).toBeTruthy()
   })
 
-  it('updates the description and tags together when the version changes', async () => {
+  it('updates the description and tags when the controlled version changes', async () => {
+    function Controlled() {
+      const [version, setVersion] = useState('v2.0.0')
+      return <PowerCard series={series} selectedVersion={version} onVersionChange={setVersion} busy={false} />
+    }
     const user = userEvent.setup()
-    render(<PowerCard series={series} />)
+    render(<Controlled />)
 
     await user.selectOptions(screen.getByLabelText('Version'), 'v1.0.0')
 
     expect(screen.getByText('Peer review workflow.')).toBeTruthy()
     const tags = screen.getByTestId('power-card-tags')
     expect(within(tags).getByText('writing')).toBeTruthy()
-    expect(within(tags).queryByText('quality')).toBeNull()
     expect(screen.queryByText('Peer review with a quality gate.')).toBeNull()
   })
 
-  it('resets the selected version when the series changes', async () => {
-    const user = userEvent.setup()
-    const { rerender } = render(<PowerCard series={series} />)
+  it('falls back to the first version when the selected version is no longer available', () => {
+    renderCard({ selectedVersion: 'v9.9.9' })
 
-    await user.selectOptions(screen.getByLabelText('Version'), 'v1.0.0')
-    expect((screen.getByLabelText('Version') as HTMLSelectElement).value).toBe('v1.0.0')
+    expect((screen.getByLabelText('Version') as HTMLSelectElement).value).toBe('v2.0.0')
+    expect(screen.getByText('Peer review with a quality gate.')).toBeTruthy()
+  })
 
-    const other: PowerSeries = {
-      type: 'plugin',
-      name: 'scan-guard',
-      versions: [
-        { version: 'v3.0.0', description: 'Guards dependency scans.', tags: ['security'] },
-        { version: 'v1.2.0', description: 'Older scan guard.', tags: [] },
-      ],
-    }
-    rerender(<PowerCard series={other} />)
+  it('opens details when the card body is clicked', () => {
+    const { onDetails } = renderCard()
 
-    expect((screen.getByLabelText('Version') as HTMLSelectElement).value).toBe('v3.0.0')
-    expect(screen.getByText('Guards dependency scans.')).toBeTruthy()
+    fireEvent.click(screen.getByRole('heading', { name: 'code-review' }))
+
+    expect(onDetails).toHaveBeenCalled()
+  })
+
+  it('does not open details when the version select is clicked', () => {
+    const { onDetails } = renderCard()
+
+    fireEvent.click(screen.getByLabelText('Version'))
+
+    expect(onDetails).not.toHaveBeenCalled()
+  })
+
+  it('opens details from the explicit button without double-firing the card handler', () => {
+    const { onDetails } = renderCard()
+
+    fireEvent.click(screen.getByRole('button', { name: '详情' }))
+
+    expect(onDetails).toHaveBeenCalledTimes(1)
+  })
+
+  it('calls onUninstall from the button without opening details', () => {
+    const { onDetails, onUninstall } = renderCard()
+
+    fireEvent.click(screen.getByRole('button', { name: '卸载' }))
+
+    expect(onUninstall).toHaveBeenCalledTimes(1)
+    expect(onDetails).not.toHaveBeenCalled()
+  })
+
+  it('disables the version select and uninstall button while busy', () => {
+    renderCard({ busy: true })
+
+    expect((screen.getByLabelText('Version') as HTMLSelectElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: '卸载' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('renders the notice when provided', () => {
+    renderCard({ notice: '安装完成' })
+
+    expect(screen.getByText('安装完成')).toBeTruthy()
   })
 })
