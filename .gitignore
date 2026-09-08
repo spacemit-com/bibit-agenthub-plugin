@@ -2,6 +2,7 @@ node_modules/
 dist/
 artifacts/
 .bibit-keys/
+.worktrees/
 
 # Debian packaging build artifacts
 debian/vendor/*.tgz
