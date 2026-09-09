@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -510,6 +511,52 @@ describe('AgentHubPage', () => {
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'hermes-agent' }))
     await screen.findByRole('heading', { name: 'code-review' })
     expect(calls.at(-1)?.params).toEqual({ scope: 'installed', agent: 'hermes-agent' })
+  })
+
+  it('does not restart the in-flight request when the host recreates the store object on re-render', async () => {
+    const user = userEvent.setup()
+    let marketRequests = 0
+    let bump: (() => void) | undefined
+
+    function Shell() {
+      const [, setTick] = useState(0)
+      useEffect(() => {
+        bump = () => setTick((value) => value + 1)
+      }, [])
+      const service: FeatureServiceApiV1<'store'> = {
+        async request<TResult>(input: StoreRequest): Promise<TResult> {
+          const params = wireParamsOf(input)
+          if (params.scope === 'market') {
+            marketRequests += 1
+            if (marketRequests === 1) setTimeout(() => bump?.(), 5)
+            await new Promise((resolve) => setTimeout(resolve, 30))
+            return (await marketData()) as TResult
+          }
+          return installedData(codeReviewList) as TResult
+        },
+      }
+      const hostApi: FeatureHostApiV1 = {
+        sdkApiVersion: 1,
+        featureId: 'agent-hub',
+        grantedCapabilities: ['service:store'],
+        getCapability: (capability) =>
+          (capability as FeatureHostCapability) === 'service:store' ? (service as never) : undefined,
+      }
+      return (
+        <FeatureHostApiProvider value={hostApi}>
+          <AgentHubPage {...pageProps} />
+        </FeatureHostApiProvider>
+      )
+    }
+
+    render(<Shell />)
+    await screen.findByRole('heading', { name: 'code-review' })
+
+    await user.click(screen.getByRole('button', { name: 'Power 市场' }))
+    await screen.findByRole('heading', { name: 'market-translate' })
+
+    // A host re-render mid-request must not abort and re-issue the market read.
+    expect(marketRequests).toBe(1)
   })
 
   describe('power details and installation', () => {

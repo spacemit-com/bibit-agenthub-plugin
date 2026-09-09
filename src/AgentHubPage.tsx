@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import {
   useFeatureCapability,
   type FeaturePageProps,
+  type FeatureServiceApiV1,
   type FeatureServiceErrorV1,
+  type FeatureServiceRequestV1,
 } from '@bibit/feature-sdk'
 import {
   INSTALLED_AGENTS,
@@ -118,7 +120,37 @@ const noopSubscribe = () => () => {}
 const noopSnapshot = () => EMPTY_SNAPSHOT
 
 export function AgentHubPage(_: FeaturePageProps) {
-  const store = useFeatureCapability('service:store')
+  // The host recreates the `service:store` capability object on every render of
+  // the feature host (Bibit's FeatureContributionHost calls hostApiFactory during
+  // render without memoization). Depending on that identity would abort and
+  // restart every in-flight request and would discard the per-service WeakMap
+  // caches (market catalog, installation store) on every host render. Pin one
+  // stable proxy per page instance that always delegates to the latest object,
+  // so in-flight work survives host renders while token rotation still applies.
+  const capability = useFeatureCapability('service:store')
+  const capabilityRef = useRef(capability)
+  capabilityRef.current = capability
+  const hasStore = capability !== undefined
+  const store = useMemo<FeatureServiceApiV1<'store'> | undefined>(() => {
+    if (!hasStore) return undefined
+    const proxy: FeatureServiceApiV1<'store'> = {
+      request<TResult = unknown>(input: FeatureServiceRequestV1<'store'>): Promise<TResult> {
+        const current = capabilityRef.current
+        if (!current) {
+          return Promise.reject<TResult>(
+            Object.assign(new Error('Store capability is not available.'), {
+              version: 1,
+              code: 'unavailable',
+              retryable: true,
+            })
+          )
+        }
+        return current.request<TResult>(input)
+      },
+    }
+    return proxy
+  }, [hasStore])
+
   const [scope, setScope] = useState<PowerScope>('installed')
   const [agent, setAgent] = useState('bibit')
   const [type, setType] = useState<PowerType>('skill')
