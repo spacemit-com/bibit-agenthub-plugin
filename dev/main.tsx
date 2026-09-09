@@ -10,6 +10,8 @@ import { featureModule } from '../src/feature'
 // Vite dev-store middleware, which runs the same raw wire contracts as the
 // production Go provider: powers.list.v1, powers.inspect.v1, powers.install.v1,
 // and powers.uninstall.v1 with the read 30 s / write 120 s deadlines.
+// Agent choices and validation share INSTALLED_AGENTS (including hermes-agent)
+// with the page; Hermes skill/plugin/mcp requests reach APM with the same id.
 // `storeEndpoint` remains overridable for pointing Local Preview at an alternate
 // transport.
 const storeEndpoint =

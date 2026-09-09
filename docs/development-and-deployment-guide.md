@@ -672,7 +672,7 @@ apm list --installed --agent=<selected> --json
 - stdout 非法 UTF-8 → `unavailable`；超 4 MiB → `resource_exhausted`；
 - 不透传 CLI stderr、物理路径、环境变量、堆栈或命令内部错误。
 
-前端 Agent 菜单固定为 bibit / codex / claude-code 三个选项（`claude-code` 即 apm 中 Claude 的 id），由插件常量提供，不依赖 `facets.agents` 做发现；每次请求只解析所选 agent 的返回。`listJson` 由前端数据层用 `parseApmInstalledList` 解析为 `APMPowerRecord[]`，再经 `buildInstalledPowersResult` 完成 type/tags 过滤、按 type/name 聚合、去重、分页与 facets——这些聚合只存在于前端 `src/api/`，Provider 与 dev transport 不复制。
+前端 Agent 菜单固定为 bibit / codex / claude-code / hermes-agent 四个选项（`claude-code` 即 apm 中 Claude 的 id），由插件常量提供，不依赖 `facets.agents` 做发现；每次请求只解析所选 agent 的返回。`listJson` 由前端数据层用 `parseApmInstalledList` 解析为 `APMPowerRecord[]`，再经 `buildInstalledPowersResult` 完成 type/tags 过滤、按 type/name 聚合、去重、分页与 facets——这些聚合只存在于前端 `src/api/`，Provider 与 dev transport 不复制。
 
 ### 10.5 Power 详情与安装/卸载（APM CLI）
 
@@ -779,14 +779,14 @@ npm run dev
 
 浏览器打开 Vite 输出地址。Feature Dev Host 读取真实 Manifest 和 Feature Module，并通过 `dev/main.tsx` 的 `serviceConnections` 把 `powers.list.v1` / `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` 路由到 Vite 中间件（`vite.config.ts` → `dev/store.ts`）提供的 Store。`scope=installed` 会真实执行 PATH 中的 `apm list --installed --agent=<selected> --json`（身份记录）；详情/安装/卸载分别执行 `apm list <name> --installed ...` / `apm install <name>=<version> ...` / `apm uninstall <name> ...`（argv 与 Go Provider 一致，读 30s / 写 120s）；`scope=market` 会每次请求真实拉取 APC 公开目录（`GET /resources/version` 取快照 + `GET /resources` 跟随重定向取全量列表），再按 `type` 过滤聚合；`settings.get.v1` / `settings.update.v1` 使用内存设置。此模式不启动、不编译 Bibit，也不要求远程 Store 后端在线；未安装 `apm` 时 installed 页显示可重试的 unavailable 错误，APC 不可达时 market 页显示可重试的 unavailable 错误。
 
-market 每次点击类型/标签、翻页都重新拉取并解析 APC 全量列表（无本地 fixture、无跨请求缓存），覆盖 skill / plugin / mcp / agent 四种 Power 类型；installed 由真实 apm 输出驱动，Agent 菜单固定为 bibit / codex / claude-code 三个选项。两种 scope 复用同一套筛选、聚合、分页、facets 与 snapshot 规则，与未来 Remote Store 一致。
+market 每次点击类型/标签、翻页都重新拉取并解析 APC 全量列表（无本地 fixture、无跨请求缓存），覆盖 skill / plugin / mcp / agent 四种 Power 类型；installed 由真实 apm 输出驱动，Agent 菜单固定为 bibit / codex / claude-code / hermes-agent 四个选项。两种 scope 复用同一套筛选、聚合、分页、facets 与 snapshot 规则，与未来 Remote Store 一致。
 
 APC Base URL 默认测试环境 `https://developer.bianbu.xyz/api-server/apc/api/v1`，可用 `APC_BASE_URL` 环境变量覆盖。测试环境证书不受信，dev-only 传输层（`vite.config.ts`）关闭了 TLS 校验；正式 CLI Provider 必须使用受信 CA。APC 公开目录无按类型列表端点，因此 market 采用“全量列表 + 客户端按 `type` 过滤”的映射。
 
 冒烟检查（filters / version selection / pagination / warnings / Retry）：
 
 - 默认进入“我的 Power / Bibit / skill”，第 1 页显示最多 20 张系列卡，翻页显示“第 X / Y 页”；
-- “Power 市场”隐藏 Agent 层，Agent 层固定显示 bibit / codex / claude-code 三个选项；
+- “Power 市场”隐藏 Agent 层，Agent 层固定显示 bibit / codex / claude-code / hermes-agent 四个选项；
 - 切换 Agent / 类型会清空失效 tags 并回到第 1 页；
 - 选择多个 tag 时按 OR 过滤，tag 清单随上层筛选刷新；
 - 同一系列切换版本时 description 与 tags 同步变化；

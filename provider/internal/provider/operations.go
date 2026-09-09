@@ -21,8 +21,8 @@ const (
 )
 
 var (
-	installedAgents = map[string]bool{"bibit": true, "codex": true, "claude-code": true}
-	powerTypes      = map[string]bool{"skill": true, "plugin": true, "mcp": true, "agent": true}
+	installedAgents    = map[string]bool{"bibit": true, "codex": true, "claude-code": true, "hermes-agent": true}
+	powerTypes         = map[string]bool{"skill": true, "plugin": true, "mcp": true, "agent": true}
 	canonicalVersionRE = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
 )
 

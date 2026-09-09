@@ -28,7 +28,8 @@ const record = (version: string): APMPowerRecord => ({
 const key = JSON.stringify(['bibit', 'skill', 'demo'])
 
 describe('dev transport + installation store end-to-end', () => {
-  it('runs inspect → install → refresh → uninstall → refresh on shared state', async () => {
+  it.each(['bibit', 'hermes-agent'])('runs inspect → install → refresh → uninstall → refresh for %s', async (agent) => {
+    const key = JSON.stringify([agent, 'skill', 'demo'])
     let installed: APMPowerRecord[] = []
     const mutations: string[] = []
     const sources: StoreSources = {
@@ -69,24 +70,24 @@ describe('dev transport + installation store end-to-end', () => {
     const store = getInstallationStore(service)
     const signal = new AbortController().signal
 
-    const before = await store.inspect({ agent: 'bibit', type: 'skill', name: 'demo' }, signal)
+    const before = await store.inspect({ agent, type: 'skill', name: 'demo' }, signal)
     expect(before).toEqual([])
 
     await store.execute(
-      { kind: 'install', input: { agent: 'bibit', type: 'skill', name: 'demo', version: 'v1.0.0' } },
+      { kind: 'install', input: { agent, type: 'skill', name: 'demo', version: 'v1.0.0' } },
       signal
     )
     const afterInstall = store.getSnapshot()
-    expect(afterInstall.fullLists.get('bibit')).toEqual([record('v1.0.0')])
+    expect(afterInstall.fullLists.get(agent)).toEqual([{ ...record('v1.0.0'), agent }])
     expect(afterInstall.notices.get(key)).toBe('安装完成')
 
-    expect(await store.refreshAgent('bibit', signal)).toEqual([record('v1.0.0')])
+    expect(await store.refreshAgent(agent, signal)).toEqual([{ ...record('v1.0.0'), agent }])
 
-    await store.execute({ kind: 'uninstall', input: { agent: 'bibit', type: 'skill', name: 'demo' } }, signal)
+    await store.execute({ kind: 'uninstall', input: { agent, type: 'skill', name: 'demo' } }, signal)
     const afterUninstall = store.getSnapshot()
     expect(afterUninstall.notices.get(key)).toBe('卸载完成')
 
-    expect(await store.refreshAgent('bibit', signal)).toEqual([])
+    expect(await store.refreshAgent(agent, signal)).toEqual([])
     expect(mutations).toEqual(['install', 'uninstall'])
   })
 

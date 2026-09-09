@@ -62,6 +62,7 @@ export function PowerDetailsDialog({
       : undefined
   const isInstalled = installedVersion !== undefined
   const busy = active !== undefined
+  // APM supports skill/plugin/mcp for every listed target, including Hermes.
   const agentOptions = series.type === 'agent' ? ['bibit'] : INSTALLED_AGENTS
   const agentValidForInstall = series.type !== 'agent' || agent === 'bibit'
   const targetLocked = busy || isInstalled || readOnly

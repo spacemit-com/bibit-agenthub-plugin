@@ -9,6 +9,8 @@ Bibit Agent Hub 的独立前端插件 + 独立 Go CLI Provider，当前包含：
 - 独立 Feature Dev Host 与共享的前端数据层（解析、过滤、聚合、分页、facets、snapshot 判断、共享安装状态）；
 - 纯 Go 标准库 CLI Provider（仅 Provider Protocol v1，`bibit-agenthub`）。
 
+Agent 选择支持 `bibit`、`codex`、`claude-code`、`hermes-agent`。Hermes 支持 Skill、MCP 和 Plugin 的列表、详情、安装与卸载，`agent` 类型仅支持 Bibit；运行环境中的 APM 需要支持 `--agent=hermes-agent`。
+
 本期范围是 v1：installed（APM）与 market（APC 全量目录）浏览，以及单版本安装/卸载（读 30s、写 120s 超时）。上传/下载、job、文件传输与 settings 持久化不在本期 CLI 内。
 
 完整的代码边界、独立开发、服务协议、签名、部署、升级和验收步骤见：

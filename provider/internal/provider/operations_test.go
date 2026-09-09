@@ -2,12 +2,43 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestHermesOperations(t *testing.T) {
+	home := t.TempDir()
+	fixture := writeFixture(t, "apm", "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$HOME/apm-argv.txt\"\nprintf '[]'\n")
+	invoke := NewInvoker(apmConfig(fixture, home), nil)
+	for _, tc := range []struct {
+		operation string
+		params    string
+		argv      []string
+	}{
+		{operationPowersList, `{"scope":"installed","agent":"hermes-agent"}`, []string{"list", "--installed", "--agent=hermes-agent", "--json"}},
+		{operationPowersInspect, `{"agent":"hermes-agent","type":"skill","name":"demo"}`, []string{"list", "demo", "--installed", "--json", "--agent=hermes-agent", "--type=skill"}},
+		{operationPowersInstall, `{"agent":"hermes-agent","type":"plugin","name":"demo","version":"v1.0.0"}`, []string{"install", "demo=v1.0.0", "--agent=hermes-agent", "--type=plugin"}},
+		{operationPowersUninstall, `{"agent":"hermes-agent","type":"mcp","name":"demo"}`, []string{"uninstall", "demo", "--agent=hermes-agent", "--type=mcp"}},
+	} {
+		t.Run(tc.operation, func(t *testing.T) {
+			req, err := decodeOperationRequest(tc.operation, json.RawMessage(tc.params))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := invoke(context.Background(), req); err != nil {
+				t.Fatal(err)
+			}
+			assertArgv(t, home, tc.argv...)
+		})
+	}
+	if err := validateTarget("hermes-agent", "agent", "demo"); err == nil || !strings.Contains(err.Error(), "only available for the bibit agent") {
+		t.Fatalf("Hermes agent-type validation: %v", err)
+	}
+}
 
 func readArgv(t *testing.T, home string) []string {
 	t.Helper()

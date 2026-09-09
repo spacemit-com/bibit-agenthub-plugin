@@ -6,7 +6,7 @@ export const POWERS_LIST_OPERATION_ID = 'powers.list.v1' as const
 // apm CLI (`apm list --installed --agent=<agent> --json`, records always carry
 // description/tags since apm ADR-029); no `--agent=all` discovery is done, so the
 // Agent menu renders exactly these ids. `claude-code` is apm's id for "claude".
-export const INSTALLED_AGENTS = ['bibit', 'codex', 'claude-code'] as const
+export const INSTALLED_AGENTS = ['bibit', 'codex', 'claude-code', 'hermes-agent'] as const
 
 export type PowerScope = 'installed' | 'market'
 export type PowerType = (typeof POWER_TYPES)[number]

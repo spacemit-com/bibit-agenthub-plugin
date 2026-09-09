@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-09-09 — 接入 APM Hermes Agent
+
+分类：新增功能
+
+用户需求：
+
+为 Agent Hub 插件增加 `../apm` 已适配的 `hermes-agent`，与 Bibit、Codex、Claude Code 并列管理 Power。
+
+相关提交：
+
+- `feat: add Hermes Agent support via APM`（本条记录所在提交）。
+
+解决方案或完成结果：
+
+扩展前端 Agent 列表及 Go Provider 操作白名单；“我的 Power”筛选与详情安装目标支持 `hermes-agent`，列表、详情、安装和卸载复用 `service:store` 及现有版本化 operation，以 `--agent=hermes-agent` 调用 APM。Hermes 支持 Skill、MCP、Plugin，`agent` 类型仍仅支持 Bibit。开发入口与组件说明、README 和开发指南同步更新，增加菜单选择、契约校验、Provider argv 和安装/卸载后刷新回归覆盖。
+
+验证结果或限制：
+
+`npm test`（17 个文件、284 项测试）、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin`、`make -C provider test vet`、`make -C provider build`、本机 Provider `--self-test` 和 `git diff --check` 均通过。独立代码审查未发现正确性问题。并行构建期间现有 PowerFilters 键盘焦点测试出现一次时序失败，单独重跑完整测试通过。APM 命令验证使用隔离替身；未进行真实 Hermes 安装/卸载或设备部署，运行环境需提供支持 Hermes 的 APM 及对应 Agent 依赖。
+
 ## 2026-09-08 — Power 详情与安装/卸载，双 deb 上板部署，真实 GUI 闭环在 Bibit 0.1.4 通过
 
 分类：功能变更

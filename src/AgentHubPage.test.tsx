@@ -494,9 +494,11 @@ describe('AgentHubPage', () => {
     expect(screen.getByRole('heading', { name: 'market-translate' })).toBeTruthy()
   })
 
-  it('renders the fixed installed Agent menu with bibit, codex, and claude-code', async () => {
+  it('renders the fixed Agent menu and loads Hermes when selected', async () => {
     const user = userEvent.setup()
-    const { hostApi } = makeStoreHost(() => installedData('[]'))
+    const { hostApi, calls } = makeStoreHost((params) => installedData(
+      wireParamsOf(params).agent === 'hermes-agent' ? JSON.stringify([{ ...codeReviewRecord, agent: 'hermes-agent' }]) : '[]'
+    ))
     renderPage(hostApi)
     await screen.findByText('No Powers are available.')
 
@@ -505,6 +507,9 @@ describe('AgentHubPage', () => {
     expect(screen.getByRole('menuitemradio', { name: 'bibit' })).toBeTruthy()
     expect(screen.getByRole('menuitemradio', { name: 'codex' })).toBeTruthy()
     expect(screen.getByRole('menuitemradio', { name: 'claude-code' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'hermes-agent' }))
+    await screen.findByRole('heading', { name: 'code-review' })
+    expect(calls.at(-1)?.params).toEqual({ scope: 'installed', agent: 'hermes-agent' })
   })
 
   describe('power details and installation', () => {

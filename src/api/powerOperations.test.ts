@@ -64,6 +64,17 @@ describe('parseMutationResult', () => {
 })
 
 describe('parsePowerTarget', () => {
+  it.each(['skill', 'plugin', 'mcp'])('accepts Hermes %s targets and installs', (type) => {
+    const hermes = { agent: 'hermes-agent', type, name: 'demo' }
+    expect(parsePowerTarget(hermes)).toEqual(hermes)
+    expect(parseInstallInput({ ...hermes, version: 'v1.0.0' })).toEqual({ ...hermes, version: 'v1.0.0' })
+  })
+
+  it('rejects Hermes agent-type powers and the CLI executable alias', () => {
+    expect(() => parsePowerTarget({ agent: 'hermes-agent', type: 'agent', name: 'demo' })).toThrow(/only available for the bibit agent/)
+    expect(() => parsePowerTarget({ agent: 'hermes', type: 'skill', name: 'demo' })).toThrow()
+  })
+
   it('parses a valid target', () => {
     expect(parsePowerTarget(target)).toEqual(target)
   })

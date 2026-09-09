@@ -53,6 +53,13 @@ const props = {
 }
 
 describe('PowerDetailsDialog', () => {
+  it.each(['skill', 'plugin', 'mcp'] as const)('offers Hermes as the %s install target', async (type) => {
+    const onAgentChange = vi.fn()
+    render(<PowerDetailsDialog {...props} series={{ ...series, type }} onAgentChange={onAgentChange} />)
+    await userEvent.setup().selectOptions(screen.getByLabelText('Agent'), 'hermes-agent')
+    expect(onAgentChange).toHaveBeenCalledWith('hermes-agent')
+  })
+
   it('shows the selected version description and tags', () => {
     render(<PowerDetailsDialog {...props} />)
 
@@ -158,13 +165,13 @@ describe('PowerDetailsDialog', () => {
     expect(screen.queryByRole('button', { name: '安装' })).toBeNull()
   })
 
-  it('offers only an explicit switch for a non-bibit agent-type power', () => {
+  it.each(['codex', 'hermes-agent'])('offers only a Bibit switch for %s agent-type powers', (agent) => {
     const agentSeries: PowerSeries = {
       type: 'agent',
       name: 'reviewer',
       versions: [{ version: 'v1.0.0', description: 'Agent reviewer.', tags: [] }],
     }
-    render(<PowerDetailsDialog {...props} series={agentSeries} agent="codex" />)
+    render(<PowerDetailsDialog {...props} series={agentSeries} agent={agent} />)
 
     expect(screen.getByText('该类型仅支持 bibit Agent。')).toBeTruthy()
     expect(screen.getByRole('button', { name: '切换到 bibit' })).toBeTruthy()
