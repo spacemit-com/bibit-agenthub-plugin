@@ -181,7 +181,7 @@ bibit-agenthub-cli (Architecture: any)
     -> /usr/libexec/bibit/bibit-agenthub + /etc/bibit/external-services.d/agenthub.json
 ```
 
-CLI 包不依赖 APM 或 bi-bit；APM 缺失允许降级为 `unavailable` 而非阻止安装。maintainer script 不修改用户 home 下的 Registry，也不重启宿主。
+CLI 包不依赖 APM 或 bi-bit；APM 缺失允许降级为 `unavailable` 而非阻止安装。maintainer script 不修改用户 home 下的 Registry，也不重启宿主。依赖链为：宿主 `bi-bit` 依赖 `bibit-agenthub-plugin`，`bibit-agenthub-plugin` 依赖 `bibit-agenthub-cli` 与 `agent-power-manager`（`apm` 的 deb 包），因此安装 `bi-bit` 会自动拉取前端插件、CLI Provider 与 `apm`。
 
 ## 7. 最小验收
 

@@ -986,7 +986,7 @@ Rules-Requires-Root: no
 
 Package: bibit-agenthub-plugin
 Architecture: all
-Depends: bi-bit, ${misc:Depends}
+Depends: bibit-agenthub-cli (= ${binary:Version}), agent-power-manager, ${misc:Depends}
 Description: Bibit Agent Hub trusted frontend plugin
  Provides the Agent Hub main page and settings contribution.
 ```
