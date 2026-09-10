@@ -1,4 +1,5 @@
 import { useRef, useState, type FocusEvent, type KeyboardEvent } from 'react'
+import { useAgentHubI18n } from '../agentHubI18n'
 import { POWER_TYPES, type PowerScope, type PowerType } from '../api/contracts'
 
 export interface PowerFiltersProps {
@@ -26,6 +27,7 @@ export function PowerFilters({
   onTypeChange,
   onTagsChange,
 }: PowerFiltersProps) {
+  const t = useAgentHubI18n()
   const [agentMenuOpen, setAgentMenuOpen] = useState(false)
   const installedTriggerRef = useRef<HTMLButtonElement>(null)
   const firstAgentRef = useRef<HTMLButtonElement>(null)
@@ -74,7 +76,7 @@ export function PowerFilters({
 
   return (
     <div className="power-filters">
-      <div className="power-filters__scopes" role="group" aria-label="Scope">
+      <div className="power-filters__scopes" role="group" aria-label={t('Scope')}>
         <div
           className="power-filters__scope-agent"
           onMouseEnter={() => openAgentMenu()}
@@ -105,10 +107,10 @@ export function PowerFilters({
               }
             }}
           >
-            我的 Power <span aria-hidden="true">⌄</span>
+            {t('My Powers')} <span aria-hidden="true">⌄</span>
           </button>
           {agentMenuOpen && agents.length > 0 && (
-            <div className="power-filters__agent-menu" role="menu" aria-label="Agent">
+            <div className="power-filters__agent-menu" role="menu" aria-label={t('Agent')}>
               {agents.map((value, index) => (
                 <button
                   ref={index === 0 ? firstAgentRef : undefined}
@@ -135,13 +137,13 @@ export function PowerFilters({
           aria-pressed={scope === 'market'}
           onClick={() => scope !== 'market' && onScopeChange('market')}
         >
-          Power 市场
+          {t('Power market')}
         </button>
       </div>
       <div className="power-filters__panel">
         <div className="power-filters__filter-row">
-          <span className="power-filters__label">Type</span>
-          <div className="power-filters__types" role="group" aria-label="Type">
+          <span className="power-filters__label">{t('Type')}</span>
+          <div className="power-filters__types" role="group" aria-label={t('Type')}>
             {POWER_TYPES.map((value) => (
               <button
                 key={value}
@@ -156,12 +158,12 @@ export function PowerFilters({
           </div>
         </div>
         <div className="power-filters__filter-row">
-          <span className="power-filters__label">Tags</span>
+          <span className="power-filters__label">{t('Tags')}</span>
           <div
             className="power-filters__tags"
             data-power-type={type}
             role="group"
-            aria-label="Tags"
+            aria-label={t('Tags')}
           >
             {availableTags.map((tag) => (
               <button

@@ -1,5 +1,36 @@
 # Changelog
 
+## 2026-09-10 — 插件中英文跟随 Bibit 系统语言
+
+分类：功能变更
+
+用户需求：
+
+给 Agent Hub 插件增加随 Bibit 系统切换中英文的能力，参考 `../bibit-runtime-plugin` 的实现方式。
+
+相关提交：
+
+- `feat: follow the host language for all plugin copy`（本条记录所在提交）。
+
+相关文件：
+
+- 新 `src/agentHubI18n.tsx` 及 `src/agentHubI18n.test.tsx`：英文源串词典、`en` / `zh-CN` 菜单资源、Provider、稳定 `t`、`withAgentHubI18n`
+- `src/api/operationMessages.ts`、`src/api/installationStore.ts`：文案改为 `TranslatableText { text, values? }`，语言不在数据层持有
+- `src/AgentHubPage.tsx`、`src/AgentHubSettingsPage.tsx`、`src/components/*`：所有标签、状态、错误与 aria 文案经 `t(...)` 渲染
+- `src/feature.tsx`、`src/plugin.tsx`、`bibit.feature.json`：`locales`、`pluginLocales` 导出、设置导航 `titleKey`、版本 0.3.0
+- `dev/main.tsx`：语言下拉框与 `?lang=zh-CN`
+- `vendor/bibit-feature-*.tgz`、`package-lock.json`：按目标 Bibit `b538783`（`bianbu/0.1.8`）重新打包并同步 integrity
+- 文档：`docs/verification/2026-09-10-plugin-i18n.md`、本指南 1 / 3 / 6.1 / 6.2 / 7.1 / 11.2 / 16.4 / 18 / 19 与 `README.md`
+- `src/components/PowerFilters.test.tsx`：修掉 2026-09-09 记录过的键盘焦点时序失败（等待触发键的 `requestAnimationFrame` 落定后再继续按键）
+
+解决方案或完成结果：
+
+页面、设置页与全部组件的自有文案以英文为源语言，按宿主传入的 `language`（`en` 或 `zh-CN`）翻译成中文；菜单、导航与描述键通过插件入口的 `pluginLocales` 导出交给宿主注册。`withAgentHubI18n` 只注入 Provider，不加 `key`，列表 effect 依赖不含 `language`，因此切换语言时已加载列表、筛选、分页与已打开的详情弹窗保持不变且不重新请求。安装状态与操作文案以 `{ text, values }` 形式在渲染边界翻译，状态机不持有语言。Dev Host 支持 `?lang=zh-CN` 与右上角语言下拉框。
+
+验证结果或限制：
+
+`npm test`（19 个文件、313 项测试，连续 5 次全量运行与 8 次 `PowerFilters` 单独运行全绿）、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin` 与 `git diff --check` 均通过；产物 `artifacts/agent-hub-0.3.0.bibit-plugin.tgz` 内 `plugin.json` 声明 `["en","zh-CN"]`，`dist/plugin.js` 确认导出 `pluginLocales` 并含中文词条。宿主契约由发布版 `bi-bit 0.1.4` 二进制与 `../bibit` 提交 `b0bcc45` 确认。板端真实 GUI 下的系统语言切换尚未执行，需按开发指南 16.4 步骤 7–8 复核；0.1.4 之前的宿主不传 `language`，页面固定英文。
+
 ## 2026-09-09 — 接入 APM Hermes Agent
 
 分类：新增功能

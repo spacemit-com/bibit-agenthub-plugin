@@ -79,13 +79,13 @@ describe('dev transport + installation store end-to-end', () => {
     )
     const afterInstall = store.getSnapshot()
     expect(afterInstall.fullLists.get(agent)).toEqual([{ ...record('v1.0.0'), agent }])
-    expect(afterInstall.notices.get(key)).toBe('安装完成')
+    expect(afterInstall.notices.get(key)).toEqual({ text: 'Installation complete.' })
 
     expect(await store.refreshAgent(agent, signal)).toEqual([{ ...record('v1.0.0'), agent }])
 
     await store.execute({ kind: 'uninstall', input: { agent, type: 'skill', name: 'demo' } }, signal)
     const afterUninstall = store.getSnapshot()
-    expect(afterUninstall.notices.get(key)).toBe('卸载完成')
+    expect(afterUninstall.notices.get(key)).toEqual({ text: 'Uninstall complete.' })
 
     expect(await store.refreshAgent(agent, signal)).toEqual([])
     expect(mutations).toEqual(['install', 'uninstall'])
@@ -109,6 +109,6 @@ describe('dev transport + installation store end-to-end', () => {
     )
 
     const notice = store.getSnapshot().notices.get(key)
-    expect(notice).toContain('失败')
+    expect(notice).toEqual({ text: 'The command failed; nothing is installed.' })
   })
 })

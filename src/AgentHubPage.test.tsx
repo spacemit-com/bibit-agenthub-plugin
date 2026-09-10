@@ -13,6 +13,7 @@ import {
 } from '@bibit/feature-sdk'
 import type { FeatureHostCapability } from '@bibit/feature-contracts'
 import { AgentHubPage } from './AgentHubPage'
+import { withAgentHubI18n } from './agentHubI18n'
 
 afterEach(cleanup)
 
@@ -148,6 +149,30 @@ function renderPage(hostApi: FeatureHostApiV1) {
   )
 }
 
+// The production module wraps the page in the translation provider, so the
+// language tests exercise the same component identity across rerenders.
+const LocalizedAgentHubPage = withAgentHubI18n(AgentHubPage)
+
+function renderLocalizedPage(hostApi: FeatureHostApiV1, language?: string) {
+  return render(
+    <FeatureHostApiProvider value={hostApi}>
+      <LocalizedAgentHubPage {...pageProps} language={language} />
+    </FeatureHostApiProvider>
+  )
+}
+
+function rerenderLocalizedPage(
+  view: ReturnType<typeof render>,
+  hostApi: FeatureHostApiV1,
+  language: string
+) {
+  view.rerender(
+    <FeatureHostApiProvider value={hostApi}>
+      <LocalizedAgentHubPage {...pageProps} language={language} />
+    </FeatureHostApiProvider>
+  )
+}
+
 function pageNumber(): string {
   return (screen.getByRole('spinbutton', { name: 'Page number' }) as HTMLInputElement).value
 }
@@ -164,7 +189,7 @@ describe('AgentHubPage', () => {
     expect(calls).toHaveLength(1)
     expect(wireParamsOf(calls[0])).toEqual({ scope: 'installed', agent: 'bibit' })
     expect(pageNumber()).toBe('1')
-    expect(screen.getByText('/ 1 页')).toBeTruthy()
+    expect(screen.getByText('of 1')).toBeTruthy()
   })
 
   it('shows the capability-unavailable error and recovers when Retry re-reads the capability', async () => {
@@ -216,7 +241,7 @@ describe('AgentHubPage', () => {
     renderPage(hostApi)
     await screen.findByRole('heading', { name: 'code-review' })
 
-    await user.click(screen.getByRole('button', { name: 'Power 市场' }))
+    await user.click(screen.getByRole('button', { name: 'Power market' }))
     await screen.findByRole('heading', { name: 'market-translate' })
 
     expect(calls).toHaveLength(2)
@@ -238,7 +263,7 @@ describe('AgentHubPage', () => {
     await screen.findByRole('heading', { name: 'skill-20' })
     expect(pageNumber()).toBe('2')
 
-    await user.hover(screen.getByRole('button', { name: '我的 Power' }))
+    await user.hover(screen.getByRole('button', { name: 'My Powers' }))
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'codex' }))
 
     await waitFor(() => {
@@ -271,14 +296,14 @@ describe('AgentHubPage', () => {
     renderPage(hostApi)
     await screen.findByRole('heading', { name: 'code-review' })
 
-    await user.hover(screen.getByRole('button', { name: '我的 Power' }))
+    await user.hover(screen.getByRole('button', { name: 'My Powers' }))
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'codex' }))
     await waitFor(() => expect(wireParamsOf(calls[calls.length - 1]).agent).toBe('codex'))
 
-    await user.click(screen.getByRole('button', { name: 'Power 市场' }))
+    await user.click(screen.getByRole('button', { name: 'Power market' }))
     await waitFor(() => expect(wireParamsOf(calls[calls.length - 1]).scope).toBe('market'))
 
-    await user.click(screen.getByRole('button', { name: '我的 Power' }))
+    await user.click(screen.getByRole('button', { name: 'My Powers' }))
     await waitFor(() => {
       const last = wireParamsOf(calls[calls.length - 1])
       expect(last.scope).toBe('installed')
@@ -362,7 +387,7 @@ describe('AgentHubPage', () => {
     renderPage(hostApi)
     await screen.findByRole('heading', { name: 'code-review' })
 
-    await user.click(screen.getByRole('button', { name: 'Power 市场' }))
+    await user.click(screen.getByRole('button', { name: 'Power market' }))
     await screen.findByRole('heading', { name: 'market-00' })
 
     await user.click(screen.getByRole('button', { name: 'Next page' }))
@@ -457,9 +482,61 @@ describe('AgentHubPage', () => {
     })
     renderPage(hostApi)
 
-    expect(
-      await screen.findByText('Power catalog request timed out. Diagnostic ID: diag-42')
-    ).toBeTruthy()
+    expect(await screen.findByText('Power catalog request timed out.')).toBeTruthy()
+    // The host id is rendered as its own sentence, never concatenated into the
+    // mapped message, so the message stays a translatable dictionary entry.
+    expect(screen.getByText('Diagnostic ID: diag-42')).toBeTruthy()
+  })
+
+  it('switches every page surface with the host language prop', async () => {
+    const { hostApi } = makeStoreHost((input) =>
+      installedData(wireParamsOf(input).scope === 'installed' ? codeReviewList : '[]')
+    )
+    const view = renderLocalizedPage(hostApi, 'en')
+
+    await screen.findByRole('heading', { name: 'code-review' })
+    expect(screen.getByText('INTERNAL CATALOG')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'My Powers' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Power market' })).toBeTruthy()
+    expect(screen.getByRole('spinbutton', { name: 'Page number' })).toBeTruthy()
+    expect(screen.getByText('of 1')).toBeTruthy()
+
+    rerenderLocalizedPage(view, hostApi, 'zh-CN')
+
+    expect(screen.getByText('内部目录')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '我的 Power' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Power 市场' })).toBeTruthy()
+    expect(screen.getByRole('spinbutton', { name: '页码' })).toBeTruthy()
+    expect(screen.getByText('/ 1 页')).toBeTruthy()
+    expect(screen.queryByText('INTERNAL CATALOG')).toBeNull()
+  })
+
+  it('keeps the loaded market view and the open dialog across a language change', async () => {
+    const user = userEvent.setup()
+    const { hostApi, calls } = makeStoreHost((input) => {
+      if (input.operationId === 'powers.list.v1') {
+        return wireParamsOf(input).scope === 'market' ? marketData() : installedData('[]')
+      }
+      if (input.operationId === 'powers.inspect.v1') return { listJson: '[]' }
+      throw new Error('unexpected op ' + input.operationId)
+    })
+    const view = renderLocalizedPage(hostApi, 'en')
+
+    await user.click(screen.getByRole('button', { name: 'Power market' }))
+    await screen.findByRole('heading', { name: 'market-translate' })
+    await user.click(screen.getByRole('heading', { name: 'market-translate' }))
+    const dialog = within(document.querySelector('dialog') as HTMLElement)
+    await dialog.findByText('Not installed')
+
+    const listCalls = () => calls.filter((call) => call.operationId === 'powers.list.v1').length
+    const before = listCalls()
+
+    rerenderLocalizedPage(view, hostApi, 'zh-CN')
+
+    expect(document.querySelector('dialog')?.hasAttribute('open')).toBe(true)
+    expect(await dialog.findByText('未安装')).toBeTruthy()
+    expect(dialog.getByRole('button', { name: '安装' })).toBeTruthy()
+    await waitFor(() => expect(listCalls()).toBe(before))
   })
 
   it('aborts the active request when the page unmounts', async () => {
@@ -483,7 +560,7 @@ describe('AgentHubPage', () => {
     renderPage(hostApi)
 
     await waitFor(() => expect(calls).toHaveLength(1))
-    await user.click(screen.getByRole('button', { name: 'Power 市场' }))
+    await user.click(screen.getByRole('button', { name: 'Power market' }))
     await waitFor(() => expect(calls).toHaveLength(2))
 
     resolvers[1](await marketData())
@@ -503,7 +580,7 @@ describe('AgentHubPage', () => {
     renderPage(hostApi)
     await screen.findByText('No Powers are available.')
 
-    await user.hover(screen.getByRole('button', { name: '我的 Power' }))
+    await user.hover(screen.getByRole('button', { name: 'My Powers' }))
 
     expect(screen.getByRole('menuitemradio', { name: 'bibit' })).toBeTruthy()
     expect(screen.getByRole('menuitemradio', { name: 'codex' })).toBeTruthy()
@@ -552,7 +629,7 @@ describe('AgentHubPage', () => {
     render(<Shell />)
     await screen.findByRole('heading', { name: 'code-review' })
 
-    await user.click(screen.getByRole('button', { name: 'Power 市场' }))
+    await user.click(screen.getByRole('button', { name: 'Power market' }))
     await screen.findByRole('heading', { name: 'market-translate' })
 
     // A host re-render mid-request must not abort and re-issue the market read.
@@ -592,7 +669,7 @@ describe('AgentHubPage', () => {
         throw new Error('unexpected op ' + input.operationId)
       })
       renderPage(hostApi)
-      await user.click(screen.getByRole('button', { name: 'Power 市场' }))
+      await user.click(screen.getByRole('button', { name: 'Power market' }))
       await screen.findByRole('heading', { name: 'market-translate' })
 
       await user.selectOptions(screen.getByLabelText('Version'), 'v1.0.0')
@@ -628,16 +705,16 @@ describe('AgentHubPage', () => {
         throw new Error('unexpected op ' + input.operationId)
       })
       renderPage(hostApi)
-      await user.click(screen.getByRole('button', { name: 'Power 市场' }))
+      await user.click(screen.getByRole('button', { name: 'Power market' }))
       await screen.findByRole('heading', { name: 'market-translate' })
 
       await user.click(screen.getByRole('heading', { name: 'market-translate' }))
       const dialog = within(document.querySelector('dialog') as HTMLElement)
-      await dialog.findByText('未安装')
+      await dialog.findByText('Not installed')
 
-      await user.click(dialog.getByRole('button', { name: '安装' }))
+      await user.click(dialog.getByRole('button', { name: 'Install' }))
 
-      expect(await dialog.findByText('安装完成')).toBeTruthy()
+      expect(await dialog.findByText('Installation complete.')).toBeTruthy()
       expect(installCall?.operationId).toBe('powers.install.v1')
       expect(installCall?.params).toEqual({
         agent: 'bibit',
@@ -664,13 +741,13 @@ describe('AgentHubPage', () => {
       })
       renderPage(hostApi)
       await screen.findByRole('heading', { name: 'code-review' })
-      expect(screen.queryByRole('button', { name: '卸载' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Uninstall' })).toBeNull()
 
       await user.click(screen.getByRole('heading', { name: 'code-review' }))
       const dialog = within(document.querySelector('dialog') as HTMLElement)
-      await dialog.findByText('已安装 v1.0.0')
+      await dialog.findByText('Installed v1.0.0')
 
-      await user.click(dialog.getByRole('button', { name: '卸载' }))
+      await user.click(dialog.getByRole('button', { name: 'Uninstall' }))
 
       await waitFor(() => expect(uninstallCall?.operationId).toBe('powers.uninstall.v1'))
       expect(uninstallCall?.params).toEqual({ agent: 'bibit', type: 'skill', name: 'code-review' })
@@ -694,23 +771,23 @@ describe('AgentHubPage', () => {
       })
       renderPage(hostApi)
       await screen.findByRole('heading', { name: 'code-review' })
-      expect(screen.queryByRole('button', { name: '卸载' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Uninstall' })).toBeNull()
 
       await user.click(screen.getByRole('heading', { name: 'code-review' }))
       let dialog = within(document.querySelector('dialog') as HTMLElement)
-      expect(await dialog.findByRole('button', { name: '卸载' })).toBeTruthy()
+      expect(await dialog.findByRole('button', { name: 'Uninstall' })).toBeTruthy()
       expect((dialog.getByLabelText('Version') as HTMLSelectElement).disabled).toBe(true)
       expect((dialog.getByLabelText('Agent') as HTMLSelectElement).disabled).toBe(true)
       await user.click(dialog.getByRole('button', { name: 'Close' }))
 
-      await user.click(screen.getByRole('button', { name: 'Power 市场' }))
+      await user.click(screen.getByRole('button', { name: 'Power market' }))
       await screen.findByRole('heading', { name: 'market-translate' })
-      expect(screen.queryByRole('button', { name: '安装' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Install' })).toBeNull()
 
       await user.click(screen.getByRole('heading', { name: 'market-translate' }))
       dialog = within(document.querySelector('dialog') as HTMLElement)
-      expect(await dialog.findByRole('button', { name: '安装' })).toBeTruthy()
-      expect(screen.queryByRole('button', { name: '卸载' })).toBeNull()
+      expect(await dialog.findByRole('button', { name: 'Install' })).toBeTruthy()
+      expect(screen.queryByRole('button', { name: 'Uninstall' })).toBeNull()
       expect((dialog.getByLabelText('Version') as HTMLSelectElement).disabled).toBe(false)
     })
   })

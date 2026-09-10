@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { FeatureDevHost } from '@bibit/feature-dev-host'
 import '@bibit/feature-dev-host/styles.css'
@@ -18,12 +18,49 @@ const storeEndpoint =
   new URLSearchParams(globalThis.location.search).get('storeEndpoint') ??
   '/dev-services/store/invoke'
 
+// Same values the host passes in production: normalized `en` or `zh-CN`.
+const initialLanguage =
+  new URLSearchParams(globalThis.location.search).get('lang') === 'zh-CN'
+    ? 'zh-CN'
+    : 'en'
+
+function DevApp() {
+  const [language, setLanguage] = useState<'en' | 'zh-CN'>(initialLanguage)
+  return (
+    <>
+      <label
+        style={{
+          position: 'fixed',
+          zIndex: 20,
+          right: 20,
+          top: 14,
+          display: 'flex',
+          gap: 8,
+          alignItems: 'center',
+        }}
+      >
+        UI language
+        <select
+          aria-label="UI language"
+          value={language}
+          onChange={(event) => setLanguage(event.target.value as 'en' | 'zh-CN')}
+        >
+          <option value="en">English</option>
+          <option value="zh-CN">中文</option>
+        </select>
+      </label>
+      <FeatureDevHost
+        manifest={manifestJson as FeatureManifestV1}
+        module={featureModule}
+        language={language}
+        serviceConnections={{ store: storeEndpoint }}
+      />
+    </>
+  )
+}
+
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <FeatureDevHost
-      manifest={manifestJson as FeatureManifestV1}
-      module={featureModule}
-      serviceConnections={{ store: storeEndpoint }}
-    />
+    <DevApp />
   </React.StrictMode>
 )

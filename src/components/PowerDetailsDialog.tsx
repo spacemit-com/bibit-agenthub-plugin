@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { useAgentHubI18n, type TranslatableText } from '../agentHubI18n'
 import { INSTALLED_AGENTS, type PowerSeries } from '../api/contracts'
 import type { ActiveMutation, InstallationState } from '../api/installationStore'
 
@@ -8,7 +9,7 @@ export interface PowerDetailsDialogProps {
   agent: string
   installation: InstallationState
   active?: ActiveMutation
-  notice?: string
+  notice?: TranslatableText
   readOnly: boolean
   onVersionChange(version: string): void
   onAgentChange(agent: string): void
@@ -18,10 +19,11 @@ export interface PowerDetailsDialogProps {
   onClose(): void
 }
 
+// English source text for each mutation phase; translated where it renders.
 const PHASE_LABELS: Record<ActiveMutation['phase'], string> = {
-  preflight: '检查中…',
-  running: '执行中…',
-  reconciling: '确认安装状态…',
+  preflight: 'Checking…',
+  running: 'Running…',
+  reconciling: 'Confirming installation state…',
 }
 
 export function PowerDetailsDialog({
@@ -39,6 +41,7 @@ export function PowerDetailsDialog({
   onRetry,
   onClose,
 }: PowerDetailsDialogProps) {
+  const t = useAgentHubI18n()
   const dialogRef = useRef<HTMLDialogElement>(null)
   const restoreFocusRef = useRef<HTMLElement | null>(null)
 
@@ -89,23 +92,23 @@ export function PowerDetailsDialog({
             <span className="agent-hub-dialog__type">{series.type}</span>
             <h2>{series.name}</h2>
           </div>
-          <button type="button" className="agent-hub-dialog__close" aria-label="Close" onClick={close}>
+          <button type="button" className="agent-hub-dialog__close" aria-label={t('Close')} onClick={close}>
             ×
           </button>
         </header>
 
         <div className="agent-hub-dialog__field">
-          <span className="agent-hub-dialog__label">Agent</span>
+          <span className="agent-hub-dialog__label">{t('Agent')}</span>
           {series.type === 'agent' && agent !== 'bibit' ? (
             <div>
-              <p className="agent-hub-dialog__hint">该类型仅支持 bibit Agent。</p>
+              <p className="agent-hub-dialog__hint">{t('Only the bibit agent supports this type.')}</p>
               <button type="button" disabled={targetLocked} onClick={() => onAgentChange('bibit')}>
-                切换到 bibit
+                {t('Switch to bibit')}
               </button>
             </div>
           ) : (
             <select
-              aria-label="Agent"
+              aria-label={t('Agent')}
               value={agent}
               disabled={targetLocked}
               onChange={(event) => onAgentChange(event.target.value)}
@@ -120,9 +123,9 @@ export function PowerDetailsDialog({
         </div>
 
         <div className="agent-hub-dialog__field">
-          <span className="agent-hub-dialog__label">Version</span>
+          <span className="agent-hub-dialog__label">{t('Version')}</span>
           <select
-            aria-label="Version"
+            aria-label={t('Version')}
             value={current.version}
             disabled={targetLocked}
             onChange={(event) => onVersionChange(event.target.value)}
@@ -145,22 +148,31 @@ export function PowerDetailsDialog({
         </div>
 
         <div className="agent-hub-dialog__status">
-          {installation.status === 'unknown' && <p role="status">正在读取安装状态…</p>}
-          {installation.status === 'checking' && <p role="status">检查中…</p>}
+          {installation.status === 'unknown' && (
+            <p role="status">{t('Reading installation state…')}</p>
+          )}
+          {installation.status === 'checking' && <p role="status">{t('Checking…')}</p>}
           {installation.status === 'error' && (
             <div role="alert">
-              <span>{installation.message}</span>
+              <span>{t(installation.message.text, installation.message.values)}</span>
               <button type="button" onClick={onRetry}>
-                Retry
+                {t('Retry')}
               </button>
             </div>
           )}
-          {installation.status === 'ready' && !isInstalled && <p role="status">未安装</p>}
-          {installation.status === 'ready' && isInstalled && <p role="status">已安装 {installedVersion}</p>}
-          {busy && active && <p role="status">{PHASE_LABELS[active.phase]}</p>}
+          {installation.status === 'ready' && !isInstalled && (
+            <p role="status">{t('Not installed')}</p>
+          )}
+          {installation.status === 'ready' && isInstalled && (
+            <p role="status">
+              {/* The version is data, so only the label sentence is translated. */}
+              {t('Installed {version}', { version: installedVersion ?? '' })}
+            </p>
+          )}
+          {busy && active && <p role="status">{t(PHASE_LABELS[active.phase])}</p>}
           {notice && !busy && (
             <p className="agent-hub-dialog__notice" role="status">
-              {notice}
+              {t(notice.text, notice.values)}
             </p>
           )}
         </div>
@@ -169,12 +181,12 @@ export function PowerDetailsDialog({
         <footer className="agent-hub-dialog__footer">
           {showInstall && (
             <button type="button" className="agent-hub-dialog__install" disabled={!writeEnabled} onClick={onInstall}>
-              安装
+              {t('Install')}
             </button>
           )}
           {showUninstall && (
             <button type="button" className="agent-hub-dialog__uninstall" disabled={!writeEnabled} onClick={onUninstall}>
-              卸载
+              {t('Uninstall')}
             </button>
           )}
         </footer>

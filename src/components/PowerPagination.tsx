@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useAgentHubI18n } from '../agentHubI18n'
 
 export interface PowerPaginationProps {
   page: number
@@ -14,6 +15,7 @@ export function PowerPagination({
   onPageChange,
 }: PowerPaginationProps) {
   const [draft, setDraft] = useState(String(page))
+  const t = useAgentHubI18n()
 
   useEffect(() => setDraft(String(page)), [page])
 
@@ -29,18 +31,18 @@ export function PowerPagination({
   }
 
   return (
-    <nav className="power-pagination" aria-label="Power pages">
+    <nav className="power-pagination" aria-label={t('Power pages')}>
       <button
         type="button"
-        aria-label="Previous page"
+        aria-label={t('Previous page')}
         disabled={page === 1}
         onClick={() => onPageChange(Math.max(1, page - 1))}
       >
         <span aria-hidden="true">‹</span>
       </button>
-      <span>第</span>
+      <span>{t('Page')}</span>
       <input
-        aria-label="Page number"
+        aria-label={t('Page number')}
         type="number"
         min={1}
         max={totalPages}
@@ -52,10 +54,10 @@ export function PowerPagination({
           if (event.key === 'Enter') commitDraft()
         }}
       />
-      <span>/ {totalPages} 页</span>
+      <span>{t('of {total}', { total: totalPages })}</span>
       <button
         type="button"
-        aria-label="Next page"
+        aria-label={t('Next page')}
         disabled={!canGoNext || page >= totalPages}
         onClick={() => onPageChange(Math.min(totalPages, page + 1))}
       >

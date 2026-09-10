@@ -14,6 +14,7 @@ import {
   type ReadyListPowersResult,
   type PowerSeries,
 } from './api/contracts'
+import { useAgentHubI18n } from './agentHubI18n'
 import { listPowers } from './api/powerCatalogClient'
 import {
   getInstallationStore,
@@ -31,7 +32,14 @@ type PowerScope = 'installed' | 'market'
 type ViewState =
   | { status: 'loading' }
   | { status: 'ready'; data: ReadyListPowersResult }
-  | { status: 'error'; message: string; retryable: boolean }
+  | {
+      status: 'error'
+      /** English source text; translated where it renders. */
+      message: string
+      /** Host-supplied correlation id, shown as its own sentence. */
+      diagnosticId?: string
+      retryable: boolean
+    }
 
 const ERROR_MESSAGES: Record<FeatureServiceErrorV1['code'], string> = {
   cancelled: 'Power catalog request was cancelled.',
@@ -72,11 +80,15 @@ const APM_CLI_UNAVAILABLE_MESSAGE = 'apm CLI is unavailable'
 const APC_CATALOG_UNAVAILABLE_MESSAGE = 'APC catalog is unavailable'
 const DEV_HOST_UNAVAILABLE_MESSAGE = 'External service is unavailable'
 
-function toSafeError(reason: unknown): { message: string; retryable: boolean } {
+function toSafeError(reason: unknown): {
+  message: string
+  diagnosticId?: string
+  retryable: boolean
+} {
   if (isFeatureServiceError(reason)) {
-    const message = ERROR_MESSAGES[reason.code]
     return {
-      message: reason.diagnosticId ? `${message} Diagnostic ID: ${reason.diagnosticId}` : message,
+      message: ERROR_MESSAGES[reason.code],
+      ...(reason.diagnosticId ? { diagnosticId: reason.diagnosticId } : {}),
       retryable: RETRYABLE_CODES.has(reason.code),
     }
   }
@@ -150,6 +162,8 @@ export function AgentHubPage(_: FeaturePageProps) {
     }
     return proxy
   }, [hasStore])
+
+  const t = useAgentHubI18n()
 
   const [scope, setScope] = useState<PowerScope>('installed')
   const [agent, setAgent] = useState('bibit')
@@ -381,7 +395,7 @@ export function AgentHubPage(_: FeaturePageProps) {
 
   return (
     <main className="agent-hub">
-      <header><div><p>INTERNAL CATALOG</p><h1>Agent Hub</h1></div></header>
+      <header><div><p>{t('INTERNAL CATALOG')}</p><h1>Agent Hub</h1></div></header>
       <PowerFilters
         scope={scope}
         agents={agents}
@@ -394,11 +408,16 @@ export function AgentHubPage(_: FeaturePageProps) {
         onTypeChange={changeType}
         onTagsChange={changeTags}
       />
-      {view.status === 'loading' && <p role="status" className="agent-hub__status">Loading Powers…</p>}
+      {view.status === 'loading' && (
+        <p role="status" className="agent-hub__status">{t('Loading Powers…')}</p>
+      )}
       {view.status === 'error' && (
         <div role="alert" className="agent-hub__error">
-          <span>{view.message}</span>
-          {view.retryable && <button type="button" onClick={retryLoad}>Retry</button>}
+          <span>{t(view.message)}</span>
+          {view.diagnosticId && (
+            <span>{t('Diagnostic ID: {diagnosticId}', { diagnosticId: view.diagnosticId })}</span>
+          )}
+          {view.retryable && <button type="button" onClick={retryLoad}>{t('Retry')}</button>}
         </div>
       )}
       {view.status === 'ready' && (
@@ -409,10 +428,10 @@ export function AgentHubPage(_: FeaturePageProps) {
             </p>
           ))}
           {view.data.items.length === 0 ? (
-            <p className="agent-hub__status">No Powers are available.</p>
+            <p className="agent-hub__status">{t('No Powers are available.')}</p>
           ) : (
             <>
-              <section className="agent-hub__grid" aria-label="Available Powers">
+              <section className="agent-hub__grid" aria-label={t('Available Powers')}>
                 {view.data.items.map((series) => (
                   <PowerCard
                     key={`${series.type}-${series.name}`}

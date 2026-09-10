@@ -2,10 +2,27 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { PowerPagination } from './PowerPagination'
+import { AgentHubI18nProvider } from '../agentHubI18n'
 
 afterEach(cleanup)
 
 describe('PowerPagination', () => {
+  it('switches the page copy with the host language prop', () => {
+    const onPageChange = vi.fn()
+    const pagination = (language: string) => (
+      <AgentHubI18nProvider language={language}>
+        <PowerPagination page={1} totalPages={4} canGoNext onPageChange={onPageChange} />
+      </AgentHubI18nProvider>
+    )
+    const view = render(pagination('en'))
+    expect(screen.getByRole('spinbutton', { name: 'Page number' })).toBeTruthy()
+    expect(screen.getByText('of 4')).toBeTruthy()
+
+    view.rerender(pagination('zh-CN'))
+    expect(screen.getByRole('spinbutton', { name: '页码' })).toBeTruthy()
+    expect(screen.getByText('/ 4 页')).toBeTruthy()
+  })
+
   it('disables boundary arrows and moves one page at a time', async () => {
     const user = userEvent.setup()
     const onPageChange = vi.fn()

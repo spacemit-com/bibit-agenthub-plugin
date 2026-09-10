@@ -214,7 +214,7 @@ describe('execute', () => {
     })
     expect(installCall?.timeoutMs).toBe(120_000)
     expect(store.getSnapshot().fullLists.get('bibit')?.some((r) => r.name === 'demo')).toBe(true)
-    expect(store.getSnapshot().notices.get(demoKey)).toBe('安装完成')
+    expect(store.getSnapshot().notices.get(demoKey)).toEqual({ text: 'Installation complete.' })
   })
 
   it('runs uninstall without a version', async () => {
@@ -229,7 +229,7 @@ describe('execute', () => {
 
     const call = calls.find((c) => c.operationId === 'powers.uninstall.v1')
     expect(call?.params).toEqual({ agent: 'bibit', type: 'skill', name: 'demo' })
-    expect(store.getSnapshot().notices.get(demoKey)).toBe('卸载完成')
+    expect(store.getSnapshot().notices.get(demoKey)).toEqual({ text: 'Uninstall complete.' })
   })
 
   it('short-circuits install when the target version is already installed', async () => {
@@ -248,7 +248,7 @@ describe('execute', () => {
     await store.execute(installIntent, signal())
 
     expect(installCalls).toBe(0)
-    expect(store.getSnapshot().notices.get(demoKey)).toContain('已安装')
+    expect(store.getSnapshot().notices.get(demoKey)?.text).toContain('already installed')
   })
 
   it('rejects a second concurrent execute and runs only one mutation', async () => {
@@ -289,7 +289,7 @@ describe('execute', () => {
     const snapshot = store.getSnapshot()
     expect(snapshot.items.get(demoKey)?.status).toBe('error')
     expect(snapshot.active).toBeUndefined()
-    expect(snapshot.notices.get(demoKey)).toContain('状态确认失败')
+    expect(snapshot.notices.get(demoKey)?.text).toContain('could not be confirmed')
   })
 
   it('skips the reconcile network read when the page signal is aborted', async () => {

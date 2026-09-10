@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event'
 import type { PowerSeries } from '../api/contracts'
 import { PowerCard, type PowerCardProps } from './PowerCard'
+import { AgentHubI18nProvider } from '../agentHubI18n'
 
 afterEach(cleanup)
 
@@ -41,6 +42,20 @@ function renderCard(overrides: Partial<PowerCardProps> = {}) {
 }
 
 describe('PowerCard', () => {
+  it('switches the version control label with the host language prop', () => {
+    const card = (language: string) => (
+      <AgentHubI18nProvider language={language}>
+        <PowerCard series={series} selectedVersion="v2.0.0" onVersionChange={vi.fn()} busy={false} />
+      </AgentHubI18nProvider>
+    )
+    const view = render(card('en'))
+    expect(screen.getByLabelText('Version')).toBeTruthy()
+
+    view.rerender(card('zh-CN'))
+    expect(screen.getByLabelText('版本')).toBeTruthy()
+    expect(screen.queryByLabelText('Version')).toBeNull()
+  })
+
   it('renders the series type and name', () => {
     renderCard()
 
@@ -118,8 +133,8 @@ describe('PowerCard', () => {
   })
 
   it('renders the notice when provided', () => {
-    renderCard({ notice: '安装完成' })
+    renderCard({ notice: { text: 'Installation complete.' } })
 
-    expect(screen.getByText('安装完成')).toBeTruthy()
+    expect(screen.getByText('Installation complete.')).toBeTruthy()
   })
 })

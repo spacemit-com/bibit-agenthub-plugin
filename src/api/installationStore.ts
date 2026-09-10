@@ -1,4 +1,5 @@
 import type { FeatureServiceApiV1 } from '@bibit/feature-sdk'
+import type { TranslatableText } from '../agentHubI18n'
 import { POWERS_LIST_OPERATION_ID, parsePowersWireResult } from './contracts'
 import { parseApmInstalledList, type APMPowerRecord } from './apm'
 import {
@@ -13,7 +14,7 @@ import { operationMessage, type Execution } from './operationMessages'
 export type InstallationState =
   | { status: 'unknown' | 'checking' }
   | { status: 'ready'; records: APMPowerRecord[] }
-  | { status: 'error'; message: string }
+  | { status: 'error'; message: TranslatableText }
 
 export type ActiveMutation = { intent: MutationIntent; phase: 'preflight' | 'running' | 'reconciling' }
 
@@ -22,7 +23,7 @@ export type InstallationSnapshot = {
   items: ReadonlyMap<string, InstallationState>
   fullLists: ReadonlyMap<string, readonly APMPowerRecord[]>
   active?: ActiveMutation
-  notices: ReadonlyMap<string, string>
+  notices: ReadonlyMap<string, TranslatableText>
 }
 
 export interface InstallationStore {
@@ -34,8 +35,12 @@ export interface InstallationStore {
   invalidateAgent(agent: string): void
 }
 
-const ALREADY_INSTALLED_MESSAGE = '该版本已安装，请先卸载后再安装'
-const REFRESH_FAILED_MESSAGE = '刷新失败，无法确认安装状态'
+const ALREADY_INSTALLED_MESSAGE: TranslatableText = {
+  text: 'This version is already installed; uninstall it first.',
+}
+const REFRESH_FAILED_MESSAGE: TranslatableText = {
+  text: 'Refresh failed; the installed state could not be confirmed.',
+}
 
 interface Internals {
   service: FeatureServiceApiV1<'store'>
@@ -47,7 +52,7 @@ interface Internals {
   itemSeqs: Map<string, number>
   fullSeqs: Map<string, number>
   active?: ActiveMutation
-  notices: Map<string, string>
+  notices: Map<string, TranslatableText>
   listeners: Set<() => void>
   locked: boolean
   snapshot?: InstallationSnapshot
@@ -283,7 +288,7 @@ function createInstallationStore(service: FeatureServiceApiV1<'store'>): Install
     try {
       invalidateAgent(agent)
       let execution: Execution = { status: 'error', code: 'unknown' }
-      let shortCircuit: string | undefined
+      let shortCircuit: TranslatableText | undefined
 
       if (intent.kind === 'install') {
         internals.active = { intent, phase: 'preflight' }

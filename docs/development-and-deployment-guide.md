@@ -14,12 +14,15 @@
 | `@bibit/feature-plugin-sdk` | `0.3.0` |
 | `@bibit/feature-dev-host` | `0.3.0` |
 | React / React DOM | `19.0.0` |
-| 已验证目标 Bibit | `49bcd55ece89c6ee970abab4e4cb69b393b21201` |
+| 已验证目标 Bibit | `b5387833927e052fe3728bc0631cef2df0138092`（`bianbu/0.1.8`） |
+| 宿主语言支持 | 插件中英文文案跟随宿主 `language`；需要 `bi-bit` 0.1.4 及以上的宿主（设置菜单 `titleKey` 同样自 0.1.4 起生效） |
 
 当前插件提供两个贡献点：
 
 - `pages.home`：显示在 Bibit 主导航的 Agent Hub 页面；
 - `settings.settings`：显示在 Bibit 设置子菜单的 Agent Hub 设置页面。
+
+两个贡献点都不包含语言设置项：页面中英文文案跟随 Bibit 系统语言（宿主传入 `language`），菜单、导航与描述键通过 `pluginLocales` 交给宿主解析。详细规则见 7.1。
 
 当前 Demo 已实现 APC Power 展示与安装原型：通过 `powers.list.v1` 提供“我的 Power / Power 市场”两种数据范围、Agent / 类型 / tags 分层筛选、系列级卡片、版本选择与每页 20 张卡片的分页，并配套 Local Preview；通过 `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` 提供详情查看与单版本安装/卸载闭环。设置页仍提供实验 Agent 开关和刷新间隔两个字段。Power 下载、提交、审核、下架、恢复以及搜索等能力尚未实现，这些属于 Agent Hub 模块团队后续定制范围。
 
@@ -82,6 +85,7 @@ bibit-agenthub-plugin/
 │   ├── plugin.tsx
 │   ├── AgentHubPage.tsx
 │   ├── AgentHubSettingsPage.tsx
+│   ├── agentHubI18n.tsx   # 中英文词典、Provider、菜单 locales
 │   ├── agentHub.css
 │   ├── api/
 │   │   ├── contracts.ts          # 协议边界 DTO + wire 信封
@@ -242,11 +246,16 @@ src/
         "id": "settings",
         "path": "",
         "surfaces": ["main"],
-        "navigation": { "group": "integrations", "order": 100 }
+        "navigation": {
+          "group": "integrations",
+          "order": 100,
+          "titleKey": "agent-hub:settings",
+          "fallbackTitle": "Agent Hub settings"
+        }
       }
     ],
     "conversation": [],
-    "locales": ["en"]
+    "locales": ["en", "zh-CN"]
   }
 }
 ```
@@ -257,13 +266,23 @@ src/
 import type { FeatureModuleV1 } from '@bibit/feature-sdk'
 import { AgentHubPage } from './AgentHubPage'
 import { AgentHubSettingsPage } from './AgentHubSettingsPage'
+import { agentHubLocales, withAgentHubI18n } from './agentHubI18n'
 
 export const featureModule: FeatureModuleV1 = {
   sdkApiVersion: 1,
-  pages: { home: AgentHubPage },
-  settings: { settings: AgentHubSettingsPage },
+  locales: agentHubLocales,
+  pages: { home: withAgentHubI18n(AgentHubPage) },
+  settings: { settings: withAgentHubI18n(AgentHubSettingsPage) },
 }
 ```
+
+`src/plugin.tsx` 额外导出宿主读取的菜单资源：
+
+```tsx
+export { agentHubLocales as pluginLocales } from './agentHubI18n'
+```
+
+`withAgentHubI18n` 只注入语言 Provider，不引入 `key`，因此语言切换不会重挂载页面或重新发起请求。
 
 必须始终满足：
 
@@ -273,6 +292,7 @@ Manifest pages 中的 id = FeatureModule.pages 的 key
 Manifest settings 中的 id = FeatureModule.settings 的 key
 Manifest sdkApiVersion = FeatureModule sdkApiVersion
 Manifest version = package.json version
+Manifest contributions.locales = FeatureModule.locales 的 key（且必须包含 en）
 组件需要的 capability ⊆ Manifest requiredHostCapabilities
 ```
 
@@ -351,6 +371,41 @@ export function AgentHubPage({ subpath, navigation }: FeaturePageProps) {
 - 协议不兼容；
 - 用户主动重试；
 - 组件卸载时取消未完成请求。
+
+### 7.1 多语言（跟随 Bibit 系统语言）
+
+插件不提供语言设置项。页面中英文文案跟随宿主传入的 `language`（`en` 或 `zh-CN`），菜单、导航与描述键通过 `pluginLocales` 交给宿主解析。
+
+**源语言是英文。** 字典只把英文源串映射成中文，因此：
+
+- 组件里写英文源串：`const t = useAgentHubI18n()` 后 `t('Install')`、`t('Installed {version}', { version })`；
+- 产品名保持不译：Agent Hub、Power、Agent、bibit、skill / plugin / mcp 等类型名不进字典；
+- 字典缺少条目时回落英文源串，不会渲染空标签；
+- 宿主不传 `language`（0.1.4 之前的宿主）时页面就是英文。
+
+词典位置与用法：
+
+```text
+src/agentHubI18n.tsx
+├── agentHubChinese        # 英文源串 → 中文，唯一词典
+├── agentHubLocales        # en / zh-CN 的菜单、描述、设置菜单标题
+├── AgentHubI18nProvider   # 读取宿主 language
+├── useAgentHubI18n        # 身份稳定的 t（useRef + useCallback）
+└── withAgentHubI18n       # 给页面/设置 contribution 注入 Provider
+```
+
+**数据层不保存语言。** `src/api/operationMessages.ts` 的 operation 文案和 `installationStore` 的 notices 都是 `TranslatableText { text, values? }`：英文源串加占位符值，在渲染边界才翻译。这样安装状态、缓存与写互斥都不持有所在语言，切换语言不会改变状态机语义。
+
+**语言切换不得重挂载。** 不要在 Provider 子树或页面上加 `key`，也不要把 `language` 放进列表请求的 effect 依赖；`withAgentHubI18n` 只更新 context，页面保持组件身份与在途请求。`src/AgentHubPage.test.tsx` 有对应回归：切换语言后 `powers.list.v1` 请求数不变、已打开的详情弹窗与已选版本保持不变。
+
+**新增文案的顺序：**
+
+1. 组件里写英文源串并使用 `t(...)`；
+2. 在 `agentHubChinese` 增加同串中文（键必须是源码中出现过的字面量，`src/agentHubI18n.test.tsx` 会校验，防止拼写错或残留键）；
+3. 若是菜单、导航或描述文案，同步更新 `agentHubLocales` 与 `bibit.feature.json` 的 `contributions.locales`、`titleKey` / `fallbackTitle`；
+4. 在对应组件的语言切换测试里确认中英文两种渲染。
+
+Local Preview 使用 `?lang=zh-CN` 打开中文界面，`dev/main.tsx` 右上角的下拉框可以在不刷新页面的情况下切换语言。
 
 ## 8. 设置页面开发
 
@@ -777,7 +832,7 @@ npm run typecheck
 npm run dev
 ```
 
-浏览器打开 Vite 输出地址。Feature Dev Host 读取真实 Manifest 和 Feature Module，并通过 `dev/main.tsx` 的 `serviceConnections` 把 `powers.list.v1` / `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` 路由到 Vite 中间件（`vite.config.ts` → `dev/store.ts`）提供的 Store。`scope=installed` 会真实执行 PATH 中的 `apm list --installed --agent=<selected> --json`（身份记录）；详情/安装/卸载分别执行 `apm list <name> --installed ...` / `apm install <name>=<version> ...` / `apm uninstall <name> ...`（argv 与 Go Provider 一致，读 30s / 写 120s）；`scope=market` 会每次请求真实拉取 APC 公开目录（`GET /resources/version` 取快照 + `GET /resources` 跟随重定向取全量列表），再按 `type` 过滤聚合；`settings.get.v1` / `settings.update.v1` 使用内存设置。此模式不启动、不编译 Bibit，也不要求远程 Store 后端在线；未安装 `apm` 时 installed 页显示可重试的 unavailable 错误，APC 不可达时 market 页显示可重试的 unavailable 错误。
+浏览器打开 Vite 输出地址；首页地址追加 `?lang=zh-CN` 即为中文界面，右上角下拉框可随时切换语言（不刷新页面）。Feature Dev Host 读取真实 Manifest 和 Feature Module，并通过 `dev/main.tsx` 的 `serviceConnections` 把 `powers.list.v1` / `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` 路由到 Vite 中间件（`vite.config.ts` → `dev/store.ts`）提供的 Store。`scope=installed` 会真实执行 PATH 中的 `apm list --installed --agent=<selected> --json`（身份记录）；详情/安装/卸载分别执行 `apm list <name> --installed ...` / `apm install <name>=<version> ...` / `apm uninstall <name> ...`（argv 与 Go Provider 一致，读 30s / 写 120s）；`scope=market` 会每次请求真实拉取 APC 公开目录（`GET /resources/version` 取快照 + `GET /resources` 跟随重定向取全量列表），再按 `type` 过滤聚合；`settings.get.v1` / `settings.update.v1` 使用内存设置。此模式不启动、不编译 Bibit，也不要求远程 Store 后端在线；未安装 `apm` 时 installed 页显示可重试的 unavailable 错误，APC 不可达时 market 页显示可重试的 unavailable 错误。
 
 market 每次点击类型/标签、翻页都重新拉取并解析 APC 全量列表（无本地 fixture、无跨请求缓存），覆盖 skill / plugin / mcp / agent 四种 Power 类型；installed 由真实 apm 输出驱动，Agent 菜单固定为 bibit / codex / claude-code / hermes-agent 四个选项。两种 scope 复用同一套筛选、聚合、分页、facets 与 snapshot 规则，与未来 Remote Store 一致。
 
@@ -791,6 +846,7 @@ APC Base URL 默认测试环境 `https://developer.bianbu.xyz/api-server/apc/api
 - 选择多个 tag 时按 OR 过滤，tag 清单随上层筛选刷新；
 - 同一系列切换版本时 description 与 tags 同步变化；
 - 选择未安装任何 Power 的 Agent 时，页面显示空内容（No Powers are available.）；
+- 切换语言后当前列表、筛选、分页与已打开的详情弹窗保持不变，只替换文案，且不重新请求 `powers.list.v1`；
 - 停止或未连接 Store 时页面显示局部错误与 Retry，恢复后 Retry 可恢复列表；
 - `Settings · settings` 可以读取当前 Mock 设置、保存后再次进入值一致；
 - 未知 operation 返回错误，而不是伪造成功。
@@ -1155,10 +1211,12 @@ Store service version
 4. 停止 Store 服务，点击 Retry，确认只显示 Agent Hub 局部错误；
 5. 确认 Bibit 对话、设置和其他页面仍可操作；
 6. 恢复 Store 服务，点击 Retry，确认列表恢复；
-7. 打开 Agent Hub 设置，修改 `showExperimental` 和 `refreshMinutes` 并保存；
-8. 关闭并重新打开设置页，确认读取到保存值；
-9. 重启 Bibit 和 Store 服务，再次确认设置值；
-10. 保存 Store 服务按 `requestId` 关联的请求日志、Bibit 日志、页面截图和最终设置读取结果。
+7. 把 Bibit 系统语言切成中文，确认主导航、设置子菜单标题、页面文案与操作提示变为中文，且切换瞬间列表不重新请求、详情弹窗不关闭；
+8. 切回英文，确认文案回到英文；
+9. 打开 Agent Hub 设置，修改 `showExperimental` 和 `refreshMinutes` 并保存；
+10. 关闭并重新打开设置页，确认读取到保存值；
+11. 重启 Bibit 和 Store 服务，再次确认设置值；
+12. 保存 Store 服务按 `requestId` 关联的请求日志、Bibit 日志、页面截图和最终设置读取结果。
 
 入口可见、端口可达或 Dev Host Mock 成功都不算真实端到端接通。
 
@@ -1211,6 +1269,7 @@ CLI 模式检查 Registry 是否为 `version: 2`、`transport: stdio`、固定�
 - CLI 自检和 Provider v2 协商结果；
 - Bibit 插件加载、激活、停用和回退结果；
 - 真实 Power 列表、设置持久化、错误映射与重试证据；
+- 中英文切换证据（系统语言切换后页面文案、菜单标题与不重新请求的观察结果）；
 - 已知限制和可用回滚版本。
 
 不要交付：
@@ -1231,7 +1290,8 @@ CLI 模式检查 Registry 是否为 `version: 2`、`transport: stdio`、固定�
 - 安装/卸载依赖 Agent 自身 `apm` CLI；无 `apm` 时详情与写入降级为可重试 `unavailable`，页面显示固定“操作不可用”文案；
 - 自动化测试使用 Vitest 覆盖 DTO、dev transport、客户端、组件与页面行为（`src/api/contracts.test.ts` 等与源文件同目录）；
 - 设置页复用目标 Bibit 同版本的 `@bibit/feature-ui`；市场页使用 `.agent-hub*` 命名空间内的独立 CSS；
-- 当前 `locales` 只声明 `en`，页面文案仍直接写在组件中；
+- 中英文由插件自带词典（`src/agentHubI18n.tsx`）提供，跟随宿主 `language`，目前只有 `en` 与 `zh-CN` 两种；新增语言需要同时扩展 `agentHubChinese`/`agentHubLocales` 与 `bibit.feature.json` 的 `contributions.locales`；
+- 宿主 `language` 传入组件自 `bi-bit` 0.1.4 起；更早的宿主不传该值时页面固定为英文；
 - 插件属于公司可信内部代码，不是不可信代码沙箱；
 - 更新需要提升版本、重新签名并重新启动或刷新 Bibit；
 - 删除系统 bundle 不会自动停用已激活版本；

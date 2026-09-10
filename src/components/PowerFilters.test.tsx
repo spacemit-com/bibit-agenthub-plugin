@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { PowerFilters, type PowerFiltersProps } from './PowerFilters'
+import { AgentHubI18nProvider } from '../agentHubI18n'
 
 afterEach(cleanup)
 
@@ -24,7 +25,38 @@ function renderFilters(overrides: Partial<PowerFiltersProps> = {}) {
 }
 
 describe('PowerFilters', () => {
-  it('opens the Agent menu from 我的 Power and marks the current Agent', async () => {
+  it('switches the scope and filter labels with the host language prop', () => {
+    const props: PowerFiltersProps = {
+      scope: 'installed',
+      agents: ['bibit', 'atlas'],
+      agent: 'bibit',
+      type: 'skill',
+      availableTags: ['alpha', 'beta'],
+      selectedTags: [],
+      onScopeChange: vi.fn(),
+      onAgentChange: vi.fn(),
+      onTypeChange: vi.fn(),
+      onTagsChange: vi.fn(),
+    }
+    const filters = (language: string) => (
+      <AgentHubI18nProvider language={language}>
+        <PowerFilters {...props} />
+      </AgentHubI18nProvider>
+    )
+    const view = render(filters('en'))
+    expect(screen.getByRole('button', { name: 'My Powers' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Power market' })).toBeTruthy()
+    expect(screen.getByText('Type')).toBeTruthy()
+    expect(screen.getByText('Tags')).toBeTruthy()
+
+    view.rerender(filters('zh-CN'))
+    expect(screen.getByRole('button', { name: '我的 Power' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Power 市场' })).toBeTruthy()
+    expect(screen.getByText('类型')).toBeTruthy()
+    expect(screen.getByText('标签')).toBeTruthy()
+  })
+
+  it('opens the Agent menu from My Powers and marks the current Agent', async () => {
     const user = userEvent.setup()
     renderFilters()
 
@@ -32,7 +64,7 @@ describe('PowerFilters', () => {
     expect(document.querySelector('.power-filters__panel')).toBeTruthy()
     expect(document.querySelector('.power-filters__tags')).toBeTruthy()
 
-    const trigger = screen.getByRole('button', { name: '我的 Power' })
+    const trigger = screen.getByRole('button', { name: 'My Powers' })
     expect(trigger.getAttribute('aria-expanded')).toBe('false')
 
     await user.hover(trigger)
@@ -50,7 +82,7 @@ describe('PowerFilters', () => {
     const user = userEvent.setup()
     const props = renderFilters()
 
-    await user.click(screen.getByRole('button', { name: '我的 Power' }))
+    await user.click(screen.getByRole('button', { name: 'My Powers' }))
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'atlas' }))
 
     expect(props.onAgentChange).toHaveBeenCalledWith('atlas')
@@ -62,7 +94,7 @@ describe('PowerFilters', () => {
     const user = userEvent.setup()
     const props = renderFilters({ scope: 'market' })
 
-    await user.hover(screen.getByRole('button', { name: '我的 Power' }))
+    await user.hover(screen.getByRole('button', { name: 'My Powers' }))
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'atlas' }))
 
     expect(props.onScopeChange).toHaveBeenCalledWith('installed')
@@ -72,18 +104,30 @@ describe('PowerFilters', () => {
   it('opens the Agent menu with ArrowDown and restores focus with Escape', async () => {
     const user = userEvent.setup()
     renderFilters()
-    const trigger = screen.getByRole('button', { name: '我的 Power' })
+    const trigger = screen.getByRole('button', { name: 'My Powers' })
 
     trigger.focus()
     await user.keyboard('{ArrowDown}')
     await waitFor(() =>
       expect(document.activeElement).toBe(screen.getByRole('menuitemradio', { name: /bibit/ }))
     )
+    // The trigger's ArrowDown also moves focus from a requestAnimationFrame. Let
+    // that frame land before stepping again, otherwise it can reassign focus
+    // between the next keydown and its assertion and shift the wrap-around index.
+    await act(async () => {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    })
 
     await user.keyboard('{ArrowDown}')
-    expect(document.activeElement).toBe(screen.getByRole('menuitemradio', { name: 'atlas' }))
+    // Focus moves from a post-render effect, so each keyboard step needs its own
+    // flush; asserting synchronously loses the race under parallel workers.
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('menuitemradio', { name: 'atlas' }))
+    )
     await user.keyboard('{ArrowUp}')
-    expect(document.activeElement).toBe(screen.getByRole('menuitemradio', { name: /bibit/ }))
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('menuitemradio', { name: /bibit/ }))
+    )
 
     await user.keyboard('{Escape}')
     expect(screen.queryByRole('menu', { name: 'Agent' })).toBeNull()
@@ -94,9 +138,9 @@ describe('PowerFilters', () => {
     const user = userEvent.setup()
     renderFilters()
 
-    await user.click(screen.getByRole('button', { name: '我的 Power' }))
+    await user.click(screen.getByRole('button', { name: 'My Powers' }))
     act(() => {
-      screen.getByRole('button', { name: 'Power 市场' }).focus()
+      screen.getByRole('button', { name: 'Power market' }).focus()
     })
 
     expect(screen.queryByRole('menu', { name: 'Agent' })).toBeNull()

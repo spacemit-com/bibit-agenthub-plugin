@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import type { PowerSeries } from '../api/contracts'
 import type { APMPowerRecord } from '../api/apm'
 import { PowerDetailsDialog } from './PowerDetailsDialog'
+import { AgentHubI18nProvider } from '../agentHubI18n'
 
 beforeAll(() => {
   if (!HTMLDialogElement.prototype.showModal) {
@@ -53,6 +54,30 @@ const props = {
 }
 
 describe('PowerDetailsDialog', () => {
+  it('switches every dialog label and status with the host language prop', async () => {
+    const dialog = (language: string) => (
+      <AgentHubI18nProvider language={language}>
+        <PowerDetailsDialog {...props} />
+      </AgentHubI18nProvider>
+    )
+    const view = render(dialog('en'))
+
+    expect(await screen.findByText('Not installed')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Install' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Close' })).toBeTruthy()
+    expect(screen.getByText('Version')).toBeTruthy()
+    expect(screen.getByText('Agent')).toBeTruthy()
+
+    view.rerender(dialog('zh-CN'))
+
+    expect(screen.getByText('未安装')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '安装' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '关闭' })).toBeTruthy()
+    expect(screen.getByText('版本')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Install' })).toBeNull()
+  })
+
+
   it.each(['skill', 'plugin', 'mcp'] as const)('offers Hermes as the %s install target', async (type) => {
     const onAgentChange = vi.fn()
     render(<PowerDetailsDialog {...props} series={{ ...series, type }} onAgentChange={onAgentChange} />)
@@ -87,9 +112,9 @@ describe('PowerDetailsDialog', () => {
       />
     )
 
-    expect(screen.getByText('已安装 v1.0.0')).toBeTruthy()
-    expect(screen.getByRole('button', { name: '卸载' })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: '安装' })).toBeNull()
+    expect(screen.getByText('Installed v1.0.0')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Uninstall' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Install' })).toBeNull()
     expect((screen.getByLabelText('Version') as HTMLSelectElement).disabled).toBe(true)
   })
 
@@ -105,9 +130,9 @@ describe('PowerDetailsDialog', () => {
       <PowerDetailsDialog {...props} installation={{ status: 'ready', records: [] }} />
     )
 
-    expect(screen.getByText('未安装')).toBeTruthy()
-    expect(screen.getByRole('button', { name: '安装' })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: '卸载' })).toBeNull()
+    expect(screen.getByText('Not installed')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Install' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Uninstall' })).toBeNull()
     expect((screen.getByLabelText('Version') as HTMLSelectElement).disabled).toBe(false)
   })
 
@@ -116,8 +141,8 @@ describe('PowerDetailsDialog', () => {
 
     expect((screen.getByLabelText('Agent') as HTMLSelectElement).disabled).toBe(true)
     expect((screen.getByLabelText('Version') as HTMLSelectElement).disabled).toBe(true)
-    expect(screen.queryByRole('button', { name: '安装' })).toBeNull()
-    expect(screen.queryByRole('button', { name: '卸载' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Install' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Uninstall' })).toBeNull()
   })
 
   it('keeps the uninstall action while readOnly with an installed record', () => {
@@ -131,8 +156,8 @@ describe('PowerDetailsDialog', () => {
 
     expect((screen.getByLabelText('Agent') as HTMLSelectElement).disabled).toBe(true)
     expect((screen.getByLabelText('Version') as HTMLSelectElement).disabled).toBe(true)
-    expect(screen.getByRole('button', { name: '卸载' })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: '安装' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Uninstall' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Install' })).toBeNull()
   })
 
   it('has no footer when there is no install or uninstall action', () => {
@@ -144,25 +169,25 @@ describe('PowerDetailsDialog', () => {
   it.each([
     ['unknown', { status: 'unknown' as const }],
     ['checking', { status: 'checking' as const }],
-    ['error', { status: 'error' as const, message: '刷新失败，无法确认安装状态' }],
+    ['error', { status: 'error' as const, message: { text: 'Refresh failed; the installed state could not be confirmed.' } }],
   ])('disables writes while installation is %s', (_label, installation) => {
     render(<PowerDetailsDialog {...props} installation={installation} />)
 
-    expect(screen.queryByRole('button', { name: '安装' })).toBeNull()
-    expect(screen.queryByRole('button', { name: '卸载' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Install' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Uninstall' })).toBeNull()
   })
 
   it('offers Retry and hides writes on error', () => {
     render(
       <PowerDetailsDialog
         {...props}
-        installation={{ status: 'error', message: '刷新失败，无法确认安装状态' }}
+        installation={{ status: 'error', message: { text: 'Refresh failed; the installed state could not be confirmed.' } }}
       />
     )
 
     expect(screen.getByRole('alert')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: '安装' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Install' })).toBeNull()
   })
 
   it.each(['codex', 'hermes-agent'])('offers only a Bibit switch for %s agent-type powers', (agent) => {
@@ -173,9 +198,9 @@ describe('PowerDetailsDialog', () => {
     }
     render(<PowerDetailsDialog {...props} series={agentSeries} agent={agent} />)
 
-    expect(screen.getByText('该类型仅支持 bibit Agent。')).toBeTruthy()
-    expect(screen.getByRole('button', { name: '切换到 bibit' })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: '安装' })).toBeNull()
+    expect(screen.getByText('Only the bibit agent supports this type.')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Switch to bibit' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Install' })).toBeNull()
   })
 
   it('shows the active phase and disables writes while busy', () => {
@@ -186,14 +211,14 @@ describe('PowerDetailsDialog', () => {
       />
     )
 
-    expect(screen.getByText('执行中…')).toBeTruthy()
-    expect((screen.getByRole('button', { name: '安装' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByText('Running…')).toBeTruthy()
+    expect((screen.getByRole('button', { name: 'Install' }) as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('shows the notice when not busy', () => {
-    render(<PowerDetailsDialog {...props} notice="安装完成" />)
+    render(<PowerDetailsDialog {...props} notice={{ text: 'Installation complete.' }} />)
 
-    expect(screen.getByText('安装完成')).toBeTruthy()
+    expect(screen.getByText('Installation complete.')).toBeTruthy()
   })
 
   it('closes on Escape via the cancel event', () => {
@@ -215,7 +240,13 @@ describe('PowerDetailsDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Close' }))
 
     expect(onClose).toHaveBeenCalled()
-    expect(screen.queryByRole('button', { name: '关闭' })).toBeNull()
+    // The header × is the only close affordance; no footer cancel button is added.
+    const closeButtons = screen.getAllByRole('button', { name: 'Close' })
+    expect(closeButtons).toHaveLength(1)
+    expect(closeButtons[0]).toBe(
+      document.querySelector('.agent-hub-dialog__header .agent-hub-dialog__close')
+    )
+    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull()
   })
 
   it('calls install and uninstall handlers', async () => {
@@ -231,7 +262,7 @@ describe('PowerDetailsDialog', () => {
       />
     )
 
-    await user.click(screen.getByRole('button', { name: '安装' }))
+    await user.click(screen.getByRole('button', { name: 'Install' }))
     expect(onInstall).toHaveBeenCalled()
 
     rerender(
@@ -242,7 +273,7 @@ describe('PowerDetailsDialog', () => {
         installation={{ status: 'ready', records: [record('v1.0.0')] }}
       />
     )
-    await user.click(screen.getByRole('button', { name: '卸载' }))
+    await user.click(screen.getByRole('button', { name: 'Uninstall' }))
     expect(onUninstall).toHaveBeenCalled()
   })
 })

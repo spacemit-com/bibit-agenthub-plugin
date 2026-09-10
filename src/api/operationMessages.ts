@@ -1,3 +1,4 @@
+import type { TranslatableText } from '../agentHubI18n'
 import type { APMPowerRecord } from './apm'
 import type { MutationIntent, MutationResult, PowerTarget } from './powerOperations'
 
@@ -36,51 +37,68 @@ function matchesTarget(intent: MutationIntent, actual: readonly APMPowerRecord[]
  * intent, the observed subprocess exit or platform error code, and the
  * post-reconcile install records (undefined when the confirmation read failed).
  *
- * The text is drawn from a fixed set: it never interpolates raw stderr, never
- * claims a rollback, and never infers that apm is missing from a generic
- * unavailable error.
+ * The message is the English source text plus the values its `{version}` slot
+ * needs; the render boundary translates it into the host language. It is drawn
+ * from a fixed set: it never interpolates raw stderr, never claims a rollback,
+ * and never infers that apm is missing from a generic unavailable error.
  */
 export function operationMessage(
   intent: MutationIntent,
   execution: Execution,
   actual: readonly APMPowerRecord[] | undefined
-): string {
+): TranslatableText {
   if (execution.status === 'error') {
     switch (execution.code) {
       case 'unauthorized':
-        return '当前安装未授权此操作，不建议重复执行'
+        return { text: 'This installation is not authorized for that operation; do not retry.' }
       case 'incompatible':
-        return '当前 Provider 不支持该操作，不建议重复执行'
+        return { text: 'The current provider does not support that operation; do not retry.' }
       case 'timeout':
       case 'cancelled':
       case 'offline':
-        return '操作结果待确认，请刷新实际状态'
+        return { text: 'The operation result needs confirmation; refresh to read the actual state.' }
       case 'unavailable':
-        return '操作不可用，无法确认安装状态'
+        return { text: 'The operation is unavailable; the installed state could not be confirmed.' }
       default:
-        return actual === undefined ? '执行异常，且无法确认当前安装状态' : '操作不可用，无法确认安装状态'
+        return actual === undefined
+          ? { text: 'The command failed and the current installed state could not be confirmed.' }
+          : { text: 'The operation is unavailable; the installed state could not be confirmed.' }
     }
   }
 
   const exitCode = execution.exitCode
   if (actual === undefined) {
-    return exitCode === 0 ? '命令已执行完成，安装状态确认失败，请刷新' : '执行异常，且无法确认当前安装状态'
+    return exitCode === 0
+      ? { text: 'The command completed, but the installed state could not be confirmed; refresh.' }
+      : { text: 'The command failed and the current installed state could not be confirmed.' }
   }
 
   const matches = matchesTarget(intent, actual)
   const version = installedVersion(actual, intent.input)
 
   if (exitCode === 0) {
-    if (matches) return intent.kind === 'install' ? '安装完成' : '卸载完成'
-    return '命令已结束，但当前安装状态与预期不一致'
+    if (matches) {
+      return intent.kind === 'install'
+        ? { text: 'Installation complete.' }
+        : { text: 'Uninstall complete.' }
+    }
+    return { text: 'The command finished, but the installed state does not match the expectation.' }
   }
 
   if (matches) {
-    return intent.kind === 'install' ? `命令报告异常；当前已确认安装 ${version}` : '命令报告异常；当前未安装'
+    return intent.kind === 'install'
+      ? {
+          text: 'The command reported an error; version {version} is confirmed installed.',
+          values: { version: version ?? '' },
+        }
+      : { text: 'The command reported an error; nothing is installed.' }
   }
 
   if (version !== undefined) {
-    return `命令执行失败，当前仍安装 ${version}`
+    return {
+      text: 'The command failed; version {version} is still installed.',
+      values: { version },
+    }
   }
-  return '命令执行失败，当前未安装'
+  return { text: 'The command failed; nothing is installed.' }
 }

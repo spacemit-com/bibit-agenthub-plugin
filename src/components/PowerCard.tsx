@@ -1,3 +1,4 @@
+import { useAgentHubI18n, type TranslatableText } from '../agentHubI18n'
 import type { PowerSeries } from '../api/contracts'
 
 export interface PowerCardProps {
@@ -6,7 +7,7 @@ export interface PowerCardProps {
   onVersionChange(version: string): void
   onDetails?: () => void
   busy: boolean
-  notice?: string
+  notice?: TranslatableText
 }
 
 export function PowerCard({
@@ -17,6 +18,7 @@ export function PowerCard({
   busy,
   notice,
 }: PowerCardProps) {
+  const t = useAgentHubI18n()
   const current = series.versions.find((version) => version.version === selectedVersion) ?? series.versions[0]
 
   const openDetails = () => {
@@ -34,7 +36,7 @@ export function PowerCard({
         <span className="power-card__type">{series.type}</span>
         <select
           className="power-card__version"
-          aria-label="Version"
+          aria-label={t('Version')}
           value={current.version}
           disabled={busy}
           onClick={(event) => event.stopPropagation()}
@@ -58,7 +60,7 @@ export function PowerCard({
       </div>
       {notice && (
         <p className="power-card__notice" role="status">
-          {notice}
+          {t(notice.text, notice.values)}
         </p>
       )}
     </article>

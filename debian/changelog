@@ -1,3 +1,13 @@
+bibit-agenthub-plugin (0.3.0) resolute-porting; urgency=medium
+
+  * Follow the host language: every plugin-owned label, status and error is
+    translated from the English source into Chinese when Bibit runs in
+    zh-CN, and menu, navigation and description keys ship as pluginLocales.
+  * Refresh the vendored @bibit/feature-* tarballs from the target Bibit
+    source so contribution props carry the host `language` value.
+
+ -- liangjunzhao <junzhao.liang@spacemit.com>  Thu, 10 Sep 2026 18:00:00 +0800
+
 bibit-agenthub-plugin (0.2.3) resolute-porting; urgency=medium
 
   * Add power details and installation management: powers.inspect.v1,
