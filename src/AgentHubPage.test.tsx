@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {
@@ -285,6 +285,23 @@ describe('AgentHubPage', () => {
     await screen.findByRole('heading', { name: 'skill-40' })
 
     expect(pageNumber()).toBe('3')
+  })
+
+  it('sizes the page scroller to the box the host gives it', async () => {
+    const { hostApi } = makeStoreHost()
+    renderPage(hostApi)
+    await screen.findByRole('heading', { name: 'code-review' })
+
+    const scroller = document.querySelector('.agent-hub') as HTMLElement
+    expect(scroller.style.height).toBe(`${window.innerHeight}px`)
+
+    // jsdom has no layout, so stand in for a host box that starts partway down the window.
+    vi.spyOn(scroller, 'getBoundingClientRect').mockReturnValue({
+      top: 40,
+    } as unknown as DOMRect)
+    fireEvent(window, new Event('resize'))
+
+    expect(scroller.style.height).toBe(`${window.innerHeight - 40}px`)
   })
 
   it('scrolls the page back to the top when the query changes', async () => {

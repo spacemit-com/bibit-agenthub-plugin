@@ -1,6 +1,42 @@
 # Changelog
 
-## 2026-09-18 — Power 卡片布局适配窗口（页面自持滚动）
+## 2026-09-18 — 页面滚动真正生效 + 描述区滚动条隐藏（0.3.2）
+
+分类：缺陷修复
+
+用户反馈：
+
+1. 0.3.1 装到开发板后 Agent Hub 页面仍然没有滚动条、无法上下滑动；
+2. 卡片里的滚动条应该隐藏（像卡片里 tags 那样），并且不要描述区的横向滚动条；
+3. 描述框行数提高到 5 行。
+
+问题与根因：
+
+0.3.1 用 `height: 100%` 让页面自己滚动，但宿主给页面 contribution 的盒子是 `min-h-svh`（`SidebarProvider` / `SidebarInset` 都只有 `min-height`，没有确定高度），`div.size-full` 与 `FeatureContributionHost` 的 `h-full` 百分比在这条链上解析不出确定值：页面高度退回 `auto`，随内容一起变高，`overflow-y: auto` 永远不触发，所以既没有滚动条、也不能滑动。宿主自己的全高页面（设置路由 `<div className="flex flex-col h-svh w-full">`）用的就是视口单位，而不是百分比。
+
+相关提交：
+
+- `fix: size the page against the viewport so it really scrolls`（本条记录所在提交）。
+
+相关文件：
+
+- `src/agentHub.css`：`.agent-hub` 改 `height: 100vh; height: 100svh`（页面区域等于整个窗口：左侧栏 floating 脱离文档流、拖拽/缩放热区都是 fixed），作为测量前的兜底；`.power-card__description` 改固定 5 行（`7.5em`），加 `overflow-x: hidden`、`overflow-wrap: anywhere`、`scrollbar-width: none` 与 `::-webkit-scrollbar` 隐藏；把描述从共享的 `scrollbar-width: thin` 规则里摘掉（否则后者覆盖 `none`）；分页条内边距 12/8
+- `src/AgentHubPage.tsx`：`useLayoutEffect` 量出 `window.innerHeight - rect.top` 写成内联高度并在 resize 时重算，不再依赖“宿主盒子正好等于窗口”的假设
+- `src/agentHubLayout.test.ts`：改成断言页面高度是视口单位、描述横向裁切且无滚动条、共享 thin 规则不得再点名描述
+- `src/AgentHubPage.test.tsx`：新增量高（含 resize 重算）与回顶两条回归
+- `dev/devHostViewport.css`：改为去掉 Dev Host stage 的内边距与页头，让预览画布从视口顶部开始、正好一个视口高，等价于宿主给插件的盒子
+- `package.json`、`package-lock.json`、`bibit.feature.json`、`debian/changelog`：0.3.1 → 0.3.2
+- 文档：本指南 7.2、1、16.3、16.4 与本文
+
+解决方案或完成结果：
+
+页面高度改用视口单位、并由 `useLayoutEffect` 按实际可用空间校准后，`.agent-hub` 有了确定高度，`overflow-y: auto` 正常成为滚动容器，卡在窗口下方的卡片和吸底分页都能滚到；卡片描述固定 5 行、滚动条隐藏、不再出现横向滚动条，完整描述仍在详情弹窗内。
+
+验证结果或限制：
+
+`npm test`、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin` 全绿；契约测试对旧写法（`height: 100%`、描述出现在 thin 规则里）会失败，量高测试对缺少测量逻辑会失败。板端安装 0.3.2 后的真实 GUI 行为需要重启 Bibit 后按开发指南 16.4 步骤 9 复核。
+
+## 2026-09-18 — Power 卡片布局适配窗口（页面自持滚动，0.3.1）
 
 分类：缺陷修复
 
@@ -35,6 +71,8 @@
 验证结果或限制：
 
 `npm test`（20 个文件、318 项测试）、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin` 全绿；`artifacts/agent-hub-0.3.1.bibit-plugin.tgz` 的 `dist/agent-hub-plugin.css` 确认包含新规则且不含 Dev Host 垫片。开发板（`bianbu@10.0.91.51`，riscv64）已安装 `bibit-agenthub-plugin 0.3.1` + `bibit-agenthub-cli 0.3.1`，板端 bundle 与本地产物 sha256 一致（`ae9a2664…`），provider `--self-test` 退出 0；真实 GUI 需要在重启 Bibit 后按开发指南 16.4 步骤 9 复核窗口尺寸下的布局，此前未验证。
+
+**复核结果（0.3.2 修正）：** 板端重启后确认页面仍然没有滚动条、无法滑动——`height: 100%` 在这条 `min-h-svh` 链上解析不出确定高度。卡片描述固定高度与吸底分页本身生效，但页面滚动没有生效，已由 0.3.2 改为视口单位并在同一位置复验。
 
 ## 2026-09-10 — 插件中英文跟随 Bibit 系统语言
 

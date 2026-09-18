@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import {
   useFeatureCapability,
   type FeaturePageProps,
@@ -265,6 +265,24 @@ export function AgentHubPage(_: FeaturePageProps) {
 
     return () => listController.abort()
   }, [store, scope, agent, type, tags, page, retry])
+
+  // ---- the page owns its scroll: size it to the box the host actually hands over ----
+  // A page contribution is mounted in a min-height based box (SidebarProvider /
+  // SidebarInset are `min-h-svh`), so a percentage height never resolves and the page
+  // would grow with its content instead of scrolling. The stylesheet approximates the box
+  // with viewport units; measuring the real offset removes the assumption, and re-running
+  // on resize keeps the scroller flush with the bottom of the window.
+  useLayoutEffect(() => {
+    const node = pageScrollRef.current
+    if (!node) return
+    const fitToHostBox = () => {
+      const top = node.getBoundingClientRect().top
+      node.style.height = `${Math.max(0, Math.round(window.innerHeight - top))}px`
+    }
+    fitToHostBox()
+    window.addEventListener('resize', fitToHostBox)
+    return () => window.removeEventListener('resize', fitToHostBox)
+  }, [])
 
   const resetPageScroll = () => {
     if (pageScrollRef.current) pageScrollRef.current.scrollTop = 0

@@ -1,11 +1,13 @@
-/* Local Preview shim: Bibit mounts page contributions in a full-height box
-   (FeatureContributionHost's `h-full min-h-0`) under
-   `html, body, #root { height: 100%; overflow: hidden }`, so an over-tall page has no
-   scrollbar of its own. The Dev Host canvas is auto-height instead, which hides that
-   contract; bound it here so the preview shows the same clipping and the same
-   page-owned scrolling as the real host. Preview-only: `dev/` is not part of the
-   plugin bundle. */
-.bibit-dev-host__canvas {
-  height: clamp(320px, calc(100vh - 150px), 900px);
-  overflow: hidden;
-}
+/* Local Preview shim: the host renders a page contribution in a box that is exactly the
+   window (the left sidebar floats out of flow and the drag/resize overlays are fixed), so
+   the page sizes itself with viewport units and its bottom edge is the window bottom.
+   The Dev Host instead stacks a rail plus a padded stage above the canvas, which would
+   push the page's sticky pagination below the visible area and make the preview lie.
+
+   Drop the stage chrome so the preview canvas starts at the top of the viewport and is
+   exactly one viewport tall — the same box the real host gives the plugin.
+   Preview-only: `dev/` is not part of the plugin bundle. */
+.bibit-dev-host__stage { padding: 0; }
+.bibit-dev-host__stage > header { display: none; }
+.bibit-dev-host__preview { min-height: 0; border: 0; border-radius: 0; box-shadow: none; }
+.bibit-dev-host__canvas { height: 100vh; padding: 0; }

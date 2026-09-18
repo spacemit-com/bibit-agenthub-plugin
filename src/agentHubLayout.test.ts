@@ -96,10 +96,13 @@ function declared(block: CssBlock, property: string): string[] {
 describe('Agent Hub layout contract', () => {
   it('makes the page contribution its own scroll container', () => {
     const page = rules('.agent-hub')
+    // The host box is `min-h-svh`-based, so a percentage height stays indefinite and the
+    // page would silently never scroll. Only a viewport unit gives it a definite height.
     expect(
       page.some(
         (block) =>
-          declared(block, 'height').includes('100%') && declared(block, 'overflow-y').includes('auto')
+          declared(block, 'height').some((value) => /^100(svh|vh|dvh)$/.test(value)) &&
+          declared(block, 'overflow-y').includes('auto')
       )
     ).toBe(true)
   })
@@ -115,12 +118,22 @@ describe('Agent Hub layout contract', () => {
           declared(block, 'height').some((value) => value !== 'auto' && value !== '100%')
       )
     ).toBe(true)
-    // Short windows get a smaller box so a card row still fits above the pagination.
-    expect(
-      description.some((block) =>
-        block.conditions.some((condition) => /^@media\s*\(max-height:/.test(condition))
-      )
-    ).toBe(true)
+  })
+
+  it('hides the description scrollbar and clips horizontal overflow', () => {
+    const description = rules('.power-card__description')
+    expect(description.flatMap((block) => declared(block, 'overflow-x'))).toContain('hidden')
+    expect(description.flatMap((block) => declared(block, 'scrollbar-width'))).toContain('none')
+    // Any later `scrollbar-width: thin` naming the same element would win over the rule
+    // above and bring the scrollbar back.
+    for (const block of blocks.filter((candidate) =>
+      declared(candidate, 'scrollbar-width').includes('thin')
+    )) {
+      expect(block.selectors).not.toContain('.power-card__description')
+    }
+    expect(blocks.some((block) => block.selectors.includes('.power-card__description::-webkit-scrollbar'))).toBe(
+      true
+    )
   })
 
   it('pins the pagination to the bottom of the page scroller', () => {

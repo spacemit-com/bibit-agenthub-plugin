@@ -1,3 +1,14 @@
+bibit-agenthub-plugin (0.3.2) resolute-porting; urgency=medium
+
+  * Fix the page scroll for real: the host page box is min-height based, so the
+    percentage height of 0.3.1 never resolved and the page grew with its content.
+    The page now sizes itself with viewport units (height: 100svh), matching the
+    host's own h-svh pages.
+  * Show the description as a fixed 5-line box, hide its scrollbar, and clip
+    horizontal overflow.
+
+ -- liangjunzhao <junzhao.liang@spacemit.com>  Thu, 18 Sep 2026 13:30:00 +0800
+
 bibit-agenthub-plugin (0.3.1) resolute-porting; urgency=medium
 
   * Fit the Power grid to the window: the page owns its scroll container, the

@@ -6,11 +6,14 @@
   --hub-muted: #687386;
   --hub-border: #dfe4ec;
   box-sizing: border-box;
-  /* The host mounts page contributions in a full-height box (FeatureContributionHost's
-     `h-full min-h-0`) under `html, body, #root { overflow: hidden }`, so the page has to
-     own its scrolling; otherwise an over-tall grid is clipped and unreachable. */
-  height: 100%;
-  min-height: 0;
+  /* The host mounts page contributions inside `SidebarProvider` / `SidebarInset`, which
+     are `min-h-svh` (min-height only): a percentage height stays indefinite there, so the
+     page would just grow with its content and `overflow` would never kick in. Until
+     AgentHubPage measures the real box (useLayoutEffect, before paint), size against the
+     window like the host's own `h-svh` pages. The page area is the whole window: the left
+     sidebar is floating (out of flow) and the drag/resize overlays are fixed. */
+  height: 100vh;
+  height: 100svh;
   overflow-x: hidden;
   overflow-y: auto;
   padding: 36px clamp(20px, 4vw, 56px) 10px;
@@ -165,16 +168,18 @@
   font-size: 19px;
 }
 .power-card__description {
-  /* 4 lines at 14px/1.5; each line is exactly 21px so no line is cut in half. */
-  height: 6em;
+  /* 5 lines at 14px/1.5; each line is exactly 21px so no line is cut in half. */
+  height: 7.5em;
   margin: 0;
+  /* No horizontal overflow at all, and no scrollbar chrome: the box is a window onto the
+     text, scrolled with the wheel/trackpad like the tag row. */
+  overflow-x: hidden;
   overflow-y: auto;
+  overflow-wrap: anywhere;
+  scrollbar-width: none;
   color: var(--hub-muted);
 }
-/* The default 1200x800 window (and anything shorter) only has room for 3 lines. */
-@media (max-height: 820px) {
-  .power-card__description { height: 4.5em; }
-}
+.power-card__description::-webkit-scrollbar { width: 0; height: 0; display: none; }
 .power-card__tags { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; min-height: 0; margin-top: 14px; overflow-x: auto; overflow-y: hidden; }
 .power-card__tag { flex: 0 0 auto; padding: 5px 9px; border-radius: 999px; background: var(--type-soft); color: var(--type); font-size: 11px; font-weight: 700; }
 .power-card__notice { margin: 12px 0 0; color: var(--hub-muted); font-size: 12px; }
@@ -201,7 +206,7 @@
   justify-content: center;
   gap: 9px;
   margin-top: 20px;
-  padding: 12px 0 4px;
+  padding: 12px 0 8px;
   background: var(--hub-bg);
 }
 .agent-hub .power-pagination button {
@@ -221,7 +226,7 @@
 .agent-hub .power-pagination input { width: 58px; padding: 8px; border: 1px solid #c9d0dc; border-radius: 8px; text-align: center; }
 .agent-hub .power-pagination button:disabled { cursor: not-allowed; opacity: .42; }
 .agent-hub__status, .agent-hub__error { margin-top: 18px; }
-.power-card__description, .power-card__tags, .power-filters__tags { scrollbar-width: thin; scrollbar-color: #bcc5d3 transparent; }
+.power-card__tags, .power-filters__tags { scrollbar-width: thin; scrollbar-color: #bcc5d3 transparent; }
 
 /* ===== Loading / error / retry states (retained colors) ===== */
 .agent-hub__status {
