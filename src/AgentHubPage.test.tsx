@@ -304,6 +304,30 @@ describe('AgentHubPage', () => {
     expect(scroller.style.height).toBe(`${window.innerHeight - 40}px`)
   })
 
+  it('flags a scroller while it moves so its scrollbar can appear', async () => {
+    const { hostApi } = makeStoreHost()
+    renderPage(hostApi)
+    await screen.findByRole('heading', { name: 'code-review' })
+
+    const scroller = document.querySelector('.agent-hub') as HTMLElement
+    const description = document.querySelector('.power-card__description') as HTMLElement
+    vi.useFakeTimers()
+    try {
+      // Scroll events do not bubble: the page root listens in the capture phase.
+      fireEvent.scroll(description)
+      expect(description.dataset.scrolling).toBe('true')
+      expect(scroller.dataset.scrolling).toBeUndefined()
+
+      vi.advanceTimersByTime(1500)
+      expect(description.dataset.scrolling).toBeUndefined()
+
+      fireEvent.scroll(scroller)
+      expect(scroller.dataset.scrolling).toBe('true')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('scrolls the page back to the top when the query changes', async () => {
     const user = userEvent.setup()
     const list = JSON.stringify([

@@ -171,15 +171,13 @@
   /* 5 lines at 14px/1.5; each line is exactly 21px so no line is cut in half. */
   height: 7.5em;
   margin: 0;
-  /* No horizontal overflow at all, and no scrollbar chrome: the box is a window onto the
-     text, scrolled with the wheel/trackpad like the tag row. */
+  /* No horizontal overflow at all: long tokens wrap instead of scrolling sideways. The
+     vertical bar follows the shared auto-hiding scrollbar style below. */
   overflow-x: hidden;
   overflow-y: auto;
   overflow-wrap: anywhere;
-  scrollbar-width: none;
   color: var(--hub-muted);
 }
-.power-card__description::-webkit-scrollbar { width: 0; height: 0; display: none; }
 .power-card__tags { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; min-height: 0; margin-top: 14px; overflow-x: auto; overflow-y: hidden; }
 .power-card__tag { flex: 0 0 auto; padding: 5px 9px; border-radius: 999px; background: var(--type-soft); color: var(--type); font-size: 11px; font-weight: 700; }
 .power-card__notice { margin: 12px 0 0; color: var(--hub-muted); font-size: 12px; }
@@ -226,7 +224,27 @@
 .agent-hub .power-pagination input { width: 58px; padding: 8px; border: 1px solid #c9d0dc; border-radius: 8px; text-align: center; }
 .agent-hub .power-pagination button:disabled { cursor: not-allowed; opacity: .42; }
 .agent-hub__status, .agent-hub__error { margin-top: 18px; }
-.power-card__tags, .power-filters__tags { scrollbar-width: thin; scrollbar-color: #bcc5d3 transparent; }
+/* ===== Scrollbars: hidden while idle, shown as a position indicator while scrolling =====
+   One rule set for every scroller in the page, the page itself included, so the plugin
+   does not depend on the desktop theme's overlay-scrollbar setting. AgentHubPage marks the
+   scroller that is moving with `data-scrolling` (scroll events are captured at the page
+   root, so nested scrollers count too) and clears it again once scrolling stops. Styling
+   `::-webkit-scrollbar` also makes the bar a classic one that reserves its gutter, so the
+   layout does not jump when the indicator appears. */
+.agent-hub::-webkit-scrollbar,
+.agent-hub ::-webkit-scrollbar { width: 8px; height: 8px; }
+.agent-hub::-webkit-scrollbar-track,
+.agent-hub ::-webkit-scrollbar-track { background: transparent; }
+.agent-hub::-webkit-scrollbar-thumb,
+.agent-hub ::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: transparent;
+  transition: background-color 160ms linear;
+}
+.agent-hub::-webkit-scrollbar-thumb:hover,
+.agent-hub ::-webkit-scrollbar-thumb:hover,
+.agent-hub[data-scrolling='true']::-webkit-scrollbar-thumb,
+.agent-hub [data-scrolling='true']::-webkit-scrollbar-thumb { background: #bcc5d3; }
 
 /* ===== Loading / error / retry states (retained colors) ===== */
 .agent-hub__status {

@@ -120,19 +120,40 @@ describe('Agent Hub layout contract', () => {
     ).toBe(true)
   })
 
-  it('hides the description scrollbar and clips horizontal overflow', () => {
+  it('clips the description horizontally but keeps a vertical indicator', () => {
     const description = rules('.power-card__description')
     expect(description.flatMap((block) => declared(block, 'overflow-x'))).toContain('hidden')
-    expect(description.flatMap((block) => declared(block, 'scrollbar-width'))).toContain('none')
-    // Any later `scrollbar-width: thin` naming the same element would win over the rule
-    // above and bring the scrollbar back.
-    for (const block of blocks.filter((candidate) =>
-      declared(candidate, 'scrollbar-width').includes('thin')
-    )) {
-      expect(block.selectors).not.toContain('.power-card__description')
-    }
-    expect(blocks.some((block) => block.selectors.includes('.power-card__description::-webkit-scrollbar'))).toBe(
-      true
+    // A hidden (`scrollbar-width: none`) or removed scrollbar would leave nowhere to show
+    // the scroll position.
+    const hidden = blocks.filter((block) =>
+      declared(block, 'scrollbar-width').includes('none')
+    )
+    expect(hidden).toEqual([])
+  })
+
+  it('hides every scrollbar at rest and reveals it while its scroller moves', () => {
+    const selectorLists = (property: string, value: string) =>
+      blocks.filter((block) => declared(block, property).includes(value)).map((block) => block.selectors)
+
+    // The page's own bar and every nested scroller share one rule set.
+    expect(selectorLists('width', '8px')).toEqual(
+      expect.arrayContaining([
+        expect.arrayContaining(['.agent-hub::-webkit-scrollbar', '.agent-hub ::-webkit-scrollbar']),
+      ])
+    )
+    // At rest the thumb is transparent: nothing is painted until something scrolls.
+    expect(
+      selectorLists('background', 'transparent').some(
+        (list) =>
+          list.includes('.agent-hub::-webkit-scrollbar-thumb') &&
+          list.includes('.agent-hub ::-webkit-scrollbar-thumb')
+      )
+    ).toBe(true)
+    expect(selectorLists('background', '#bcc5d3')).toEqual(
+      expect.arrayContaining([
+        expect.arrayContaining([".agent-hub[data-scrolling='true']::-webkit-scrollbar-thumb"]),
+        expect.arrayContaining([".agent-hub [data-scrolling='true']::-webkit-scrollbar-thumb"]),
+      ])
     )
   })
 

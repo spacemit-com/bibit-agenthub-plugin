@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-09-18 — 滚动条统一为“静止隐藏、滚动时显示”（0.3.3）
+
+分类：UI 调整
+
+用户反馈：
+
+0.3.2 把描述区的滚动条完全隐藏（`scrollbar-width: none`）理解错了——需求不是“看不见”，而是“没有工作时（静止）不显示，滚动时显示当前位置”；并且这个样式要覆盖插件页面里所有滚动条，包括页面那根大滚动条。
+
+相关提交：
+
+- `fix: make every plugin scrollbar auto-hide instead of disappearing`（本条记录所在提交）。
+
+相关文件：
+
+- `src/agentHub.css`：删掉 `scrollbar-width: none` 与描述区专属的隐藏规则，改为统一一套 `.agent-hub::-webkit-scrollbar` / `.agent-hub ::-webkit-scrollbar`（含 track/thumb）：8px、圆角、thumb 默认 `transparent` 并在 160ms 内过渡，`[data-scrolling='true']` 或鼠标压在滚动条上时变 `#bcc5d3`；同时移除原来的 `scrollbar-width: thin; scrollbar-color: …`（标准属性会让 WebKit 忽略 `::-webkit-scrollbar`，两者不能混用）
+- `src/AgentHubPage.tsx`：页面根节点用捕获阶段 `scroll` 监听给正在滚动的元素打 `data-scrolling="true"`（覆盖描述区、标签行、详情弹窗等嵌套滚动区），停止 1s 后清除，卸载时清定时器
+- `src/agentHubLayout.test.ts`：改为断言“全页共用一套滚动条规则、静止 thumb 透明、仅在 `data-scrolling='true'` 时上色”，并断言文件里不再出现 `scrollbar-width: none`
+- `src/AgentHubPage.test.tsx`：新增滚动标记（含 1s 后自动清除、页面自身滚动）的回归
+- `package.json`、`package-lock.json`、`bibit.feature.json`、`debian/changelog`：0.3.2 → 0.3.3
+- 文档：本指南 7.2 与本文
+
+解决方案或完成结果：
+
+所有插件自持滚动区（页面大滚动条、卡片描述区、卡片/筛选标签行、详情弹窗内容区）现在共用一套细滚动条：静止时 thumb 透明、看不到滚动条，一旦滚动就在 1s 内显示 `#bcc5d3` 的位置指示，鼠标直接压在滚动条槽位上也会显示以便拖动；自定义滚动条会占住 8px 槽位，因此指示出现/消失不会引起内容重排。描述区仍然没有横向滚动条（长词换行）。
+
+验证结果或限制：
+
+`npm test`、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin` 全绿；契约测试对“完全隐藏滚动条”的写法会失败，滚动标记测试对缺少监听会失败。板端 0.3.3 安装后需重启 Bibit，按开发指南 16.4 步骤 9 复核真实观感（WebKitGTK 是否支持 `::-webkit-scrollbar` 已在 Tauri 内建 WebKit 上验证过同类用法，本插件在本仓库内无法自动化验证渲染）。
+
 ## 2026-09-18 — 页面滚动真正生效 + 描述区滚动条隐藏（0.3.2）
 
 分类：缺陷修复
@@ -35,6 +64,8 @@
 验证结果或限制：
 
 `npm test`、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin` 全绿；契约测试对旧写法（`height: 100%`、描述出现在 thin 规则里）会失败，量高测试对缺少测量逻辑会失败。板端安装 0.3.2 后的真实 GUI 行为需要重启 Bibit 后按开发指南 16.4 步骤 9 复核。
+
+**后续修正（0.3.3）：** 描述区滚动条当时被完全隐藏（`scrollbar-width: none`），实际需求是“静止隐藏、滚动时显示位置”，且要覆盖页面大滚动条在内的所有滚动条，已由 0.3.3 重做。
 
 ## 2026-09-18 — Power 卡片布局适配窗口（页面自持滚动，0.3.1）
 

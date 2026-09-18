@@ -1,3 +1,11 @@
+bibit-agenthub-plugin (0.3.3) resolute-porting; urgency=medium
+
+  * Every plugin-owned scroller (the page, the description box, both tag rows and
+    the details dialog body) now shares one thin scrollbar that stays invisible
+    at rest and appears as a position indicator while that scroller moves.
+
+ -- liangjunzhao <junzhao.liang@spacemit.com>  Thu, 18 Sep 2026 14:40:00 +0800
+
 bibit-agenthub-plugin (0.3.2) resolute-porting; urgency=medium
 
   * Fix the page scroll for real: the host page box is min-height based, so the

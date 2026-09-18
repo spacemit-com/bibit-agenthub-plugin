@@ -284,6 +284,36 @@ export function AgentHubPage(_: FeaturePageProps) {
     return () => window.removeEventListener('resize', fitToHostBox)
   }, [])
 
+  // ---- scrollbars: show the position indicator only while a scroller is moving ----
+  // Scroll events do not bubble, but a capture-phase listener on the page root still sees
+  // every nested scroller (the description box, the tag rows, the details dialog). The flag
+  // is cleared shortly after the last scroll event, which is what makes the bar feel like
+  // the desktop's auto-hiding indicator instead of a permanently visible one.
+  useEffect(() => {
+    const node = pageScrollRef.current
+    if (!node) return
+    const timers = new Map<HTMLElement, number>()
+    const SCROLLBAR_IDLE_MS = 1000
+    const onScroll = (event: Event) => {
+      const target = event.target
+      if (!(target instanceof HTMLElement)) return
+      target.dataset.scrolling = 'true'
+      window.clearTimeout(timers.get(target))
+      timers.set(
+        target,
+        window.setTimeout(() => {
+          delete target.dataset.scrolling
+          timers.delete(target)
+        }, SCROLLBAR_IDLE_MS)
+      )
+    }
+    node.addEventListener('scroll', onScroll, true)
+    return () => {
+      node.removeEventListener('scroll', onScroll, true)
+      for (const timer of timers.values()) window.clearTimeout(timer)
+    }
+  }, [])
+
   const resetPageScroll = () => {
     if (pageScrollRef.current) pageScrollRef.current.scrollTop = 0
   }
