@@ -6,7 +6,7 @@
 
 | 项目 | 当前版本 |
 | --- | --- |
-| Agent Hub 插件 | `0.3.3` |
+| Agent Hub 插件 | `0.3.4` |
 | `manifestSchemaVersion` | `1` |
 | `sdkApiVersion` | `1` |
 | `@bibit/feature-contracts` | `0.3.0` |
@@ -221,7 +221,7 @@ src/
   "manifestSchemaVersion": 1,
   "sdkApiVersion": 1,
   "id": "agent-hub",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "owner": "agent-hub-team",
   "display": {
     "titleKey": "agent-hub:title",
@@ -417,9 +417,26 @@ Local Preview 使用 `?lang=zh-CN` 打开中文界面，`dev/main.tsx` 右上角
 - 视口单位只是兜底：`AgentHubPage` 用 `useLayoutEffect`（绘制前）量出真实可用高度 `window.innerHeight - rect.top` 写成内联 `height`，并在窗口 resize 时重算，这样不依赖“页面区域正好等于窗口”这个假设；
 - 一页最多 20 张卡片（`POWER_PAGE_SIZE` 由契约锁定为 20），所以列表长度必须由页面滚动兜住，分页控件用 `position: sticky; bottom: 0` 常驻窗口底部；
 - 卡片高度不能跟着描述长度走：APC 目录里的描述从 1 行到 14 行都有，`.power-card__description` 是固定 5 行（`7.5em`，行高 21px）的无边框滚动区，`overflow-x: hidden` 且长词换行，完整描述在详情弹窗里看；
-- 滚动条统一成“静止时不显示、滚动时显示位置”：插件用 `::-webkit-scrollbar` 自定义（宽/高 8px、圆角、`#bcc5d3`）并把 thumb 默认设成 `transparent`，页面根节点在捕获阶段监听 `scroll`，给正在滚动的那个元素打上 `data-scrolling="true"`、停止 1s 后清掉——页面大滚动条、描述区、两处标签行、详情弹窗内容区都走这一套，不依赖桌面主题的 overlay 设置；自定义滚动条会占住 8px 槽位，出现时不会引起重排；
+- 滚动条统一成“静止时不显示、滚动时显示位置”，但**不能靠 CSS 改平台滚动条**（下面 7.2.1 是开发板上实测结论），而是由插件隐藏原生滚动条（`scrollbar-width: none`，这是插件能设的属性）并在滚动区内画一个 `<ScrollThumb>`：按 `client/scroll` 比例算长度与位置、8px 圆角 `#bcc5d3`、`pointer-events: none`，滚动时显示、停止 1s 后淡出；页面大滚动条、卡片描述区、卡片标签行、筛选标签行、详情弹窗内容区都是这一套，`ScrollThumb` 的 `targetRef` 必须指向它所在的那个滚动容器；
 - 换了查询（翻页、范围、Agent、类型、tags）后要把页面滚动位置归零；
 - `src/agentHubLayout.test.ts` 以文本级契约守住以上几条（jsdom 没有排版引擎，这是唯一的自动化防线），`src/AgentHubPage.test.tsx` 守住量高与回顶两条行为。
+
+#### 7.2.1 为什么不能用 CSS 控制滚动条（WebKitGTK 2.52 实测）
+
+在开发板（`bianbu@10.0.91.51`，WebKitGTK 2.52.0 + GTK 3.24，Yaru 主题，`gtk-overlay-scrolling=True`）上用一个离屏 `WebKit2.WebView` 渲染探针页面、直接读快照像素得到：
+
+| 写法 | 结果 |
+| --- | --- |
+| `::-webkit-scrollbar { width: 10px }` + `::-webkit-scrollbar-thumb { background: red }` | 生效，8/10px 槽位 + 纯红 thumb ✓ |
+| `::-webkit-scrollbar-thumb { background: transparent }` | 生效（什么都不画，滚动条不可见）✓ |
+| `scrollbar-color: red yellow` | **完全被忽略**（thumb 仍是主题灰 `#cccccc`）✗ |
+| `scrollbar-width: none` | 生效：不画、不占槽位 ✓ |
+| `scrollbar-width: thin` | 生效：等同原生 overlay 条（不占槽位），无操作数秒后自己淡出 ✓ |
+| 运行时把 `none` 翻成 `thin`（或翻 `[data-x]` 的伪元素颜色） | **永不重绘**：翻完再滚动也还是不画 ✗ |
+
+而宿主自己的全局样式（`web-app/src/index.css`）给**所有元素**设了 `* { scrollbar-width: thin; scrollbar-color: oklch(...) }` 加一组全局 `::-webkit-scrollbar`：按规范，`scrollbar-width` 只要不是 `auto`，`::-webkit-scrollbar` 规则就全部失效——所以插件写的任何 `::-webkit-scrollbar` 都是死代码，这就是 0.3.1/0.3.3 两次“改滚动条”在真实 GUI 里毫无变化的原因。
+
+结论：平台滚动条**无法**做到“静止隐藏、滚动时出现”，插件只能自己画（见上），或者在原生 overlay 条（宿主的 thin）下接受系统的淡出时机。
 
 Local Preview 的 `dev/devHostViewport.css` 去掉 Dev Host 的 stage 内边距与页头，让预览画布从视口顶部开始、正好一个视口高，等价于宿主给插件的那个盒子——否则预览里的吸底分页会掉到可见区域之外，看不出真实效果。
 
@@ -934,16 +951,16 @@ npm run build:plugin
 产物：
 
 ```text
-artifacts/agent-hub-0.3.3.bibit-plugin.tgz
+artifacts/agent-hub-0.3.4.bibit-plugin.tgz
 ```
 
 检查：
 
 ```bash
-tar -tzf artifacts/agent-hub-0.3.3.bibit-plugin.tgz
-tar -xOf artifacts/agent-hub-0.3.3.bibit-plugin.tgz plugin.json
-tar -xOf artifacts/agent-hub-0.3.3.bibit-plugin.tgz plugin.sig
-sha256sum artifacts/agent-hub-0.3.3.bibit-plugin.tgz
+tar -tzf artifacts/agent-hub-0.3.4.bibit-plugin.tgz
+tar -xOf artifacts/agent-hub-0.3.4.bibit-plugin.tgz plugin.json
+tar -xOf artifacts/agent-hub-0.3.4.bibit-plugin.tgz plugin.sig
+sha256sum artifacts/agent-hub-0.3.4.bibit-plugin.tgz
 ```
 
 归档必须包含：
@@ -994,7 +1011,7 @@ Settings > Extensions > Trusted plugins
 选择：
 
 ```text
-artifacts/agent-hub-0.3.3.bibit-plugin.tgz
+artifacts/agent-hub-0.3.4.bibit-plugin.tgz
 ```
 
 Bibit 会验签、校验 hash、安装、激活并刷新 Feature Registry。确认主导航出现 Agent Hub，设置子菜单也出现 Agent Hub。
@@ -1020,7 +1037,7 @@ Agent Hub 插件 deb 应安装：
 
 ```bash
 sudo install -Dm0644 \
-  artifacts/agent-hub-0.3.3.bibit-plugin.tgz \
+  artifacts/agent-hub-0.3.4.bibit-plugin.tgz \
   /usr/lib/bibit/plugins/agent-hub.bibit-plugin.tgz
 sudo install -Dm0644 \
   deploy/agenthub-feature-grants.example.json \
@@ -1103,7 +1120,7 @@ dpkg-buildpackage -us -uc -b
 K3DEB1 的 Release 部署必须使用正式签名、且 `keyId` 已进入目标 Bibit 内置信任库的 bundle：
 
 ```bash
-export SIGNED_AGENT_HUB_BUNDLE=/absolute/path/agent-hub-0.3.3.bibit-plugin.tgz
+export SIGNED_AGENT_HUB_BUNDLE=/absolute/path/agent-hub-0.3.4.bibit-plugin.tgz
 test -f "$SIGNED_AGENT_HUB_BUNDLE"
 tar -xOf "$SIGNED_AGENT_HUB_BUNDLE" plugin.json
 tar -xOf "$SIGNED_AGENT_HUB_BUNDLE" plugin.sig
@@ -1197,7 +1214,7 @@ npm run build:plugin
 
 - 目标 Bibit 信任正式 `keyId`；
 - 系统目录只有预期 Agent Hub bundle；
-- Bibit 插件管理页显示 `agent-hub@0.3.3` 已激活；
+- Bibit 插件管理页显示 `agent-hub@0.3.4` 已激活；
 - 主导航出现 Agent Hub；
 - 设置子菜单出现 Agent Hub；
 - 选中设置页后全局“设置”页头和子菜单滚动不消失；

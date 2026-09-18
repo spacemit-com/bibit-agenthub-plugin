@@ -1,5 +1,46 @@
 # Changelog
 
+## 2026-09-18 — 滚动条改由插件自绘（0.3.4）
+
+分类：缺陷修复
+
+用户反馈：
+
+0.3.3 仍然没成功——卡片里的滚动条和页面大滚动条一样“常显示”。需求的准确表述是：静止时不显示，滚动时显示当前位置，且覆盖插件页面里所有滚动条。
+
+问题与根因（开发板实测，不是推断）：
+
+用一个离屏 `WebKit2.WebView` 在开发板（WebKitGTK 2.52.0 + GTK 3.24 + Yaru，`gtk-overlay-scrolling=True`）渲染探针页面、直接读快照像素，得到三条硬结论：
+
+1. `scrollbar-color` 被 WebKitGTK **完全忽略**（`scrollbar-color: red yellow` 下 thumb 仍是主题灰）；
+2. `::-webkit-scrollbar` 自定义在“规则一开始就匹配”时生效（`width: 10px` 槽位 + 纯红 thumb 都能画出来），但**运行时改变样式永不重绘**：把 `[data-x]` 打上、甚至再滚动，thumb 依然按创建时的样式画；
+3. 宿主自己的全局样式 `* { scrollbar-width: thin; scrollbar-color: oklch(...) }`（`web-app/src/index.css`）覆盖所有元素：按规范，`scrollbar-width` 非 `auto` 时 `::-webkit-scrollbar` 规则整体失效——**插件写的任何滚动条伪元素规则都是死代码**，这正是 0.3.1/0.3.3 两次改动在真实 GUI 里毫无效果的原因（0.3.2 只是把描述区彻底藏掉，所以“看起来生效了”）。
+
+同时确认：`scrollbar-width: none` 生效且不占槽位；`scrollbar-width: thin` 等同原生 overlay 条，会在无操作数秒后自己淡出——但淡出时机由系统决定，而且鼠标停在滚动区域上时不会消失，这就是用户看到的“常显示”。
+
+相关提交：
+
+- `fix: draw the scrollbar indicator instead of styling the platform bar`（本条记录所在提交）。
+
+相关文件：
+
+- 新 `src/ScrollThumb.tsx`：自绘 overlay thumb（`targetRef` 指向所在滚动容器），按 `client/scroll` 比例算长度与位置、最小 24px，位置用 `scrollTop + offset` 表达在内容坐标系里所以视觉上不随内容滚走；滚动时 `data-visible="true"`、停止 1s 后淡出，`pointer-events: none`；
+- `src/agentHub.css`：删掉全部 `::-webkit-scrollbar` 与 `data-scrolling` 规则（死代码），改为五个滚动容器 `scrollbar-width: none` + `position: relative`，以及 `.agent-hub__scroll-thumb` 样式；`.agent-hub > :not(...)` 居中规则排除 thumb；
+- `src/components/PowerCard.tsx`、`PowerFilters.tsx`、`PowerDetailsDialog.tsx`、`AgentHubPage.tsx`：给描述区、卡片标签行、筛选标签行、详情弹窗内容区、页面根节点各挂一个 `ScrollThumb`（页面根节点删掉旧的捕获式 `data-scrolling` 监听）；
+- 新 `src/ScrollThumb.test.tsx`：比例、位置、显示/淡出、水平轴、内容变短后消失五条；
+- `src/agentHubLayout.test.ts`：改为断言“五个滚动容器都 `scrollbar-width: none` 且 `position: relative`、thumb 绝对定位/静止透明/`pointer-events: none`、`[data-visible=true]` 才显形”；
+- `src/AgentHubPage.test.tsx`：改为断言每个滚动容器的 thumb 量的是自己那一份尺寸，并删掉旧的 `data-scrolling` 回归；
+- `package.json`、`package-lock.json`、`bibit.feature.json`、`debian/changelog`：0.3.3 → 0.3.4；
+- 文档：本指南 7.2 重写 + 新增 7.2.1（实测表）与本文。
+
+解决方案或完成结果：
+
+插件不再尝试改平台滚动条：五个自持滚动区（页面、卡片描述、卡片标签行、筛选标签行、详情弹窗内容区）统一 `scrollbar-width: none`，位置指示由 `ScrollThumb` 自己画——静止时不可见，滚动时出现，停止约 1 秒后淡出，鼠标停在区域上也不会一直挂着。代价是滚动条不再占用槽位（overlay 式覆盖在内容边缘 2px 处），这与原生 overlay 条一致。
+
+验证结果或限制：
+
+`npm test`（21 个文件、328 项测试）、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin` 全绿；契约测试对“完全隐藏滚动条”或“伪元素滚动条”写法都会失败，`ScrollThumb` 测试覆盖几何与淡出。真实观感（粗细、颜色、淡出时机）需要重启 Bibit 后在开发板确认，本仓库无法自动化验证渲染。
+
 ## 2026-09-18 — 滚动条统一为“静止隐藏、滚动时显示”（0.3.3）
 
 分类：UI 调整
@@ -65,7 +106,7 @@
 
 `npm test`、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin` 全绿；契约测试对旧写法（`height: 100%`、描述出现在 thin 规则里）会失败，量高测试对缺少测量逻辑会失败。板端安装 0.3.2 后的真实 GUI 行为需要重启 Bibit 后按开发指南 16.4 步骤 9 复核。
 
-**后续修正（0.3.3）：** 描述区滚动条当时被完全隐藏（`scrollbar-width: none`），实际需求是“静止隐藏、滚动时显示位置”，且要覆盖页面大滚动条在内的所有滚动条，已由 0.3.3 重做。
+**后续修正：** 描述区滚动条当时被完全隐藏（`scrollbar-width: none`），实际需求是“静止隐藏、滚动时显示位置”，且要覆盖页面大滚动条在内的所有滚动条；0.3.3 的 `::-webkit-scrollbar` 方案在真实 GUI 里无效（宿主全局 `scrollbar-width: thin` 使其成为死代码），最终由 0.3.4 改为自绘。
 
 ## 2026-09-18 — Power 卡片布局适配窗口（页面自持滚动，0.3.1）
 

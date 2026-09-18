@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { ScrollThumb } from '../ScrollThumb'
 import { useAgentHubI18n, type TranslatableText } from '../agentHubI18n'
 import { INSTALLED_AGENTS, type PowerSeries } from '../api/contracts'
 import type { ActiveMutation, InstallationState } from '../api/installationStore'
@@ -43,6 +44,7 @@ export function PowerDetailsDialog({
 }: PowerDetailsDialogProps) {
   const t = useAgentHubI18n()
   const dialogRef = useRef<HTMLDialogElement>(null)
+  const bodyRef = useRef<HTMLDivElement>(null)
   const restoreFocusRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
@@ -86,7 +88,7 @@ export function PowerDetailsDialog({
         close()
       }}
     >
-      <div className="agent-hub-dialog__body">
+      <div className="agent-hub-dialog__body" ref={bodyRef}>
         <header className="agent-hub-dialog__header">
           <div>
             <span className="agent-hub-dialog__type">{series.type}</span>
@@ -176,6 +178,7 @@ export function PowerDetailsDialog({
             </p>
           )}
         </div>
+        <ScrollThumb targetRef={bodyRef} />
       </div>
       {(showInstall || showUninstall) && (
         <footer className="agent-hub-dialog__footer">

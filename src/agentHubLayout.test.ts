@@ -120,41 +120,52 @@ describe('Agent Hub layout contract', () => {
     ).toBe(true)
   })
 
-  it('clips the description horizontally but keeps a vertical indicator', () => {
+  it('clips the description horizontally', () => {
     const description = rules('.power-card__description')
     expect(description.flatMap((block) => declared(block, 'overflow-x'))).toContain('hidden')
-    // A hidden (`scrollbar-width: none`) or removed scrollbar would leave nowhere to show
-    // the scroll position.
-    const hidden = blocks.filter((block) =>
-      declared(block, 'scrollbar-width').includes('none')
-    )
-    expect(hidden).toEqual([])
   })
 
-  it('hides every scrollbar at rest and reveals it while its scroller moves', () => {
-    const selectorLists = (property: string, value: string) =>
-      blocks.filter((block) => declared(block, property).includes(value)).map((block) => block.selectors)
-
-    // The page's own bar and every nested scroller share one rule set.
-    expect(selectorLists('width', '8px')).toEqual(
-      expect.arrayContaining([
-        expect.arrayContaining(['.agent-hub::-webkit-scrollbar', '.agent-hub ::-webkit-scrollbar']),
-      ])
-    )
-    // At rest the thumb is transparent: nothing is painted until something scrolls.
+  it('hides the native bar on every plugin scroller and draws its own', () => {
+    // The host's global `scrollbar-width: thin` makes WebKit ignore ::-webkit-scrollbar and
+    // keeps the bar visible, so the plugin opts out per scroller and draws the indicator.
+    const hidden = blocks.filter((block) => declared(block, 'scrollbar-width').includes('none'))
+    const hiddenSelectors = hidden.flatMap((block) => block.selectors)
+    for (const scroller of [
+      '.agent-hub',
+      '.power-card__description',
+      '.power-card__tags',
+      '.power-filters__tags',
+      '.agent-hub-dialog__body',
+    ]) {
+      expect(hiddenSelectors).toContain(scroller)
+      // The thumb is absolutely positioned, so its scroller must be the containing block.
+      expect(
+        rules(scroller).some((block) => declared(block, 'position').includes('relative'))
+      ).toBe(true)
+    }
     expect(
-      selectorLists('background', 'transparent').some(
-        (list) =>
-          list.includes('.agent-hub::-webkit-scrollbar-thumb') &&
-          list.includes('.agent-hub ::-webkit-scrollbar-thumb')
+      blocks.some(
+        (block) =>
+          block.selectors.includes('.agent-hub__scroll-thumb') &&
+          declared(block, 'position').includes('absolute')
       )
     ).toBe(true)
-    expect(selectorLists('background', '#bcc5d3')).toEqual(
-      expect.arrayContaining([
-        expect.arrayContaining([".agent-hub[data-scrolling='true']::-webkit-scrollbar-thumb"]),
-        expect.arrayContaining([".agent-hub [data-scrolling='true']::-webkit-scrollbar-thumb"]),
-      ])
+  })
+
+  it('keeps the drawn thumb idle until its scroller moves', () => {
+    const thumb = rules('.agent-hub__scroll-thumb')
+    expect(thumb.flatMap((block) => declared(block, 'opacity'))).toContain('0')
+    expect(thumb.flatMap((block) => declared(block, 'pointer-events'))).toContain('none')
+    expect(
+      rules(".agent-hub__scroll-thumb[data-visible='true']").flatMap((block) =>
+        declared(block, 'opacity')
+      )
+    ).toContain('1')
+    // The page's content-centering rule must not resize the thumb.
+    const centering = blocks.find((block) =>
+      block.selectors.includes('.agent-hub > :not(.agent-hub-dialog):not(.agent-hub__scroll-thumb)')
     )
+    expect(centering).toBeDefined()
   })
 
   it('pins the pagination to the bottom of the page scroller', () => {

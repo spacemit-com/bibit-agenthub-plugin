@@ -1,3 +1,15 @@
+bibit-agenthub-plugin (0.3.4) resolute-porting; urgency=medium
+
+  * Draw the plugin's own scrollbar indicator. The platform bar cannot be
+    styled from a plugin page: the host sets `scrollbar-width: thin` globally,
+    which makes WebKit ignore every ::-webkit-scrollbar rule, WebKitGTK ignores
+    scrollbar-color, and WebKitGTK never repaints a scrollbar when its style
+    changes at runtime (measured on the board, docs 7.2.1). The native bar is
+    now hidden on every scroller the plugin owns and ScrollThumb shows position
+    while scrolling, then fades out.
+
+ -- liangjunzhao <junzhao.liang@spacemit.com>  Thu, 18 Sep 2026 16:20:00 +0800
+
 bibit-agenthub-plugin (0.3.3) resolute-porting; urgency=medium
 
   * Every plugin-owned scroller (the page, the description box, both tag rows and

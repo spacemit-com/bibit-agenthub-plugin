@@ -1,4 +1,5 @@
 import { useRef, useState, type FocusEvent, type KeyboardEvent } from 'react'
+import { ScrollThumb } from '../ScrollThumb'
 import { useAgentHubI18n } from '../agentHubI18n'
 import { POWER_TYPES, type PowerScope, type PowerType } from '../api/contracts'
 
@@ -32,6 +33,7 @@ export function PowerFilters({
   const installedTriggerRef = useRef<HTMLButtonElement>(null)
   const firstAgentRef = useRef<HTMLButtonElement>(null)
   const suppressFocusOpenRef = useRef(false)
+  const tagsRef = useRef<HTMLDivElement>(null)
 
   const openAgentMenu = (focusFirst = false) => {
     if (agents.length === 0) return
@@ -164,6 +166,7 @@ export function PowerFilters({
             data-power-type={type}
             role="group"
             aria-label={t('Tags')}
+            ref={tagsRef}
           >
             {availableTags.map((tag) => (
               <button
@@ -180,6 +183,7 @@ export function PowerFilters({
                 {tag}
               </button>
             ))}
+            <ScrollThumb targetRef={tagsRef} axis="x" />
           </div>
         </div>
       </div>

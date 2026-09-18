@@ -1,3 +1,5 @@
+import { useRef } from 'react'
+import { ScrollThumb } from '../ScrollThumb'
 import { useAgentHubI18n, type TranslatableText } from '../agentHubI18n'
 import type { PowerSeries } from '../api/contracts'
 
@@ -19,6 +21,8 @@ export function PowerCard({
   notice,
 }: PowerCardProps) {
   const t = useAgentHubI18n()
+  const descriptionRef = useRef<HTMLParagraphElement>(null)
+  const tagsRef = useRef<HTMLDivElement>(null)
   const current = series.versions.find((version) => version.version === selectedVersion) ?? series.versions[0]
 
   const openDetails = () => {
@@ -50,13 +54,17 @@ export function PowerCard({
         </select>
       </div>
       <h2>{series.name}</h2>
-      <p className="power-card__description">{current.description}</p>
-      <div className="power-card__tags" data-testid="power-card-tags">
+      <p className="power-card__description" ref={descriptionRef}>
+        {current.description}
+        <ScrollThumb targetRef={descriptionRef} />
+      </p>
+      <div className="power-card__tags" data-testid="power-card-tags" ref={tagsRef}>
         {current.tags.map((tag) => (
           <span key={tag} className="power-card__tag">
             {tag}
           </span>
         ))}
+        <ScrollThumb targetRef={tagsRef} axis="x" />
       </div>
       {notice && (
         <p className="power-card__notice" role="status">

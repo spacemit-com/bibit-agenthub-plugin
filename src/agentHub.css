@@ -23,7 +23,7 @@
 }
 
 .agent-hub *, .agent-hub *::before, .agent-hub *::after { box-sizing: border-box; }
-.agent-hub > :not(.agent-hub-dialog) { width: min(100%, 1460px); margin-inline: auto; }
+.agent-hub > :not(.agent-hub-dialog):not(.agent-hub__scroll-thumb) { width: min(100%, 1460px); margin-inline: auto; }
 
 [data-power-type='skill']  { --type: #6d55cf; --type-soft: #f2efff; --type-line: #b8acf0; }
 [data-power-type='plugin'] { --type: #16775c; --type-soft: #eef9f5; --type-line: #a9d8ca; }
@@ -224,27 +224,38 @@
 .agent-hub .power-pagination input { width: 58px; padding: 8px; border: 1px solid #c9d0dc; border-radius: 8px; text-align: center; }
 .agent-hub .power-pagination button:disabled { cursor: not-allowed; opacity: .42; }
 .agent-hub__status, .agent-hub__error { margin-top: 18px; }
-/* ===== Scrollbars: hidden while idle, shown as a position indicator while scrolling =====
-   One rule set for every scroller in the page, the page itself included, so the plugin
-   does not depend on the desktop theme's overlay-scrollbar setting. AgentHubPage marks the
-   scroller that is moving with `data-scrolling` (scroll events are captured at the page
-   root, so nested scrollers count too) and clears it again once scrolling stops. Styling
-   `::-webkit-scrollbar` also makes the bar a classic one that reserves its gutter, so the
-   layout does not jump when the indicator appears. */
-.agent-hub::-webkit-scrollbar,
-.agent-hub ::-webkit-scrollbar { width: 8px; height: 8px; }
-.agent-hub::-webkit-scrollbar-track,
-.agent-hub ::-webkit-scrollbar-track { background: transparent; }
-.agent-hub::-webkit-scrollbar-thumb,
-.agent-hub ::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: transparent;
-  transition: background-color 160ms linear;
+/* ===== Scrollbars: idle at rest, drawn as a position indicator while scrolling =====
+   The platform bar cannot be styled from a plugin page. Bibit's global stylesheet sets
+   `scrollbar-width: thin` on every element, and a non-`auto` `scrollbar-width` makes WebKit
+   ignore every `::-webkit-scrollbar` rule; WebKitGTK does not support `scrollbar-color` at
+   all; and WebKitGTK keeps the bar it built when a scrollbar style changes at runtime, so a
+   bar can neither be hidden at rest nor revealed on demand. All three were measured against
+   WebKitGTK 2.52 on the dev board (docs section 7.2).
+
+   The plugin therefore hides the native bar on every scroller it owns — `scrollbar-width`
+   is a property it *can* set, and `none` also drops the gutter — and ScrollThumb draws the
+   indicator instead. It is positioned in content coordinates so it stays put relative to
+   the visible area, and it is inert to pointer events. */
+.agent-hub,
+.power-card__description,
+.power-card__tags,
+.power-filters__tags,
+.agent-hub-dialog__body {
+  position: relative;
+  scrollbar-width: none;
 }
-.agent-hub::-webkit-scrollbar-thumb:hover,
-.agent-hub ::-webkit-scrollbar-thumb:hover,
-.agent-hub[data-scrolling='true']::-webkit-scrollbar-thumb,
-.agent-hub [data-scrolling='true']::-webkit-scrollbar-thumb { background: #bcc5d3; }
+.agent-hub__scroll-thumb {
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+  border-radius: 999px;
+  background: #bcc5d3;
+  opacity: 0;
+  transition: opacity 160ms linear;
+}
+.agent-hub__scroll-thumb[data-visible='true'] { opacity: 1; }
+.agent-hub__scroll-thumb[data-axis='y'] { right: 2px; }
+.agent-hub__scroll-thumb[data-axis='x'] { bottom: 2px; }
 
 /* ===== Loading / error / retry states (retained colors) ===== */
 .agent-hub__status {

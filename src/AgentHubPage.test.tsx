@@ -304,28 +304,33 @@ describe('AgentHubPage', () => {
     expect(scroller.style.height).toBe(`${window.innerHeight - 40}px`)
   })
 
-  it('flags a scroller while it moves so its scrollbar can appear', async () => {
+  it('gives every plugin scroller a thumb that measures that scroller', async () => {
     const { hostApi } = makeStoreHost()
     renderPage(hostApi)
     await screen.findByRole('heading', { name: 'code-review' })
 
-    const scroller = document.querySelector('.agent-hub') as HTMLElement
+    // jsdom has no layout, so only the scroller whose metrics are declared reports overflow;
+    // a thumb appearing there proves the ref points at that element and not at another one.
     const description = document.querySelector('.power-card__description') as HTMLElement
-    vi.useFakeTimers()
-    try {
-      // Scroll events do not bubble: the page root listens in the capture phase.
-      fireEvent.scroll(description)
-      expect(description.dataset.scrolling).toBe('true')
-      expect(scroller.dataset.scrolling).toBeUndefined()
-
-      vi.advanceTimersByTime(1500)
-      expect(description.dataset.scrolling).toBeUndefined()
-
-      fireEvent.scroll(scroller)
-      expect(scroller.dataset.scrolling).toBe('true')
-    } finally {
-      vi.useRealTimers()
+    for (const [property, value] of Object.entries({ clientHeight: 100, scrollHeight: 400 })) {
+      Object.defineProperty(description, property, { configurable: true, value })
     }
+    fireEvent(window, new Event('resize'))
+
+    const descriptionThumb = description.querySelector(':scope > .agent-hub__scroll-thumb') as HTMLElement
+    expect(descriptionThumb?.dataset.axis).toBe('y')
+    expect(descriptionThumb?.style.height).toBe('25px')
+
+    const tags = document.querySelector('.power-card__tags') as HTMLElement
+    for (const [property, value] of Object.entries({ clientWidth: 100, scrollWidth: 400 })) {
+      Object.defineProperty(tags, property, { configurable: true, value })
+    }
+    fireEvent(window, new Event('resize'))
+    expect(tags.querySelector(':scope > .agent-hub__scroll-thumb')?.getAttribute('data-axis')).toBe('x')
+
+    // The page and the filter row have no declared overflow, so they draw nothing.
+    expect(document.querySelector('.agent-hub > .agent-hub__scroll-thumb')).toBeNull()
+    expect(document.querySelectorAll('.agent-hub__scroll-thumb')).toHaveLength(2)
   })
 
   it('scrolls the page back to the top when the query changes', async () => {
