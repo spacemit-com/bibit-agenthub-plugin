@@ -120,6 +120,21 @@ describe('Agent Hub layout contract', () => {
     ).toBe(true)
   })
 
+  it('keeps a Power name on one line at the same height on every card', () => {
+    const title = rules('.power-card h2')
+    const declaredOnce = (property: string) => title.flatMap((block) => declared(block, property))
+
+    // No wrapping, and a box that is exactly one line high; useFittedFontSize fits the name.
+    expect(declaredOnce('white-space')).toContain('nowrap')
+    expect(declaredOnce('overflow')).toContain('hidden')
+    expect(declaredOnce('text-overflow')).toContain('ellipsis')
+    const height = declaredOnce('height')
+    expect(height).toHaveLength(1)
+    expect(height[0]).toBe(declaredOnce('line-height')[0])
+    // A multi-line clamp would have to go; it was the old "at most two lines" rule.
+    expect(declaredOnce('-webkit-line-clamp')).toEqual([])
+  })
+
   it('clips the description horizontally', () => {
     const description = rules('.power-card__description')
     expect(description.flatMap((block) => declared(block, 'overflow-x'))).toContain('hidden')

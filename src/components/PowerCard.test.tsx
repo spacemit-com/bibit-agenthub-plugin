@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { PowerSeries } from '../api/contracts'
@@ -7,6 +7,16 @@ import { PowerCard, type PowerCardProps } from './PowerCard'
 import { AgentHubI18nProvider } from '../agentHubI18n'
 
 afterEach(cleanup)
+
+// jsdom's Range has no getBoundingClientRect (every real engine does); the card measures the
+// natural width of the name with one, so the tests supply it.
+let naturalTitleWidth = 0
+beforeAll(() => {
+  Object.defineProperty(Range.prototype, 'getBoundingClientRect', {
+    configurable: true,
+    value: () => ({ width: naturalTitleWidth }) as DOMRect,
+  })
+})
 
 const series: PowerSeries = {
   type: 'skill',
@@ -61,6 +71,27 @@ describe('PowerCard', () => {
 
     expect(screen.getByText('skill')).toBeTruthy()
     expect(screen.getByRole('heading', { name: 'code-review' })).toBeTruthy()
+  })
+
+  it('shrinks a long name so it stays on one line', () => {
+    const { result } = renderCard()
+    const title = result.container.querySelector('.power-card h2') as HTMLElement
+    // A 260px box holding 400px of text at the 19px cap needs about 12px, so it stops at 13.
+    Object.defineProperty(title, 'clientWidth', { configurable: true, value: 260 })
+    naturalTitleWidth = 400
+    fireEvent(window, new Event('resize'))
+
+    expect(title.style.fontSize).toBe('13px')
+  })
+
+  it('keeps the cap size for a name that fits', () => {
+    const { result } = renderCard()
+    const title = result.container.querySelector('.power-card h2') as HTMLElement
+    Object.defineProperty(title, 'clientWidth', { configurable: true, value: 260 })
+    naturalTitleWidth = 200
+    fireEvent(window, new Event('resize'))
+
+    expect(title.style.fontSize).toBe('19px')
   })
 
   it('uses the type palette hook and hides the visible Version label', () => {

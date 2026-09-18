@@ -1,5 +1,38 @@
 # Changelog
 
+## 2026-09-18 — 卡片标题单行、字号自适应（0.3.5）
+
+分类：需求改进
+
+用户反馈：
+
+Power 名字不要换行，字号调整到能在一行里显示完，让卡片的排版可以对齐。
+
+问题与根因：
+
+`.power-card h2` 原来是 `-webkit-line-clamp: 2`（最多两行），名字长的卡片标题占两行、短的占一行，网格行（`grid-template-rows: auto …`）高度不一致，描述区起始位置就参差不齐。要“一行显示完”又不能截断，只能按名字长度缩放字号——纯 CSS 没有这个能力（`text-overflow: ellipsis` 是截断不是缩放）。
+
+相关提交：
+
+- `feat: fit Power names on a single line`（本条记录所在提交）。
+
+相关文件：
+
+- 新 `src/useFittedFontSize.ts`：钩子。一行文本的宽度与字号成正比，所以先在 19px 上限下量一次文本自然宽度（`Range.getBoundingClientRect()`，不受盒子裁切影响），再按 `max * 盒子宽 / 自然宽` 反解并向下取整到 0.5px、夹在 `[13, 19]` 之间，写成内联 `font-size`；`ResizeObserver`（无则退回 `window.resize`）覆盖换列数与侧栏折叠，`clientWidth <= 0`（jsdom/未排版）时保留样式表字号；
+- `src/agentHub.css`：`.power-card h2` 去掉 `-webkit-line-clamp`/`display: -webkit-box`/`overflow-wrap`，改为固定 `height: 26px` + `line-height: 26px`（所有卡片标题行等高）+ `white-space: nowrap` + `text-overflow: ellipsis`（仅作极端长名字的兜底）；
+- `src/components/PowerCard.tsx`：`titleRef` 挂到 `<h2>`，调用 `useFittedFontSize(titleRef, series.name, { max: 19, min: 13 })`；
+- 新 `src/useFittedFontSize.test.tsx`（4 条：满号、按比例缩小、不破下限、无宽度时不动样式）、`src/components/PowerCard.test.tsx` 增加 2 条标题接线用例、`src/agentHubLayout.test.ts` 增加标题契约（nowrap + 固定等高 + ellipsis + 不得再出现 `-webkit-line-clamp`）；
+- `package.json`、`package-lock.json`、`bibit.feature.json`、`debian/changelog`：0.3.4 → 0.3.5；
+- 文档：本指南 7.2 增补标题单行策略与实测数据，与本文。
+
+解决方案或完成结果：
+
+标题永远是**一行**，盒子固定 26px，所以卡片网格的标题行、描述区、标签行全部对齐；字号按名字长度在 13–19px 之间自适应。
+
+验证结果或限制：
+
+开发板实测（离屏 WebView + 真实字体，盒子宽取真实卡片内容宽 182/223/238px）：真实目录里最长的 `foo-before-summary` 19px 下宽 193px，在最窄的 182px 列里缩到 17.5px 正好放下；`markdown-maker`（最长名字里第二，165px）及其余全部名字在任何断点都是满号 19px；所有用例 `final ≤ available` 且 `lines = 1`、盒高 26px。构造出的超长名字（368px）会落到 13px 下限并由省略号截断——这是设计好的兜底。`npm test`（22 文件、335 项）、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin` 全绿。
+
 ## 2026-09-18 — 滚动条改由插件自绘（0.3.4）
 
 分类：缺陷修复

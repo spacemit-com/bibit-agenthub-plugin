@@ -6,7 +6,7 @@
 
 | 项目 | 当前版本 |
 | --- | --- |
-| Agent Hub 插件 | `0.3.4` |
+| Agent Hub 插件 | `0.3.5` |
 | `manifestSchemaVersion` | `1` |
 | `sdkApiVersion` | `1` |
 | `@bibit/feature-contracts` | `0.3.0` |
@@ -417,6 +417,7 @@ Local Preview 使用 `?lang=zh-CN` 打开中文界面，`dev/main.tsx` 右上角
 - 视口单位只是兜底：`AgentHubPage` 用 `useLayoutEffect`（绘制前）量出真实可用高度 `window.innerHeight - rect.top` 写成内联 `height`，并在窗口 resize 时重算，这样不依赖“页面区域正好等于窗口”这个假设；
 - 一页最多 20 张卡片（`POWER_PAGE_SIZE` 由契约锁定为 20），所以列表长度必须由页面滚动兜住，分页控件用 `position: sticky; bottom: 0` 常驻窗口底部；
 - 卡片高度不能跟着描述长度走：APC 目录里的描述从 1 行到 14 行都有，`.power-card__description` 是固定 5 行（`7.5em`，行高 21px）的无边框滚动区，`overflow-x: hidden` 且长词换行，完整描述在详情弹窗里看；
+- 卡片标题（Power 名字）**不换行**：`.power-card h2` 固定 `height/line-height: 26px`（所有卡片的标题行等高，卡片网格才能对齐）、`white-space: nowrap` + `text-overflow: ellipsis`，字号由 `src/useFittedFontSize.ts` 在 19px（上限）与 13px（下限）之间按“文本自然宽度 / 盒子宽度”线性反解——一行文本的宽度与字号成正比，所以量一次就够；`ResizeObserver` + `window.resize` 负责换列数/窗口尺寸时重算，`clientWidth` 为 0（jsdom 或尚未排版）时保持样式表里的 19px。开发板实测：真实目录里最长的 `foo-before-summary`（19px 下 193px）在最窄的 182px 列里是 17.5px，其余名字（最长 `markdown-maker` 165px）都保持 19px 满号，即真实数据在任何断点都能完整显示；只有极端长名字会落到 13px 下限并被省略号截断；
 - 滚动条统一成“静止时不显示、滚动时显示位置”，但**不能靠 CSS 改平台滚动条**（下面 7.2.1 是开发板上实测结论），而是由插件隐藏原生滚动条（`scrollbar-width: none`，这是插件能设的属性）并在滚动区内画一个 `<ScrollThumb>`：按 `client/scroll` 比例算长度与位置、8px 圆角 `#bcc5d3`、`pointer-events: none`，滚动时显示、停止 1s 后淡出；页面大滚动条、卡片描述区、卡片标签行、筛选标签行、详情弹窗内容区都是这一套，`ScrollThumb` 的 `targetRef` 必须指向它所在的那个滚动容器；
 - 换了查询（翻页、范围、Agent、类型、tags）后要把页面滚动位置归零；
 - `src/agentHubLayout.test.ts` 以文本级契约守住以上几条（jsdom 没有排版引擎，这是唯一的自动化防线），`src/AgentHubPage.test.tsx` 守住量高与回顶两条行为。
@@ -951,16 +952,16 @@ npm run build:plugin
 产物：
 
 ```text
-artifacts/agent-hub-0.3.4.bibit-plugin.tgz
+artifacts/agent-hub-0.3.5.bibit-plugin.tgz
 ```
 
 检查：
 
 ```bash
-tar -tzf artifacts/agent-hub-0.3.4.bibit-plugin.tgz
-tar -xOf artifacts/agent-hub-0.3.4.bibit-plugin.tgz plugin.json
-tar -xOf artifacts/agent-hub-0.3.4.bibit-plugin.tgz plugin.sig
-sha256sum artifacts/agent-hub-0.3.4.bibit-plugin.tgz
+tar -tzf artifacts/agent-hub-0.3.5.bibit-plugin.tgz
+tar -xOf artifacts/agent-hub-0.3.5.bibit-plugin.tgz plugin.json
+tar -xOf artifacts/agent-hub-0.3.5.bibit-plugin.tgz plugin.sig
+sha256sum artifacts/agent-hub-0.3.5.bibit-plugin.tgz
 ```
 
 归档必须包含：
@@ -1011,7 +1012,7 @@ Settings > Extensions > Trusted plugins
 选择：
 
 ```text
-artifacts/agent-hub-0.3.4.bibit-plugin.tgz
+artifacts/agent-hub-0.3.5.bibit-plugin.tgz
 ```
 
 Bibit 会验签、校验 hash、安装、激活并刷新 Feature Registry。确认主导航出现 Agent Hub，设置子菜单也出现 Agent Hub。
@@ -1037,7 +1038,7 @@ Agent Hub 插件 deb 应安装：
 
 ```bash
 sudo install -Dm0644 \
-  artifacts/agent-hub-0.3.4.bibit-plugin.tgz \
+  artifacts/agent-hub-0.3.5.bibit-plugin.tgz \
   /usr/lib/bibit/plugins/agent-hub.bibit-plugin.tgz
 sudo install -Dm0644 \
   deploy/agenthub-feature-grants.example.json \
@@ -1120,7 +1121,7 @@ dpkg-buildpackage -us -uc -b
 K3DEB1 的 Release 部署必须使用正式签名、且 `keyId` 已进入目标 Bibit 内置信任库的 bundle：
 
 ```bash
-export SIGNED_AGENT_HUB_BUNDLE=/absolute/path/agent-hub-0.3.4.bibit-plugin.tgz
+export SIGNED_AGENT_HUB_BUNDLE=/absolute/path/agent-hub-0.3.5.bibit-plugin.tgz
 test -f "$SIGNED_AGENT_HUB_BUNDLE"
 tar -xOf "$SIGNED_AGENT_HUB_BUNDLE" plugin.json
 tar -xOf "$SIGNED_AGENT_HUB_BUNDLE" plugin.sig
