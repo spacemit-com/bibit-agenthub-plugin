@@ -1,0 +1,11 @@
+/* Local Preview shim: Bibit mounts page contributions in a full-height box
+   (FeatureContributionHost's `h-full min-h-0`) under
+   `html, body, #root { height: 100%; overflow: hidden }`, so an over-tall page has no
+   scrollbar of its own. The Dev Host canvas is auto-height instead, which hides that
+   contract; bound it here so the preview shows the same clipping and the same
+   page-owned scrolling as the real host. Preview-only: `dev/` is not part of the
+   plugin bundle. */
+.bibit-dev-host__canvas {
+  height: clamp(320px, calc(100vh - 150px), 900px);
+  overflow: hidden;
+}

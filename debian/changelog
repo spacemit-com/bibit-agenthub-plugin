@@ -1,3 +1,12 @@
+bibit-agenthub-plugin (0.3.1) resolute-porting; urgency=medium
+
+  * Fit the Power grid to the window: the page owns its scroll container, the
+    card description became a fixed 3-4 line box that scrolls instead of
+    stretching the card, the pagination is pinned to the bottom, and a query
+    change returns the list to the top.
+
+ -- liangjunzhao <junzhao.liang@spacemit.com>  Thu, 18 Sep 2026 12:00:00 +0800
+
 bibit-agenthub-plugin (0.3.0) resolute-porting; urgency=medium
 
   * Follow the host language: every plugin-owned label, status and error is

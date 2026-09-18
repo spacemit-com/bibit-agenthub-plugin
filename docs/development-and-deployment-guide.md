@@ -6,7 +6,7 @@
 
 | 项目 | 当前版本 |
 | --- | --- |
-| Agent Hub 插件 | `0.3.0` |
+| Agent Hub 插件 | `0.3.1` |
 | `manifestSchemaVersion` | `1` |
 | `sdkApiVersion` | `1` |
 | `@bibit/feature-contracts` | `0.3.0` |
@@ -221,7 +221,7 @@ src/
   "manifestSchemaVersion": 1,
   "sdkApiVersion": 1,
   "id": "agent-hub",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "owner": "agent-hub-team",
   "display": {
     "titleKey": "agent-hub:title",
@@ -406,6 +406,20 @@ src/agentHubI18n.tsx
 4. 在对应组件的语言切换测试里确认中英文两种渲染。
 
 Local Preview 使用 `?lang=zh-CN` 打开中文界面，`dev/main.tsx` 右上角的下拉框可以在不刷新页面的情况下切换语言。
+
+### 7.2 页面布局与滚动（页面自己持有滚动条）
+
+宿主把页面 contribution 放在一个全高、无滚动的盒子里：`FeatureContributionHost` 的包装节点是 `h-full min-h-0`，而 `html, body, #root` 都是 `height: 100%; overflow: hidden`。**因此页面比视口高时不会被裁出滚动条，超出的内容直接不可达。**
+
+规则：
+
+- 页面根元素必须 `height: 100%` 并自己 `overflow-y: auto`（`.agent-hub` 就是这么做的），不要依赖宿主提供滚动；
+- 一页最多 20 张卡片（`POWER_PAGE_SIZE` 由契约锁定为 20），所以列表长度必须由页面滚动兜住，分页控件用 `position: sticky; bottom: 0` 常驻可视区底部；
+- 卡片高度不能跟着描述长度走：APC 目录里的描述从 1 行到 14 行都有，`.power-card__description` 是固定 3–4 行的无边框滚动区（窗口高 ≤820px 时 3 行），完整描述在详情弹窗里看；
+- 换了查询（翻页、范围、Agent、类型、tags）后要把页面滚动位置归零；
+- `src/agentHubLayout.test.ts` 以文本级契约守住以上几条（jsdom 没有排版引擎，这是唯一的自动化防线）。
+
+Local Preview 的 `dev/devHostViewport.css` 把 Dev Host 画布压成固定高度，用来复现宿主的裁切契约——Dev Host 原本是自适应高度，会掩盖这类问题。
 
 ## 8. 设置页面开发
 
@@ -918,16 +932,16 @@ npm run build:plugin
 产物：
 
 ```text
-artifacts/agent-hub-0.3.0.bibit-plugin.tgz
+artifacts/agent-hub-0.3.1.bibit-plugin.tgz
 ```
 
 检查：
 
 ```bash
-tar -tzf artifacts/agent-hub-0.3.0.bibit-plugin.tgz
-tar -xOf artifacts/agent-hub-0.3.0.bibit-plugin.tgz plugin.json
-tar -xOf artifacts/agent-hub-0.3.0.bibit-plugin.tgz plugin.sig
-sha256sum artifacts/agent-hub-0.3.0.bibit-plugin.tgz
+tar -tzf artifacts/agent-hub-0.3.1.bibit-plugin.tgz
+tar -xOf artifacts/agent-hub-0.3.1.bibit-plugin.tgz plugin.json
+tar -xOf artifacts/agent-hub-0.3.1.bibit-plugin.tgz plugin.sig
+sha256sum artifacts/agent-hub-0.3.1.bibit-plugin.tgz
 ```
 
 归档必须包含：
@@ -978,7 +992,7 @@ Settings > Extensions > Trusted plugins
 选择：
 
 ```text
-artifacts/agent-hub-0.3.0.bibit-plugin.tgz
+artifacts/agent-hub-0.3.1.bibit-plugin.tgz
 ```
 
 Bibit 会验签、校验 hash、安装、激活并刷新 Feature Registry。确认主导航出现 Agent Hub，设置子菜单也出现 Agent Hub。
@@ -1004,7 +1018,7 @@ Agent Hub 插件 deb 应安装：
 
 ```bash
 sudo install -Dm0644 \
-  artifacts/agent-hub-0.3.0.bibit-plugin.tgz \
+  artifacts/agent-hub-0.3.1.bibit-plugin.tgz \
   /usr/lib/bibit/plugins/agent-hub.bibit-plugin.tgz
 sudo install -Dm0644 \
   deploy/agenthub-feature-grants.example.json \
@@ -1087,7 +1101,7 @@ dpkg-buildpackage -us -uc -b
 K3DEB1 的 Release 部署必须使用正式签名、且 `keyId` 已进入目标 Bibit 内置信任库的 bundle：
 
 ```bash
-export SIGNED_AGENT_HUB_BUNDLE=/absolute/path/agent-hub-0.3.0.bibit-plugin.tgz
+export SIGNED_AGENT_HUB_BUNDLE=/absolute/path/agent-hub-0.3.1.bibit-plugin.tgz
 test -f "$SIGNED_AGENT_HUB_BUNDLE"
 tar -xOf "$SIGNED_AGENT_HUB_BUNDLE" plugin.json
 tar -xOf "$SIGNED_AGENT_HUB_BUNDLE" plugin.sig
@@ -1181,7 +1195,7 @@ npm run build:plugin
 
 - 目标 Bibit 信任正式 `keyId`；
 - 系统目录只有预期 Agent Hub bundle；
-- Bibit 插件管理页显示 `agent-hub@0.3.0` 已激活；
+- Bibit 插件管理页显示 `agent-hub@0.3.1` 已激活；
 - 主导航出现 Agent Hub；
 - 设置子菜单出现 Agent Hub；
 - 选中设置页后全局“设置”页头和子菜单滚动不消失；
@@ -1213,10 +1227,11 @@ Store service version
 6. 恢复 Store 服务，点击 Retry，确认列表恢复；
 7. 把 Bibit 系统语言切成中文，确认主导航、设置子菜单标题、页面文案与操作提示变为中文，且切换瞬间列表不重新请求、详情弹窗不关闭；
 8. 切回英文，确认文案回到英文；
-9. 打开 Agent Hub 设置，修改 `showExperimental` 和 `refreshMinutes` 并保存；
-10. 关闭并重新打开设置页，确认读取到保存值；
-11. 重启 Bibit 和 Store 服务，再次确认设置值；
-12. 保存 Store 服务按 `requestId` 关联的请求日志、Bibit 日志、页面截图和最终设置读取结果。
+9. 在默认窗口（1200×800）与最小窗口（1024×740）下打开 Power 市场：卡片等高、描述在无边框框内可上下滚动、分页控件常驻可见，向下滚动能到达第 20 张卡片；翻页或切换类型后列表回到顶部，没有横向滚动条；
+10. 打开 Agent Hub 设置，修改 `showExperimental` 和 `refreshMinutes` 并保存；
+11. 关闭并重新打开设置页，确认读取到保存值；
+12. 重启 Bibit 和 Store 服务，再次确认设置值；
+13. 保存 Store 服务按 `requestId` 关联的请求日志、Bibit 日志、页面截图和最终设置读取结果。
 
 入口可见、端口可达或 Dev Host Mock 成功都不算真实端到端接通。
 

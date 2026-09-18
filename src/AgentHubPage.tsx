@@ -181,6 +181,9 @@ export function AgentHubPage(_: FeaturePageProps) {
 
   const executeControllerRef = useRef<AbortController | null>(null)
   const inspectControllerRef = useRef<AbortController | null>(null)
+  // The page owns its scroll container (the host clips the contribution's box), so a
+  // query change must put the new list back at the top instead of keeping the offset.
+  const pageScrollRef = useRef<HTMLElement>(null)
 
   const installationStore = store ? getInstallationStore(store) : undefined
   const installationSnapshot = useSyncExternalStore(
@@ -263,30 +266,40 @@ export function AgentHubPage(_: FeaturePageProps) {
     return () => listController.abort()
   }, [store, scope, agent, type, tags, page, retry])
 
+  const resetPageScroll = () => {
+    if (pageScrollRef.current) pageScrollRef.current.scrollTop = 0
+  }
   const changeScope = (next: PowerScope) => {
+    resetPageScroll()
     setScope(next)
     setTags([])
     setPage(1)
     setSnapshot(undefined)
   }
   const changeAgent = (next: string) => {
+    resetPageScroll()
     setAgent(next)
     setTags([])
     setPage(1)
     setSnapshot(undefined)
   }
   const changeType = (next: PowerType) => {
+    resetPageScroll()
     setType(next)
     setTags([])
     setPage(1)
     setSnapshot(undefined)
   }
   const changeTags = (next: string[]) => {
+    resetPageScroll()
     setTags([...next].sort())
     setPage(1)
     setSnapshot(undefined)
   }
-  const changePage = (nextPage: number) => setPage(nextPage)
+  const changePage = (nextPage: number) => {
+    resetPageScroll()
+    setPage(nextPage)
+  }
   const retryLoad = () => setRetry((value) => value + 1)
 
   const selectedVersionFor = useCallback(
@@ -394,7 +407,7 @@ export function AgentHubPage(_: FeaturePageProps) {
       : undefined
 
   return (
-    <main className="agent-hub">
+    <main className="agent-hub" ref={pageScrollRef}>
       <header><div><p>{t('INTERNAL CATALOG')}</p><h1>Agent Hub</h1></div></header>
       <PowerFilters
         scope={scope}

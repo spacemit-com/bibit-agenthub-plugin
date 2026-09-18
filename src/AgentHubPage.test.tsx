@@ -287,6 +287,38 @@ describe('AgentHubPage', () => {
     expect(pageNumber()).toBe('3')
   })
 
+  it('scrolls the page back to the top when the query changes', async () => {
+    const user = userEvent.setup()
+    const list = JSON.stringify([
+      ...Array.from({ length: 25 }, (_, index) => ({
+        agent: 'bibit',
+        type: 'skill',
+        name: `skill-${String(index).padStart(2, '0')}`,
+        version: 'v1.0.0',
+        description: '',
+        tags: [],
+      })),
+      { agent: 'bibit', type: 'plugin', name: 'scan-guard', version: 'v1.0.0', description: '', tags: [] },
+    ])
+    const { hostApi } = makeStoreHost(() => installedData(list))
+    renderPage(hostApi)
+    await screen.findByRole('heading', { name: 'skill-00' })
+
+    // The page owns its scroll container, so a new result set must not keep the offset.
+    const scroller = document.querySelector('.agent-hub') as HTMLElement
+    expect(scroller).toBeTruthy()
+
+    scroller.scrollTop = 640
+    await user.click(screen.getByRole('button', { name: 'Next page' }))
+    await screen.findByRole('heading', { name: 'skill-20' })
+    expect(scroller.scrollTop).toBe(0)
+
+    scroller.scrollTop = 640
+    await user.click(screen.getByRole('button', { name: 'plugin' }))
+    await screen.findByRole('heading', { name: 'scan-guard' })
+    expect(scroller.scrollTop).toBe(0)
+  })
+
   it('retains the selected installed Agent after visiting the market', async () => {
     const user = userEvent.setup()
     const { hostApi, calls } = makeStoreHost((input) => {

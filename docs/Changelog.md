@@ -1,5 +1,41 @@
 # Changelog
 
+## 2026-09-18 — Power 卡片布局适配窗口（页面自持滚动）
+
+分类：缺陷修复
+
+用户需求：
+
+默认窗口化（BiBit 主窗口 1200×800）进入 Power 市场时，卡片被描述撑得又高又窄，页面没有上下滚动，第 5 张卡片和翻页按钮都被裁掉；需要让卡片布局适应不同窗口大小，描述允许只显示一部分，用无边框的滚动区浏览。
+
+相关提交：
+
+- `fix: bound the Power card grid and let the page scroll`（本条记录所在提交）。
+
+问题与根因：
+
+- 宿主把页面 contribution 放在全高、无滚动的盒子里：`FeatureContributionHost` 的包装节点是 `h-full min-h-0`，`html, body, #root` 都是 `height: 100%; overflow: hidden`；而 `.agent-hub` 只有 `min-height: 100%`、没有 `overflow`，所以比视口高的内容被直接裁掉且不可达。
+- `.power-card` 是 `grid-template-rows: auto auto minmax(96px, 1fr) auto` + `min-height: 310px`，描述行在自动高度的卡片里按内容增长；APC 目录里的描述中位约 200 字符、最长 483 字符（约 14 行），卡片因此被拉高。
+- Local Preview 的 Dev Host 画布是自适应高度，掩盖了宿主的裁切契约，所以这个问题在本地看不出来。
+
+相关文件：
+
+- `src/agentHub.css`：`.agent-hub` 自持滚动（`height: 100%` + `overflow-y: auto`，底边距 48→10）；`.power-card` 删掉 `min-height: 310px`、描述行改回 `auto` 并加 `align-content: start`；`.power-card__description` 变成固定 3–4 行的无边框滚动区（窗口高 ≤820px 时 3 行）；`.power-card h2` 两行截断；`.power-pagination` 吸底常驻；`.agent-hub-dialog[open]` 限高并把滚动交给 `__body`
+- `src/AgentHubPage.tsx`：页面滚动 ref，翻页/切范围/换 Agent/换类型/换 tags 时把列表拉回顶部
+- 新 `src/agentHubLayout.test.ts`：CSS 契约守卫（jsdom 没有排版引擎，这是唯一的自动化防线；对旧版 CSS 运行 4 条断言全部失败）
+- `src/AgentHubPage.test.tsx`：新增换页/换类型回到顶部的回归（去掉重置逻辑会失败）
+- 新 `dev/devHostViewport.css` 与 `dev/main.tsx`：把 Local Preview 画布压成固定高度并 `overflow: hidden`，复现宿主的页面区域（仅预览，不进插件 bundle）
+- `package.json`、`package-lock.json`、`bibit.feature.json`、`debian/changelog`：版本 0.3.0 → 0.3.1
+- 文档：本指南 7.2（新增页面布局与滚动契约）、1、16.3、16.4 与本文
+
+解决方案或完成结果：
+
+页面自己承担滚动：`.agent-hub` 用 `height: 100%` 吃掉宿主给的确定高度并 `overflow-y: auto`，一页最多 20 张卡片都能滚到；分页控件用 `position: sticky; bottom: 0` 常驻可视区底部；卡片高度与描述长度解耦——描述固定在 3 行（矮窗口）/4 行（高窗口）的无边框滚动区里，完整描述仍在详情弹窗中可读，弹窗也补了 `max-height` + body 内滚动以适应矮窗口。默认 1200×800 下页头、筛选区、一行卡片与分页条合计约 660px，第二行起由滚动承担。
+
+验证结果或限制：
+
+`npm test`（20 个文件、318 项测试）、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin` 全绿；`artifacts/agent-hub-0.3.1.bibit-plugin.tgz` 的 `dist/agent-hub-plugin.css` 确认包含新规则且不含 Dev Host 垫片。开发板（`bianbu@10.0.91.51`，riscv64）已安装 `bibit-agenthub-plugin 0.3.1` + `bibit-agenthub-cli 0.3.1`，板端 bundle 与本地产物 sha256 一致（`ae9a2664…`），provider `--self-test` 退出 0；真实 GUI 需要在重启 Bibit 后按开发指南 16.4 步骤 9 复核窗口尺寸下的布局，此前未验证。
+
 ## 2026-09-10 — 插件中英文跟随 Bibit 系统语言
 
 分类：功能变更
