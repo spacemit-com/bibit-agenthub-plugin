@@ -1,183 +1,59 @@
 # Changelog
 
-## 2026-09-18 — 卡片标题单行、字号自适应（0.3.5）
+## 2026-09-18 — Power 市场卡片布局、滚动条与标题定版（0.3.1）
 
-分类：需求改进
+分类：需求改进 + 缺陷修复
 
-用户反馈：
+说明：本条记录一次连续迭代的最终落地结果，过程中的中间版本号（0.3.2–0.3.5）已合并进 0.3.1 这一个版本，中间版本的产物移到 `artifacts/superseded-0.3.1-pre-unify/`；文档与代码只保留这一版。
 
-Power 名字不要换行，字号调整到能在一行里显示完，让卡片的排版可以对齐。
+用户需求与反馈：
 
-问题与根因：
-
-`.power-card h2` 原来是 `-webkit-line-clamp: 2`（最多两行），名字长的卡片标题占两行、短的占一行，网格行（`grid-template-rows: auto …`）高度不一致，描述区起始位置就参差不齐。要“一行显示完”又不能截断，只能按名字长度缩放字号——纯 CSS 没有这个能力（`text-overflow: ellipsis` 是截断不是缩放）。
-
-相关提交：
-
-- `feat: fit Power names on a single line`（本条记录所在提交）。
-
-相关文件：
-
-- 新 `src/useFittedFontSize.ts`：钩子。一行文本的宽度与字号成正比，所以先在 19px 上限下量一次文本自然宽度（`Range.getBoundingClientRect()`，不受盒子裁切影响），再按 `max * 盒子宽 / 自然宽` 反解并向下取整到 0.5px、夹在 `[13, 19]` 之间，写成内联 `font-size`；`ResizeObserver`（无则退回 `window.resize`）覆盖换列数与侧栏折叠，`clientWidth <= 0`（jsdom/未排版）时保留样式表字号；
-- `src/agentHub.css`：`.power-card h2` 去掉 `-webkit-line-clamp`/`display: -webkit-box`/`overflow-wrap`，改为固定 `height: 26px` + `line-height: 26px`（所有卡片标题行等高）+ `white-space: nowrap` + `text-overflow: ellipsis`（仅作极端长名字的兜底）；
-- `src/components/PowerCard.tsx`：`titleRef` 挂到 `<h2>`，调用 `useFittedFontSize(titleRef, series.name, { max: 19, min: 13 })`；
-- 新 `src/useFittedFontSize.test.tsx`（4 条：满号、按比例缩小、不破下限、无宽度时不动样式）、`src/components/PowerCard.test.tsx` 增加 2 条标题接线用例、`src/agentHubLayout.test.ts` 增加标题契约（nowrap + 固定等高 + ellipsis + 不得再出现 `-webkit-line-clamp`）；
-- `package.json`、`package-lock.json`、`bibit.feature.json`、`debian/changelog`：0.3.4 → 0.3.5；
-- 文档：本指南 7.2 增补标题单行策略与实测数据，与本文。
-
-解决方案或完成结果：
-
-标题永远是**一行**，盒子固定 26px，所以卡片网格的标题行、描述区、标签行全部对齐；字号按名字长度在 13–19px 之间自适应。
-
-验证结果或限制：
-
-开发板实测（离屏 WebView + 真实字体，盒子宽取真实卡片内容宽 182/223/238px）：真实目录里最长的 `foo-before-summary` 19px 下宽 193px，在最窄的 182px 列里缩到 17.5px 正好放下；`markdown-maker`（最长名字里第二，165px）及其余全部名字在任何断点都是满号 19px；所有用例 `final ≤ available` 且 `lines = 1`、盒高 26px。构造出的超长名字（368px）会落到 13px 下限并由省略号截断——这是设计好的兜底。`npm test`（22 文件、335 项）、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin` 全绿。
-
-## 2026-09-18 — 滚动条改由插件自绘（0.3.4）
-
-分类：缺陷修复
-
-用户反馈：
-
-0.3.3 仍然没成功——卡片里的滚动条和页面大滚动条一样“常显示”。需求的准确表述是：静止时不显示，滚动时显示当前位置，且覆盖插件页面里所有滚动条。
-
-问题与根因（开发板实测，不是推断）：
-
-用一个离屏 `WebKit2.WebView` 在开发板（WebKitGTK 2.52.0 + GTK 3.24 + Yaru，`gtk-overlay-scrolling=True`）渲染探针页面、直接读快照像素，得到三条硬结论：
-
-1. `scrollbar-color` 被 WebKitGTK **完全忽略**（`scrollbar-color: red yellow` 下 thumb 仍是主题灰）；
-2. `::-webkit-scrollbar` 自定义在“规则一开始就匹配”时生效（`width: 10px` 槽位 + 纯红 thumb 都能画出来），但**运行时改变样式永不重绘**：把 `[data-x]` 打上、甚至再滚动，thumb 依然按创建时的样式画；
-3. 宿主自己的全局样式 `* { scrollbar-width: thin; scrollbar-color: oklch(...) }`（`web-app/src/index.css`）覆盖所有元素：按规范，`scrollbar-width` 非 `auto` 时 `::-webkit-scrollbar` 规则整体失效——**插件写的任何滚动条伪元素规则都是死代码**，这正是 0.3.1/0.3.3 两次改动在真实 GUI 里毫无效果的原因（0.3.2 只是把描述区彻底藏掉，所以“看起来生效了”）。
-
-同时确认：`scrollbar-width: none` 生效且不占槽位；`scrollbar-width: thin` 等同原生 overlay 条，会在无操作数秒后自己淡出——但淡出时机由系统决定，而且鼠标停在滚动区域上时不会消失，这就是用户看到的“常显示”。
-
-相关提交：
-
-- `fix: draw the scrollbar indicator instead of styling the platform bar`（本条记录所在提交）。
-
-相关文件：
-
-- 新 `src/ScrollThumb.tsx`：自绘 overlay thumb（`targetRef` 指向所在滚动容器），按 `client/scroll` 比例算长度与位置、最小 24px，位置用 `scrollTop + offset` 表达在内容坐标系里所以视觉上不随内容滚走；滚动时 `data-visible="true"`、停止 1s 后淡出，`pointer-events: none`；
-- `src/agentHub.css`：删掉全部 `::-webkit-scrollbar` 与 `data-scrolling` 规则（死代码），改为五个滚动容器 `scrollbar-width: none` + `position: relative`，以及 `.agent-hub__scroll-thumb` 样式；`.agent-hub > :not(...)` 居中规则排除 thumb；
-- `src/components/PowerCard.tsx`、`PowerFilters.tsx`、`PowerDetailsDialog.tsx`、`AgentHubPage.tsx`：给描述区、卡片标签行、筛选标签行、详情弹窗内容区、页面根节点各挂一个 `ScrollThumb`（页面根节点删掉旧的捕获式 `data-scrolling` 监听）；
-- 新 `src/ScrollThumb.test.tsx`：比例、位置、显示/淡出、水平轴、内容变短后消失五条；
-- `src/agentHubLayout.test.ts`：改为断言“五个滚动容器都 `scrollbar-width: none` 且 `position: relative`、thumb 绝对定位/静止透明/`pointer-events: none`、`[data-visible=true]` 才显形”；
-- `src/AgentHubPage.test.tsx`：改为断言每个滚动容器的 thumb 量的是自己那一份尺寸，并删掉旧的 `data-scrolling` 回归；
-- `package.json`、`package-lock.json`、`bibit.feature.json`、`debian/changelog`：0.3.3 → 0.3.4；
-- 文档：本指南 7.2 重写 + 新增 7.2.1（实测表）与本文。
-
-解决方案或完成结果：
-
-插件不再尝试改平台滚动条：五个自持滚动区（页面、卡片描述、卡片标签行、筛选标签行、详情弹窗内容区）统一 `scrollbar-width: none`，位置指示由 `ScrollThumb` 自己画——静止时不可见，滚动时出现，停止约 1 秒后淡出，鼠标停在区域上也不会一直挂着。代价是滚动条不再占用槽位（overlay 式覆盖在内容边缘 2px 处），这与原生 overlay 条一致。
-
-验证结果或限制：
-
-`npm test`（21 个文件、328 项测试）、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin` 全绿；契约测试对“完全隐藏滚动条”或“伪元素滚动条”写法都会失败，`ScrollThumb` 测试覆盖几何与淡出。真实观感（粗细、颜色、淡出时机）需要重启 Bibit 后在开发板确认，本仓库无法自动化验证渲染。
-
-## 2026-09-18 — 滚动条统一为“静止隐藏、滚动时显示”（0.3.3）
-
-分类：UI 调整
-
-用户反馈：
-
-0.3.2 把描述区的滚动条完全隐藏（`scrollbar-width: none`）理解错了——需求不是“看不见”，而是“没有工作时（静止）不显示，滚动时显示当前位置”；并且这个样式要覆盖插件页面里所有滚动条，包括页面那根大滚动条。
-
-相关提交：
-
-- `fix: make every plugin scrollbar auto-hide instead of disappearing`（本条记录所在提交）。
-
-相关文件：
-
-- `src/agentHub.css`：删掉 `scrollbar-width: none` 与描述区专属的隐藏规则，改为统一一套 `.agent-hub::-webkit-scrollbar` / `.agent-hub ::-webkit-scrollbar`（含 track/thumb）：8px、圆角、thumb 默认 `transparent` 并在 160ms 内过渡，`[data-scrolling='true']` 或鼠标压在滚动条上时变 `#bcc5d3`；同时移除原来的 `scrollbar-width: thin; scrollbar-color: …`（标准属性会让 WebKit 忽略 `::-webkit-scrollbar`，两者不能混用）
-- `src/AgentHubPage.tsx`：页面根节点用捕获阶段 `scroll` 监听给正在滚动的元素打 `data-scrolling="true"`（覆盖描述区、标签行、详情弹窗等嵌套滚动区），停止 1s 后清除，卸载时清定时器
-- `src/agentHubLayout.test.ts`：改为断言“全页共用一套滚动条规则、静止 thumb 透明、仅在 `data-scrolling='true'` 时上色”，并断言文件里不再出现 `scrollbar-width: none`
-- `src/AgentHubPage.test.tsx`：新增滚动标记（含 1s 后自动清除、页面自身滚动）的回归
-- `package.json`、`package-lock.json`、`bibit.feature.json`、`debian/changelog`：0.3.2 → 0.3.3
-- 文档：本指南 7.2 与本文
-
-解决方案或完成结果：
-
-所有插件自持滚动区（页面大滚动条、卡片描述区、卡片/筛选标签行、详情弹窗内容区）现在共用一套细滚动条：静止时 thumb 透明、看不到滚动条，一旦滚动就在 1s 内显示 `#bcc5d3` 的位置指示，鼠标直接压在滚动条槽位上也会显示以便拖动；自定义滚动条会占住 8px 槽位，因此指示出现/消失不会引起内容重排。描述区仍然没有横向滚动条（长词换行）。
-
-验证结果或限制：
-
-`npm test`、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin` 全绿；契约测试对“完全隐藏滚动条”的写法会失败，滚动标记测试对缺少监听会失败。板端 0.3.3 安装后需重启 Bibit，按开发指南 16.4 步骤 9 复核真实观感（WebKitGTK 是否支持 `::-webkit-scrollbar` 已在 Tauri 内建 WebKit 上验证过同类用法，本插件在本仓库内无法自动化验证渲染）。
-
-## 2026-09-18 — 页面滚动真正生效 + 描述区滚动条隐藏（0.3.2）
-
-分类：缺陷修复
-
-用户反馈：
-
-1. 0.3.1 装到开发板后 Agent Hub 页面仍然没有滚动条、无法上下滑动；
-2. 卡片里的滚动条应该隐藏（像卡片里 tags 那样），并且不要描述区的横向滚动条；
-3. 描述框行数提高到 5 行。
+1. 默认窗口化（BiBit 主窗口 1200×800）进入 Power 市场时，卡片被描述撑得又高又窄、页面没有上下滚动，第 5 张卡片和翻页按钮都被裁掉；需要卡片布局适应不同窗口，描述允许只显示一部分、用无边框滚动区浏览。
+2. 卡片里的滚动条要隐藏（像 tags 那样），不要描述区的横向滚动条，描述框提高到 5 行。随后澄清：不是完全隐藏，而是**静止时不显示、滚动时显示当前位置**，并且要覆盖插件页面里**所有**滚动条，包括页面那根大滚动条。
+3. 上述滚动条改法在真实 GUI 里没有生效——卡片滚动条与页面大滚动条一样“常显示”。
+4. Power 名字不要换行，字号调整到能在一行里显示完，使卡片排版可以对齐。
 
 问题与根因：
 
-0.3.1 用 `height: 100%` 让页面自己滚动，但宿主给页面 contribution 的盒子是 `min-h-svh`（`SidebarProvider` / `SidebarInset` 都只有 `min-height`，没有确定高度），`div.size-full` 与 `FeatureContributionHost` 的 `h-full` 百分比在这条链上解析不出确定值：页面高度退回 `auto`，随内容一起变高，`overflow-y: auto` 永远不触发，所以既没有滚动条、也不能滑动。宿主自己的全高页面（设置路由 `<div className="flex flex-col h-svh w-full">`）用的就是视口单位，而不是百分比。
+- **页面不能滚动**：宿主给页面 contribution 的盒子是 `min-h-svh`（`SidebarProvider` / `SidebarInset` 只有 `min-height`，没有确定高度），`div.size-full` 与 `FeatureContributionHost` 的 `h-full` 在这条链上解析不出确定值——页面高度退回 `auto`、随内容变高，`overflow-y: auto` 永不触发，超出窗口的内容直接不可达。宿主自己的全高页面用的是视口单位（`h-svh`）。Local Preview 的 Dev Host 画布是自适应高度，掩盖了这个问题，所以本地看不出来。
+- **滚动条 CSS 是死代码**（两次改法无效的原因）：宿主全局样式 `* { scrollbar-width: thin; scrollbar-color: oklch(...) }`（`web-app/src/index.css`）覆盖所有元素；按规范 `scrollbar-width` 非 `auto` 时所有 `::-webkit-scrollbar` 规则失效，WebKitGTK 又完全忽略 `scrollbar-color`、且对运行时样式变更永不重绘（开发板实测数据见开发指南 7.2.1）。结论：平台滚动条无法做到“静止隐藏、滚动时出现”，插件写任何滚动条伪元素都是死代码。
+- **标题换行导致卡片不齐**：`.power-card h2` 原为 `-webkit-line-clamp: 2`，名字长的卡片标题占两行、短的占一行，网格行（`grid-template-rows: auto …`）高度不一致，描述区起始位置参差不齐。
 
-相关提交：
+相关提交（同一版本内的连续修正）：
 
-- `fix: size the page against the viewport so it really scrolls`（本条记录所在提交）。
+- `fix: bound the Power card grid and let the page scroll`
+- `fix: size the page against the viewport so it really scrolls`
+- `fix: make every plugin scrollbar auto-hide instead of disappearing`（方案本身无效，见上）
+- `fix: draw the scrollbar indicator instead of styling the platform bar`
+- `feat: fit Power names on a single line`
 
-相关文件：
+相关文件（最终状态）：
 
-- `src/agentHub.css`：`.agent-hub` 改 `height: 100vh; height: 100svh`（页面区域等于整个窗口：左侧栏 floating 脱离文档流、拖拽/缩放热区都是 fixed），作为测量前的兜底；`.power-card__description` 改固定 5 行（`7.5em`），加 `overflow-x: hidden`、`overflow-wrap: anywhere`、`scrollbar-width: none` 与 `::-webkit-scrollbar` 隐藏；把描述从共享的 `scrollbar-width: thin` 规则里摘掉（否则后者覆盖 `none`）；分页条内边距 12/8
-- `src/AgentHubPage.tsx`：`useLayoutEffect` 量出 `window.innerHeight - rect.top` 写成内联高度并在 resize 时重算，不再依赖“宿主盒子正好等于窗口”的假设
-- `src/agentHubLayout.test.ts`：改成断言页面高度是视口单位、描述横向裁切且无滚动条、共享 thin 规则不得再点名描述
-- `src/AgentHubPage.test.tsx`：新增量高（含 resize 重算）与回顶两条回归
-- `dev/devHostViewport.css`：改为去掉 Dev Host stage 的内边距与页头，让预览画布从视口顶部开始、正好一个视口高，等价于宿主给插件的盒子
-- `package.json`、`package-lock.json`、`bibit.feature.json`、`debian/changelog`：0.3.1 → 0.3.2
-- 文档：本指南 7.2、1、16.3、16.4 与本文
-
-解决方案或完成结果：
-
-页面高度改用视口单位、并由 `useLayoutEffect` 按实际可用空间校准后，`.agent-hub` 有了确定高度，`overflow-y: auto` 正常成为滚动容器，卡在窗口下方的卡片和吸底分页都能滚到；卡片描述固定 5 行、滚动条隐藏、不再出现横向滚动条，完整描述仍在详情弹窗内。
-
-验证结果或限制：
-
-`npm test`、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin` 全绿；契约测试对旧写法（`height: 100%`、描述出现在 thin 规则里）会失败，量高测试对缺少测量逻辑会失败。板端安装 0.3.2 后的真实 GUI 行为需要重启 Bibit 后按开发指南 16.4 步骤 9 复核。
-
-**后续修正：** 描述区滚动条当时被完全隐藏（`scrollbar-width: none`），实际需求是“静止隐藏、滚动时显示位置”，且要覆盖页面大滚动条在内的所有滚动条；0.3.3 的 `::-webkit-scrollbar` 方案在真实 GUI 里无效（宿主全局 `scrollbar-width: thin` 使其成为死代码），最终由 0.3.4 改为自绘。
-
-## 2026-09-18 — Power 卡片布局适配窗口（页面自持滚动，0.3.1）
-
-分类：缺陷修复
-
-用户需求：
-
-默认窗口化（BiBit 主窗口 1200×800）进入 Power 市场时，卡片被描述撑得又高又窄，页面没有上下滚动，第 5 张卡片和翻页按钮都被裁掉；需要让卡片布局适应不同窗口大小，描述允许只显示一部分，用无边框的滚动区浏览。
-
-相关提交：
-
-- `fix: bound the Power card grid and let the page scroll`（本条记录所在提交）。
-
-问题与根因：
-
-- 宿主把页面 contribution 放在全高、无滚动的盒子里：`FeatureContributionHost` 的包装节点是 `h-full min-h-0`，`html, body, #root` 都是 `height: 100%; overflow: hidden`；而 `.agent-hub` 只有 `min-height: 100%`、没有 `overflow`，所以比视口高的内容被直接裁掉且不可达。
-- `.power-card` 是 `grid-template-rows: auto auto minmax(96px, 1fr) auto` + `min-height: 310px`，描述行在自动高度的卡片里按内容增长；APC 目录里的描述中位约 200 字符、最长 483 字符（约 14 行），卡片因此被拉高。
-- Local Preview 的 Dev Host 画布是自适应高度，掩盖了宿主的裁切契约，所以这个问题在本地看不出来。
-
-相关文件：
-
-- `src/agentHub.css`：`.agent-hub` 自持滚动（`height: 100%` + `overflow-y: auto`，底边距 48→10）；`.power-card` 删掉 `min-height: 310px`、描述行改回 `auto` 并加 `align-content: start`；`.power-card__description` 变成固定 3–4 行的无边框滚动区（窗口高 ≤820px 时 3 行）；`.power-card h2` 两行截断；`.power-pagination` 吸底常驻；`.agent-hub-dialog[open]` 限高并把滚动交给 `__body`
-- `src/AgentHubPage.tsx`：页面滚动 ref，翻页/切范围/换 Agent/换类型/换 tags 时把列表拉回顶部
-- 新 `src/agentHubLayout.test.ts`：CSS 契约守卫（jsdom 没有排版引擎，这是唯一的自动化防线；对旧版 CSS 运行 4 条断言全部失败）
-- `src/AgentHubPage.test.tsx`：新增换页/换类型回到顶部的回归（去掉重置逻辑会失败）
-- 新 `dev/devHostViewport.css` 与 `dev/main.tsx`：把 Local Preview 画布压成固定高度并 `overflow: hidden`，复现宿主的页面区域（仅预览，不进插件 bundle）
-- `package.json`、`package-lock.json`、`bibit.feature.json`、`debian/changelog`：版本 0.3.0 → 0.3.1
-- 文档：本指南 7.2（新增页面布局与滚动契约）、1、16.3、16.4 与本文
+- `src/agentHub.css`：`.agent-hub` 用 `height: 100vh; height: 100svh` + `overflow-y: auto` 自持滚动；`.power-card` 删掉 `min-height`、`align-content: start`；`.power-card__description` 固定 5 行（`7.5em`）无边框滚动区、`overflow-x: hidden`；`.power-card h2` 固定 `height/line-height: 26px` + `nowrap` + `ellipsis`；`.power-pagination` 吸底；五个滚动容器（页面、描述、两处标签行、弹窗内容区）`scrollbar-width: none` + `position: relative`，`.agent-hub__scroll-thumb` 自绘指示条
+- `src/AgentHubPage.tsx`：`useLayoutEffect` 量出 `window.innerHeight - rect.top` 写成内联高度并在 resize 时重算；换页/换范围/换 Agent/换类型/换 tags 时回顶
+- 新 `src/ScrollThumb.tsx`：自绘 overlay 指示条（按 `client/scroll` 比例算长度与位置，滚动时显示、停 1s 淡出，`pointer-events: none`）
+- 新 `src/useFittedFontSize.ts`：在 19px 上限下量一次文本自然宽度（`Range.getBoundingClientRect()`），按 `max × 盒子宽 ÷ 自然宽` 反解字号并夹在 `[13, 19]`，`ResizeObserver` / `window.resize` 触发重算
+- `src/components/PowerCard.tsx`、`PowerFilters.tsx`、`PowerDetailsDialog.tsx`：给描述区、卡片标签行、筛选标签行、弹窗内容区挂 `ScrollThumb`；标题挂 `useFittedFontSize`
+- 测试：新 `src/ScrollThumb.test.tsx`、新 `src/useFittedFontSize.test.tsx`，`src/agentHubLayout.test.ts` 扩到 8 条 CSS 契约，`src/AgentHubPage.test.tsx` / `src/components/PowerCard.test.tsx` 补齐量与接线回归
+- 新 `dev/devHostViewport.css` 与 `dev/main.tsx` 改动：把 Local Preview 画布压成固定一个视口高，复现宿主给插件的盒子（仅预览，不进 bundle）
+- `package.json`、`package-lock.json`、`bibit.feature.json`、`debian/changelog`：0.3.0 → 0.3.1（中间版本号合并）
+- 文档：开发指南 7.2 重写 + 新增 7.2.1（WebKitGTK 实测表）与本文
 
 解决方案或完成结果：
 
-页面自己承担滚动：`.agent-hub` 用 `height: 100%` 吃掉宿主给的确定高度并 `overflow-y: auto`，一页最多 20 张卡片都能滚到；分页控件用 `position: sticky; bottom: 0` 常驻可视区底部；卡片高度与描述长度解耦——描述固定在 3 行（矮窗口）/4 行（高窗口）的无边框滚动区里，完整描述仍在详情弹窗中可读，弹窗也补了 `max-height` + body 内滚动以适应矮窗口。默认 1200×800 下页头、筛选区、一行卡片与分页条合计约 660px，第二行起由滚动承担。
+- 页面自己承担滚动：高度用视口单位兜底、再由 `useLayoutEffect` 按宿主盒子校准，一页最多 20 张卡片都能滚到，分页控件 `position: sticky; bottom: 0` 常驻底部；
+- 描述区固定 5 行、无横向滚动条，完整描述仍在详情弹窗内；
+- 所有插件滚动条“静止不可见、滚动时显示位置、停约 1 秒淡出”：插件关掉原生条（`scrollbar-width: none`，这是插件能设的属性），由 `ScrollThumb` 自绘指示条，鼠标停在区域上也不会一直挂着；
+- 标题永远一行：盒子固定 26px（所有卡片标题行等高），字号按名字长度在 13–19px 之间自适应，`text-overflow: ellipsis` 只作极端长名字的兜底——卡片网格的标题行、描述区、标签行因此全部对齐。
 
 验证结果或限制：
 
-`npm test`（20 个文件、318 项测试）、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin` 全绿；`artifacts/agent-hub-0.3.1.bibit-plugin.tgz` 的 `dist/agent-hub-plugin.css` 确认包含新规则且不含 Dev Host 垫片。开发板（`bianbu@10.0.91.51`，riscv64）已安装 `bibit-agenthub-plugin 0.3.1` + `bibit-agenthub-cli 0.3.1`，板端 bundle 与本地产物 sha256 一致（`ae9a2664…`），provider `--self-test` 退出 0；真实 GUI 需要在重启 Bibit 后按开发指南 16.4 步骤 9 复核窗口尺寸下的布局，此前未验证。
+`npm test`（22 个文件、335 项测试）、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin` 全绿；CSS 契约测试会拦住“再写死 `::-webkit-scrollbar`”“把滚动条彻底藏掉”“重新引入 `-webkit-line-clamp`”等回退。开发板（`bianbu@10.0.91.51`，riscv64，WebKitGTK 2.52）实测：
 
-**复核结果（0.3.2 修正）：** 板端重启后确认页面仍然没有滚动条、无法滑动——`height: 100%` 在这条 `min-h-svh` 链上解析不出确定高度。卡片描述固定高度与吸底分页本身生效，但页面滚动没有生效，已由 0.3.2 改为视口单位并在同一位置复验。
+- 滚动条：`scrollbar-color` 被忽略、`::-webkit-scrollbar` 仅在规则一开始就匹配时生效且运行时永不重绘、`scrollbar-width: none/thin` 生效（表见 7.2.1）——据此选定自绘方案；
+- 标题：用真实字体与真实卡片内容宽（182 / 223 / 238px）量真实目录名，最长 `foo-before-summary`（19px 下 193px）在最窄 182px 列里缩到 17.5px 正好放下，`markdown-maker`（165px）及其余全部名字任何断点都是满号 19px，所有用例单行、盒高 26px；构造出的 368px 超长名字落到 13px 下限并被省略号截断。
+
+板端只保留 `bibit-agenthub-plugin 0.3.1` + `bibit-agenthub-cli 0.3.1`（从 0.3.5 降级到统一版本），bundle sha256 与本地产物一致，provider `--self-test` 退出 0；真实观感与布局最终仍需重启 Bibit 后按开发指南 16.4 步骤 9 复核。
 
 ## 2026-09-10 — 插件中英文跟随 Bibit 系统语言
 

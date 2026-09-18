@@ -1,51 +1,20 @@
-bibit-agenthub-plugin (0.3.5) resolute-porting; urgency=medium
-
-  * Keep Power names on one line: the card title is a fixed 26px box and
-    useFittedFontSize shrinks the font size between 19px and 13px to fit the
-    name, so long names cannot wrap onto a second line and the card rows line
-    up. Measured on the board with the real catalog names.
-
- -- liangjunzhao <junzhao.liang@spacemit.com>  Thu, 18 Sep 2026 17:05:00 +0800
-
-bibit-agenthub-plugin (0.3.4) resolute-porting; urgency=medium
-
-  * Draw the plugin's own scrollbar indicator. The platform bar cannot be
-    styled from a plugin page: the host sets `scrollbar-width: thin` globally,
-    which makes WebKit ignore every ::-webkit-scrollbar rule, WebKitGTK ignores
-    scrollbar-color, and WebKitGTK never repaints a scrollbar when its style
-    changes at runtime (measured on the board, docs 7.2.1). The native bar is
-    now hidden on every scroller the plugin owns and ScrollThumb shows position
-    while scrolling, then fades out.
-
- -- liangjunzhao <junzhao.liang@spacemit.com>  Thu, 18 Sep 2026 16:20:00 +0800
-
-bibit-agenthub-plugin (0.3.3) resolute-porting; urgency=medium
-
-  * Every plugin-owned scroller (the page, the description box, both tag rows and
-    the details dialog body) now shares one thin scrollbar that stays invisible
-    at rest and appears as a position indicator while that scroller moves.
-
- -- liangjunzhao <junzhao.liang@spacemit.com>  Thu, 18 Sep 2026 14:40:00 +0800
-
-bibit-agenthub-plugin (0.3.2) resolute-porting; urgency=medium
-
-  * Fix the page scroll for real: the host page box is min-height based, so the
-    percentage height of 0.3.1 never resolved and the page grew with its content.
-    The page now sizes itself with viewport units (height: 100svh), matching the
-    host's own h-svh pages.
-  * Show the description as a fixed 5-line box, hide its scrollbar, and clip
-    horizontal overflow.
-
- -- liangjunzhao <junzhao.liang@spacemit.com>  Thu, 18 Sep 2026 13:30:00 +0800
-
 bibit-agenthub-plugin (0.3.1) resolute-porting; urgency=medium
 
-  * Fit the Power grid to the window: the page owns its scroll container, the
-    card description became a fixed 3-4 line box that scrolls instead of
-    stretching the card, the pagination is pinned to the bottom, and a query
-    change returns the list to the top.
+  * Unified release for the Power market page (folds in the intermediate
+    0.3.2-0.3.5 work).
+  * The page owns its scroll container: it is sized against the viewport and
+    measured against the box the host hands the plugin, so every card and the
+    bottom-pinned pagination are reachable.
+  * The card description is a fixed 5-line inner scroller with no horizontal
+    bar; the full description stays in the details dialog.
+  * Every plugin scroller (page, description, both tag rows, dialog body) hides
+    the native bar and draws its own indicator: invisible at rest, visible with
+    the position while scrolling, faded out a second later. The platform bar
+    cannot be styled from a plugin page - see docs 7.2.1 for the measurements.
+  * Power names never wrap: the title box is one line high on every card and
+    the font size is fitted between 19px and 13px, so the card rows line up.
 
- -- liangjunzhao <junzhao.liang@spacemit.com>  Thu, 18 Sep 2026 12:00:00 +0800
+ -- liangjunzhao <junzhao.liang@spacemit.com>  Thu, 18 Sep 2026 17:40:00 +0800
 
 bibit-agenthub-plugin (0.3.0) resolute-porting; urgency=medium
 

@@ -6,7 +6,7 @@
 
 | 项目 | 当前版本 |
 | --- | --- |
-| Agent Hub 插件 | `0.3.5` |
+| Agent Hub 插件 | `0.3.1` |
 | `manifestSchemaVersion` | `1` |
 | `sdkApiVersion` | `1` |
 | `@bibit/feature-contracts` | `0.3.0` |
@@ -221,7 +221,7 @@ src/
   "manifestSchemaVersion": 1,
   "sdkApiVersion": 1,
   "id": "agent-hub",
-  "version": "0.3.4",
+  "version": "0.3.1",
   "owner": "agent-hub-team",
   "display": {
     "titleKey": "agent-hub:title",
@@ -435,7 +435,7 @@ Local Preview 使用 `?lang=zh-CN` 打开中文界面，`dev/main.tsx` 右上角
 | `scrollbar-width: thin` | 生效：等同原生 overlay 条（不占槽位），无操作数秒后自己淡出 ✓ |
 | 运行时把 `none` 翻成 `thin`（或翻 `[data-x]` 的伪元素颜色） | **永不重绘**：翻完再滚动也还是不画 ✗ |
 
-而宿主自己的全局样式（`web-app/src/index.css`）给**所有元素**设了 `* { scrollbar-width: thin; scrollbar-color: oklch(...) }` 加一组全局 `::-webkit-scrollbar`：按规范，`scrollbar-width` 只要不是 `auto`，`::-webkit-scrollbar` 规则就全部失效——所以插件写的任何 `::-webkit-scrollbar` 都是死代码，这就是 0.3.1/0.3.3 两次“改滚动条”在真实 GUI 里毫无变化的原因。
+而宿主自己的全局样式（`web-app/src/index.css`）给**所有元素**设了 `* { scrollbar-width: thin; scrollbar-color: oklch(...) }` 加一组全局 `::-webkit-scrollbar`：按规范，`scrollbar-width` 只要不是 `auto`，`::-webkit-scrollbar` 规则就全部失效——所以插件写的任何 `::-webkit-scrollbar` 都是死代码，这就是之前两次“改滚动条”在真实 GUI 里毫无变化的原因。
 
 结论：平台滚动条**无法**做到“静止隐藏、滚动时出现”，插件只能自己画（见上），或者在原生 overlay 条（宿主的 thin）下接受系统的淡出时机。
 
@@ -952,16 +952,16 @@ npm run build:plugin
 产物：
 
 ```text
-artifacts/agent-hub-0.3.5.bibit-plugin.tgz
+artifacts/agent-hub-0.3.1.bibit-plugin.tgz
 ```
 
 检查：
 
 ```bash
-tar -tzf artifacts/agent-hub-0.3.5.bibit-plugin.tgz
-tar -xOf artifacts/agent-hub-0.3.5.bibit-plugin.tgz plugin.json
-tar -xOf artifacts/agent-hub-0.3.5.bibit-plugin.tgz plugin.sig
-sha256sum artifacts/agent-hub-0.3.5.bibit-plugin.tgz
+tar -tzf artifacts/agent-hub-0.3.1.bibit-plugin.tgz
+tar -xOf artifacts/agent-hub-0.3.1.bibit-plugin.tgz plugin.json
+tar -xOf artifacts/agent-hub-0.3.1.bibit-plugin.tgz plugin.sig
+sha256sum artifacts/agent-hub-0.3.1.bibit-plugin.tgz
 ```
 
 归档必须包含：
@@ -1012,7 +1012,7 @@ Settings > Extensions > Trusted plugins
 选择：
 
 ```text
-artifacts/agent-hub-0.3.5.bibit-plugin.tgz
+artifacts/agent-hub-0.3.1.bibit-plugin.tgz
 ```
 
 Bibit 会验签、校验 hash、安装、激活并刷新 Feature Registry。确认主导航出现 Agent Hub，设置子菜单也出现 Agent Hub。
@@ -1038,7 +1038,7 @@ Agent Hub 插件 deb 应安装：
 
 ```bash
 sudo install -Dm0644 \
-  artifacts/agent-hub-0.3.5.bibit-plugin.tgz \
+  artifacts/agent-hub-0.3.1.bibit-plugin.tgz \
   /usr/lib/bibit/plugins/agent-hub.bibit-plugin.tgz
 sudo install -Dm0644 \
   deploy/agenthub-feature-grants.example.json \
@@ -1121,7 +1121,7 @@ dpkg-buildpackage -us -uc -b
 K3DEB1 的 Release 部署必须使用正式签名、且 `keyId` 已进入目标 Bibit 内置信任库的 bundle：
 
 ```bash
-export SIGNED_AGENT_HUB_BUNDLE=/absolute/path/agent-hub-0.3.5.bibit-plugin.tgz
+export SIGNED_AGENT_HUB_BUNDLE=/absolute/path/agent-hub-0.3.1.bibit-plugin.tgz
 test -f "$SIGNED_AGENT_HUB_BUNDLE"
 tar -xOf "$SIGNED_AGENT_HUB_BUNDLE" plugin.json
 tar -xOf "$SIGNED_AGENT_HUB_BUNDLE" plugin.sig
@@ -1215,7 +1215,7 @@ npm run build:plugin
 
 - 目标 Bibit 信任正式 `keyId`；
 - 系统目录只有预期 Agent Hub bundle；
-- Bibit 插件管理页显示 `agent-hub@0.3.4` 已激活；
+- Bibit 插件管理页显示 `agent-hub@0.3.1` 已激活；
 - 主导航出现 Agent Hub；
 - 设置子菜单出现 Agent Hub；
 - 选中设置页后全局“设置”页头和子菜单滚动不消失；
