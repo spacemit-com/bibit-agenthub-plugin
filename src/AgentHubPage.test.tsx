@@ -474,6 +474,37 @@ describe('AgentHubPage', () => {
     await screen.findByRole('heading', { name: 'market-00' })
   })
 
+  it('does not restart an in-flight market load when the window regains focus', async () => {
+    const user = userEvent.setup()
+    let marketRequests = 0
+    let release: (() => void) | undefined
+    const { hostApi } = makeStoreHost(async (input) => {
+      if (wireParamsOf(input).scope === 'market') {
+        marketRequests += 1
+        await new Promise<void>((resolve) => {
+          release = resolve
+        })
+        return await marketData()
+      }
+      return installedData(codeReviewList)
+    })
+    renderPage(hostApi)
+    await screen.findByRole('heading', { name: 'code-review' })
+
+    await user.click(screen.getByRole('button', { name: 'Power market' }))
+    await waitFor(() => expect(marketRequests).toBe(1))
+
+    // Focusing the window while the market catalog is downloading must not abort
+    // and re-issue the read; that abort used to surface as "request was cancelled".
+    fireEvent.focus(window)
+    fireEvent.focus(window)
+    expect(marketRequests).toBe(1)
+
+    release!()
+    await screen.findByRole('heading', { name: 'market-translate' })
+    expect(screen.queryByText('Power catalog request was cancelled.')).toBeNull()
+  })
+
   it('maps an invalid wire response to the incompatible fallback', async () => {
     const { hostApi } = makeStoreHost(() => ({ status: 'reset_required', reason: 'snapshot_changed' }))
     renderPage(hostApi)
@@ -487,6 +518,9 @@ describe('AgentHubPage', () => {
   it.each([
     ['offline', 'Power catalog is offline.', true],
     ['timeout', 'Power catalog request timed out.', true],
+    // cancelled is retryable: it means "superseded or session torn down", not a
+    // user action, so the page must offer a way out instead of dead-ending.
+    ['cancelled', 'Power catalog request was cancelled.', true],
     ['unauthorized', 'Power catalog authorization is required.', false],
     ['incompatible', 'Power catalog service is incompatible with this plugin.', false],
     ['unavailable', 'Power catalog is unavailable.', true],

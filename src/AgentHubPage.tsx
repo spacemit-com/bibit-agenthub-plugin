@@ -54,9 +54,13 @@ const ERROR_MESSAGES: Record<FeatureServiceErrorV1['code'], string> = {
   unknown: 'Could not load Power catalog.',
 }
 
+// `cancelled` is retryable on purpose. The store reports it when a request is
+// superseded or the provider session is torn down, not when the user cancels
+// anything, so ending on a message with no action would dead-end the page.
 const RETRYABLE_CODES: ReadonlySet<FeatureServiceErrorV1['code']> = new Set([
   'offline',
   'timeout',
+  'cancelled',
   'unavailable',
   'provider_crashed',
   'resource_exhausted',
@@ -204,9 +208,17 @@ export function AgentHubPage(_: FeaturePageProps) {
   }, [installationSnapshot.active, installationSnapshot.revision])
 
   // ---- window focus refreshes the read view ----
+  // Focus must not restart a load that is already running: bumping `retry` aborts the
+  // in-flight request and re-issues it, and a market read pulls the whole catalog over
+  // the network, so a focus event used to surface as a spurious cancellation. The
+  // status is read through a ref so the listener stays stable across renders.
+  const viewStatusRef = useRef(view.status)
+  viewStatusRef.current = view.status
   useEffect(() => {
     const onFocus = () => {
-      if (!installationSnapshot.active) setRetry((value) => value + 1)
+      if (installationSnapshot.active) return
+      if (viewStatusRef.current === 'loading') return
+      setRetry((value) => value + 1)
     }
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)

@@ -1,3 +1,16 @@
+bibit-agenthub-plugin (0.3.2) resolute-porting; urgency=medium
+
+  * Fix a spurious "Power catalog request was cancelled" error in the Power
+    market. Cancellation means "superseded" or "provider session torn down",
+    not a user action, so it is now retryable and can no longer dead-end the
+    page without a way out.
+  * A market read that started before a newer one committed now answers from
+    that newer catalog instead of reporting the supersede as a cancellation.
+  * Regaining window focus no longer aborts and re-issues an in-flight read;
+    it only refreshes once the view is idle.
+
+ -- liangjunzhao <junzhao.liang@spacemit.com>  Thu, 24 Sep 2026 11:55:00 +0800
+
 bibit-agenthub-plugin (0.3.1) resolute-porting; urgency=medium
 
   * Unified release for the Power market page (folds in the intermediate

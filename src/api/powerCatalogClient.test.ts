@@ -174,7 +174,7 @@ describe('listPowers', () => {
     expect(second.calls[0].params).toEqual({ scope: 'market' })
   })
 
-  it('ends a stale request as cancelled without overwriting newer cache data', async () => {
+  it('answers a superseded request from the newer cache instead of cancelling', async () => {
     const snapshotA = await sha256(catalogJson)
     const catalogJsonB = JSON.stringify({
       skills: {
@@ -198,9 +198,16 @@ describe('listPowers', () => {
     resolveFast!({ scope: 'market', status: 'data', snapshot: snapshotB, catalogJson: catalogJsonB })
     await fast
 
-    // The slow request now finishes and must not overwrite the newer cache.
+    // The slow request must neither overwrite the newer cache nor fail: being
+    // superseded is not a user-visible cancellation, so it answers from the
+    // fresher catalog instead.
     resolveSlow!({ scope: 'market', status: 'data', snapshot: snapshotA, catalogJson })
-    await expect(slow).rejects.toMatchObject({ code: 'cancelled' })
+    const superseded = await slow
+
+    expect(superseded.status).toBe('ready')
+    if (superseded.status !== 'ready') return
+    expect(superseded.snapshot).toBe(snapshotB)
+    expect(superseded.items.map((series) => series.name)).toEqual(['newer'])
 
     // The cache still holds snapshotB, so a third request sends it and succeeds.
     const result = await listPowers(service, marketInput, signal())

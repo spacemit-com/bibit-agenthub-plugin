@@ -29,7 +29,7 @@ function platformError(code: PlatformCode, message: string, retryable: boolean):
  * The market cache is a WeakMap keyed by the current service instance so it dies
  * with the capability handle. Each slot carries a generation that is bumped only
  * on a successful commit; a slower in-flight request detects a newer commit and
- * ends as cancelled instead of overwriting fresher data. Installed data is not
+ * answers from that newer cache instead of overwriting it. Installed data is not
  * cached here: it is delegated to the shared installation store.
  */
 const caches = new WeakMap<FeatureServiceApiV1<'store'>, Map<string, CacheSlot>>()
@@ -48,12 +48,28 @@ function slotFor(service: FeatureServiceApiV1<'store'>, key: string): CacheSlot 
   return slot
 }
 
-function commitCache(slot: CacheSlot, generation: number, signal: AbortSignal, entry: CacheEntry): void {
-  if (signal.aborted || slot.generation !== generation) {
+/**
+ * Commits a freshly downloaded catalog, or yields to a newer commit. A slow
+ * request that started before another one committed must not overwrite the
+ * fresher data, but being superseded is not a failure the user caused: it
+ * reports 'superseded' so the caller answers from the newer cache instead of
+ * surfacing a cancellation. An aborted request still refuses to commit.
+ */
+function commitCache(
+  slot: CacheSlot,
+  generation: number,
+  signal: AbortSignal,
+  entry: CacheEntry
+): 'committed' | 'superseded' {
+  if (signal.aborted) {
     platformError('cancelled', 'Request was cancelled.', false)
+  }
+  if (slot.generation !== generation) {
+    return 'superseded'
   }
   slot.entry = entry
   slot.generation += 1
+  return 'committed'
 }
 
 export async function listPowers(
@@ -106,10 +122,18 @@ export async function listPowers(
     platformError('cancelled', 'Request was cancelled.', false)
   }
   const records = parseApcCatalog(JSON.parse(wireResult.catalogJson))
-  commitCache(slot, generation, signal, {
+  const committed = commitCache(slot, generation, signal, {
     kind: 'market',
     snapshot: wireResult.snapshot,
     records,
   })
+  if (committed === 'superseded') {
+    // A newer request committed while this one was in flight: answer from that
+    // fresher catalog instead of reporting the supersede as a cancellation.
+    const newer = slot.entry
+    if (newer?.kind === 'market') {
+      return parseListPowersResult(buildPowersResult(newer.records, query, newer.snapshot))
+    }
+  }
   return parseListPowersResult(buildPowersResult(records, query, wireResult.snapshot))
 }

@@ -1,5 +1,36 @@
 # Changelog
 
+## 2026-09-24 — 修复 Power 市场误报「请求已取消」（0.3.2）
+
+分类：缺陷修复
+
+用户反馈：
+
+Power 市场出现「Power 目录请求已取消。」。
+
+问题与根因：
+
+- **`cancelled` 被当成终止态错误**：`cancelled` 不在 `RETRYABLE_CODES` 内，错误渲染时没有 Retry 按钮，用户除切 scope 或离开页面外没有出口。但该码在架构里表达的是「被更新的请求取代」或「provider 会话被拆掉」，并非用户主动取消，也不是数据错误。
+- **自取消**：页面 effect 依赖含 `retry`，而窗口 `focus` 事件会无条件 `setRetry(+1)`；每次 bump 触发 cleanup 的 `listController.abort()`，把正在飞的 market 请求掐掉再重发。market 是唯一走网络且耗时可观的 scope（板上实测 APC 全量目录约 0.95s），所以最容易被命中。
+- **缓存代次竞争**：`commitCache` 在 `slot.generation !== generation` 时抛 `cancelled`，此时 `signal.aborted` 为 false，页面 catch 的 abort 护栏拦不住，于是渲染成用户可见错误。
+
+相关文件：
+
+- `src/AgentHubPage.tsx`：`RETRYABLE_CODES` 加入 `cancelled`；`focus` 监听在 `view.status === 'loading'` 时不再 bump `retry`（改用 `viewStatusRef` 读取，监听器保持稳定）
+- `src/api/powerCatalogClient.ts`：`commitCache` 返回 `'committed' | 'superseded'`，代次落后时不再抛错，改为从更新的缓存作答；被中止的请求仍然拒绝提交
+- `src/AgentHubPage.test.tsx`：`cancelled` 纳入错误映射的参数化用例（期望可重试）；新增「market 飞行中窗口获焦不得重发请求、不得渲染 cancelled」
+- `src/api/powerCatalogClient.test.ts`：原「过期请求以 cancelled 结束」用例改为「过期请求从更新的缓存作答」
+
+解决方案或完成结果：
+
+被取代（superseded）不再是错误：慢请求发现自己落后时，直接用新提交的缓存产出结果，不再抛 `cancelled`；窗口获焦只在空闲态触发刷新，不会中断进行中的 market 读取；即便 `cancelled` 仍从宿主或 provider 冒出来（会话拆除等），页面也会给出 Retry 而不是死路。
+
+验证结果或限制：
+
+`npm test` 337/337（22 个文件，较 0.3.1 的 335 增 2 条）、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin` 与改动文件的 `git diff --check` 均通过；Go Provider 未涉及，`go test ./...` 复跑通过。三条新断言在回滚源码后均失败（重发请求计数 3≠1、cancelled 无 Retry、过期请求抛 Unknown Error），确认测试确实覆盖修复点。
+
+限制：板端真实 GUI 复核未执行。注意宿主 `install_bundle` 对同版本 bundle 走 `AlreadyInstalled` 幂等跳过，因此本修复要上板生效必须先提升版本号（如 0.3.2），否则宿主不会替换 0.3.1 的已安装内容。
+
 ## 2026-09-18 — Power 市场卡片布局、滚动条与标题定版（0.3.1）
 
 分类：需求改进 + 缺陷修复
