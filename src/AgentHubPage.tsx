@@ -18,6 +18,13 @@ import { ScrollThumb } from './ScrollThumb'
 import { useAgentHubI18n } from './agentHubI18n'
 import { listPowers } from './api/powerCatalogClient'
 import {
+  ACTIONS_UNAVAILABLE_TEXT,
+  COMPOSE_RETRY_HINT,
+  composePrompt,
+  composeResource,
+  type ComposeNotice,
+} from './api/conversationCompose'
+import {
   getInstallationStore,
   type InstallationSnapshot,
 } from './api/installationStore'
@@ -169,6 +176,42 @@ export function AgentHubPage(_: FeaturePageProps) {
   }, [hasStore])
 
   const t = useAgentHubI18n()
+
+  // `host:actions` is the only cross-Feature channel this page may use, and its
+  // absence is a supported state rather than an error: without it the create
+  // entry stays disabled and says why. The reference is pinned for the same
+  // reason as the store capability above — the host rebuilds the capability
+  // object on every render — so the click handler reads the current one.
+  const actions = useFeatureCapability('host:actions')
+  const actionsRef = useRef(actions)
+  actionsRef.current = actions
+  const [composing, setComposing] = useState(false)
+  const [composeNotice, setComposeNotice] = useState<ComposeNotice | undefined>(undefined)
+  // A compose result that lands after unmount (the host navigates away on
+  // success) must not touch state any more.
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
+
+  const createResource = () => {
+    const current = actionsRef.current
+    // Depth in defence of the disabled entry: a missing capability can never
+    // turn into a request, and a second click cannot start a second call.
+    if (!current || composing) return
+    setComposing(true)
+    setComposeNotice(undefined)
+    void composeResource(current, composePrompt(t))
+      .then((outcome) => {
+        if (!mountedRef.current) return
+        if (outcome.status === 'rejected') setComposeNotice(outcome.notice)
+      })
+      .finally(() => {
+        if (mountedRef.current) setComposing(false)
+      })
+  }
 
   const [scope, setScope] = useState<PowerScope>('installed')
   const [agent, setAgent] = useState('bibit')
@@ -437,10 +480,42 @@ export function AgentHubPage(_: FeaturePageProps) {
       ? installationSnapshot.notices.get(itemKey(dialogAgent, dialog.type, dialog.name))
       : undefined
 
+  // A host-authored notice is already localized by the host and is rendered as-is;
+  // only the plugin's own sentences go through the translator.
+  const noticeText = (notice: ComposeNotice) =>
+    [
+      notice.origin === 'plugin' ? t(notice.text) : notice.text,
+      notice.retryable ? t(COMPOSE_RETRY_HINT) : '',
+    ]
+      .filter(Boolean)
+      .join(' ')
+
   return (
     <main className="agent-hub" ref={pageScrollRef}>
       <ScrollThumb targetRef={pageScrollRef} />
-      <header><div><p>{t('INTERNAL CATALOG')}</p><h1>Agent Hub</h1></div></header>
+      <header>
+        <div><p>{t('INTERNAL CATALOG')}</p><h1>Agent Hub</h1></div>
+        <div className="agent-hub__create">
+          <button
+            type="button"
+            disabled={!actions || composing}
+            aria-describedby={actions ? undefined : 'agent-hub-create-unavailable'}
+            onClick={createResource}
+          >
+            {t('Create a resource')}
+          </button>
+          {!actions && (
+            <p id="agent-hub-create-unavailable" className="agent-hub__create-note">
+              {t(ACTIONS_UNAVAILABLE_TEXT)}
+            </p>
+          )}
+        </div>
+      </header>
+      {composeNotice && (
+        <div role="alert" className="agent-hub__error">
+          <span>{noticeText(composeNotice)}</span>
+        </div>
+      )}
       <PowerFilters
         scope={scope}
         agents={agents}

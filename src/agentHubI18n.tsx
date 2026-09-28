@@ -57,6 +57,23 @@ const zh: Readonly<Record<string, string>> = {
     'Power 目录不可用：无法加载 APC 目录。',
   'Diagnostic ID: {diagnosticId}': '诊断 ID：{diagnosticId}',
 
+  // ---- create-resource entry (host:actions) ----
+  'Create a resource': '创建资源',
+  'Opening a new conversation is unavailable because this host does not provide it.':
+    '当前宿主未提供发起会话的能力，入口不可用。',
+  'This host version does not support opening a new conversation.':
+    '当前宿主不支持发起会话。',
+  'The host rejected the request to open a new conversation.':
+    '宿主拒绝了发起会话的请求。',
+  'Clear the input box, then click again.': '请先清空输入框，再重试。',
+  'Use the using-apm skill to create a new Power resource.':
+    '请使用 using-apm 技能帮我新建一个 Power 资源。',
+  'Confirm these details with me before you start:': '开始前请先和我确认以下信息：',
+  'Resource type (Skill / Plugin / MCP / Agent):':
+    '资源类型（Skill / Plugin / MCP / Agent）：',
+  'What the resource should do:': '资源的用途和要实现的能力：',
+  'Target Agent and version:': '目标 Agent 与版本：',
+
   // ---- filters and cards ----
   'Scope': '范围',
   'Agent': 'Agent',

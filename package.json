@@ -1,6 +1,6 @@
 {
   "name": "@bibit-internal/agent-hub-plugin",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "private": true,
   "type": "module",
   "scripts": {
@@ -17,10 +17,10 @@
     "artifactDir": "artifacts"
   },
   "dependencies": {
-    "@bibit/feature-contracts": "file:vendor/bibit-feature-contracts-0.3.0.tgz",
-    "@bibit/feature-dev-host": "file:vendor/bibit-feature-dev-host-0.3.0.tgz",
-    "@bibit/feature-plugin-sdk": "file:vendor/bibit-feature-plugin-sdk-0.3.0.tgz",
-    "@bibit/feature-sdk": "file:vendor/bibit-feature-sdk-0.3.0.tgz",
+    "@bibit/feature-contracts": "file:vendor/bibit-feature-contracts-0.4.0.tgz",
+    "@bibit/feature-dev-host": "file:vendor/bibit-feature-dev-host-0.4.0.tgz",
+    "@bibit/feature-plugin-sdk": "file:vendor/bibit-feature-plugin-sdk-0.4.0.tgz",
+    "@bibit/feature-sdk": "file:vendor/bibit-feature-sdk-0.4.0.tgz",
     "react": "19.0.0",
     "react-dom": "19.0.0"
   },

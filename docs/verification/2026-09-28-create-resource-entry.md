@@ -1,0 +1,164 @@
+# 「创建资源」入口：用 using-apm 预置新会话（0.3.3）
+
+日期：2026-09-28
+范围：`bibit-agenthub-plugin` 0.3.3（分支 `hub-compose-create-resource`，基线 `bianbu-26.04` / `091836c`）
+上游依据：宿主动作 `conversation.compose`，bibit 主线 `0e3d7b4f820f3a75c1ac549f4488c6f2fd45c91d`
+（`packages/feature-contracts/src/host-actions.ts`、`docs/feature-sdk/host-capabilities.md` §宿主动作、`docs/development/agent-delivery.md` §插件预置新会话）
+
+## 结论
+
+Hub 页头新增「创建资源」按钮：点击经 `host:actions` 调用 `conversation.compose`，打开新会话并预填一段点名 `using-apm` 的草稿，**不发送**；用户补充需求后自己发送，由 bibit 内置的 `using-apm` skill 完成资源创建。入口按能力分级降级：拿不到 `host:actions` 就禁用并说明原因；宿主不认识该动作就提示「当前宿主不支持发起会话」；可重试的拒绝只提示用户先清空输入框，插件**从不**自动重试。
+
+**实机 happy path 未验证**，原因见文末「实机阻塞」。
+
+## 关键决策与依据
+
+| 决策 | 依据 |
+| --- | --- |
+| 用 `conversation.compose`，不用 `conversation.create` | `create` 的输入形状已冻结（只有 `target`），塞不进提示词；`compose` 的语义就是「预置草稿且从不发送」 |
+| 只给 `prompt`，不给 `target` | 需求是「使用默认 agent」；不给 `target` 时宿主沿用用户当前选中的专家 |
+| 不把 `using-apm` 作为临时技能挂 chip | 板端 `/usr/share/bianbu-agent-runtime/default-profile/config.yaml` 的 `presets.skills` 为 `[using-apm]`，即对所有专家固定启用，再挂 chip 是重复；而设备未装该技能时带 `skills` 会让整次调用以 `INVALID_INPUT` 整体失败（`hostActions.ts` 的 `resolveTargetSkills` 会逐项在目录里查找并要求 `assignable`） |
+| 入口禁用而非「点了再报错」 | 契约「能力缺失即降级」：`getCapability('host:actions')` 为 `undefined` 时只禁用对应入口并说明原因 |
+| `UNSUPPORTED` 用插件文案 | 宿主此时的 `message` 是 `Unknown host action: conversation.compose` 开发者串，不该上屏 |
+| `FAILED` + `retryable` 只提示、不重试 | 契约明确「不要自动重试」；可重试的成因（首页未发送草稿、校验期间换靶）都需要用户先处理 |
+| vendor SDK 升 0.4.0 | `conversation.compose` 的类型、`FeatureHostActionApiV1`、`host:actions` capability 都只存在于 0.4.0 |
+
+## SDK vendor 快照
+
+来源：bibit 主线 `0e3d7b4f820f3a75c1ac549f4488c6f2fd45c91d`（与「相关文档」给出的主线一致）。
+打包方式（可复现，用仓库自带的 yarn release，不装依赖、不编译宿主）：
+
+```bash
+rm -rf /tmp/bibit-sdk-0e3d7b4 && mkdir -p /tmp/bibit-sdk-0e3d7b4/{src,out}
+cd ../bibit && git archive 0e3d7b4f820f3a75c1ac549f4488c6f2fd45c91d | tar x -C /tmp/bibit-sdk-0e3d7b4/src
+cd /tmp/bibit-sdk-0e3d7b4/src
+for p in contracts sdk plugin-sdk dev-host; do
+  ( cd packages/feature-$p && node /tmp/bibit-sdk-0e3d7b4/src/.yarn/releases/yarn-4.5.3.cjs \
+      pack --out /tmp/bibit-sdk-0e3d7b4/out/bibit-feature-$p-0.4.0.tgz )
+done
+```
+
+本分支的依赖集是 contracts / sdk / plugin-sdk / dev-host 四个，**没有** `@bibit/feature-ui`（那是 hub-dev/main 血统的依赖；本分支的页面用自己的 `.agent-hub*` CSS），因此只替换这四个，不引入未使用的 vendored 包。
+
+| 包 | sha256 |
+| --- | --- |
+| `bibit-feature-contracts-0.4.0.tgz` | `b2a93d05583bbfa0da0f516a08929c0dbebf64e8c82ea8df454aca2d7834386b` |
+| `bibit-feature-dev-host-0.4.0.tgz` | `7663afa41a0dfb6027742fcd21def66444ea2accb7470dfcf726ad65e59ddebe` |
+| `bibit-feature-plugin-sdk-0.4.0.tgz` | `ac3500197d2c55d1cb91cd2dcd5c5bc6a13338771ada9854ecb54ddcb80e21cd` |
+| `bibit-feature-sdk-0.4.0.tgz` | `b4f74dfa6bdaa76ea70b4f3c7de38390c16a8f4d15bcd38cabd5f05378ec4003` |
+
+换靶验证（`npm install` 可能按 lock 里旧 integrity 命中缓存而什么都不换，所以必须查实物）：
+
+```bash
+grep -c "conversation.compose" node_modules/@bibit/feature-contracts/src/host-actions.ts   # 1
+for p in contracts sdk plugin-sdk dev-host; do node -p "require('./node_modules/@bibit/feature-$p/package.json').version"; done  # 全为 0.4.0
+```
+
+升级前后对本分支既有代码零行为差异：0.3.0 上 337/337 通过，0.4.0 上同样 337/337；`tsc --noEmit` 均干净。**未报出需要改语义的差异**，因此没有顺手改任何既有实现。
+
+## 契约与实现对照
+
+```ts
+const actions = host.getCapability('host:actions')
+if (!actions) return showUnavailable(...)          // 禁用入口并说明原因
+const result = await actions.invoke('conversation.compose', { prompt })
+// completed | cancelled | rejected(error.code) —— 按 code 分支，不抹平
+```
+
+| 契约点 | 实现位置 | 验证 |
+| --- | --- | --- |
+| 能力缺失即降级、不伪造 | `AgentHubPage.tsx` 的 `actions` 判空 + 按钮 `disabled` | 页面用例「keeps the entry disabled without the capability and sends nothing」 |
+| 一定不发送 | 只调用 `compose`，不碰 `conversation.create`，不做任何 follow-up | `conversationCompose.test.ts`「invokes conversation.compose once with only the draft」（断言 `calls.length === 1`） |
+| 预置文本 ≤ 16 000、空白按未提供 | 草稿 5 行，长度 < 2 000，且不含 `{`/`}`（避免被 i18n 的 `format()` 当占位符） | `conversationCompose.test.ts`「stays well inside the host prompt limit…」 |
+| 技能 id 形态 | 本轮不发 `skills`，规避「展示名 vs Runtime id」的坑 | — |
+| `UNSUPPORTED` 不上屏宿主开发者串 | `noticeFor()` 换成 `COMPOSE_UNSUPPORTED_TEXT` | 单测 + 页面用例各一条 |
+| `INVALID_INPUT` 上屏 `message`、不重试 | `noticeFor()` 透传宿主 message | 单测一条 |
+| `FAILED` + retryable 只提示 | 提示行追加「请先清空输入框，再重试」，无 Retry 按钮、无自动重试 | 页面用例「shows a retryable host failure and leaves retrying to the user」 |
+| `cancelled` 不是错误 | `status === 'cancelled'` 不产生 alert | 单测 + 页面用例各一条 |
+| 不重复提交 | `composing` 期间按钮 `disabled`，回调里再判一次 | 页面用例「does not start a second compose while the first one is in flight」 |
+| 卸载后不 setState | `mountedRef` | 代码路径；成功路径由宿主导航带走组件 |
+| 不 import 宿主私有模块 / 不调 Tauri | 只 import `@bibit/feature-*` 公开类型 | `grep -rn "from '@/" src` 无命中 |
+
+## 指令与文案
+
+页面按插件翻译器逐行渲染下面 5 句再拼成多行草稿（中文词典在 `src/agentHubI18n.tsx`；`agentHubI18n.test.tsx` 的死键扫描保证中英词典与代码字面量一致）：
+
+```text
+Use the using-apm skill to create a new Power resource.
+Confirm these details with me before you start:
+Resource type (Skill / Plugin / MCP / Agent):
+What the resource should do:
+Target Agent and version:
+```
+
+## 本地验证
+
+命令（node 必须用 24；本机默认 `/usr/bin/node` 是 v18，jsdom 下 `crypto.subtle` 缺失会造成 6 个既有用例假失败）：
+
+```bash
+export PATH="$HOME/.nvm/versions/node/v24.16.0/bin:$PATH"
+npm test && npm run typecheck && npm run build:dev && npm run build:plugin
+grep -c "conversation.compose" node_modules/@bibit/feature-contracts/src/host-actions.ts   # 1
+git diff --check
+```
+
+结果（2026-09-28）：
+
+| 检查 | 结果 |
+| --- | --- |
+| `npm test` | 357/357 通过（24 个文件；升级前的基线是 337/337，新增 20 条：`conversationCompose.test.ts` 9、`AgentHubPage.test.tsx` 6、`manifestGrants.test.ts` 4、`feature.test.ts` 中 1 条既有断言随版本号变化） |
+| `npm run typecheck` | exit 0 |
+| `npm run build:dev` | exit 0 |
+| `npm run build:plugin` | 产物 `artifacts/agent-hub-0.3.3.bibit-plugin.tgz` |
+| `git diff --check` | 无输出 |
+| `conversation.compose` 命中数 | 1（真的换上了 0.4.0） |
+
+### 回滚验证（新增断言不是空转）
+
+逐条临时撤掉实现，对应用例必须失败：
+
+| 回滚动作 | 失败用例数 |
+| --- | --- |
+| `composeResource` 不再传 `prompt` | 2（`conversationCompose.test.ts` 1 + `AgentHubPage.test.tsx` 1） |
+| 按钮不再因缺少 capability 而禁用 | 1 |
+| `UNSUPPORTED` 复用宿主 message | 2 |
+| 去掉「请先清空输入框」提示 | 1 |
+| grant 里删掉 `host:actions` | 2（`manifestGrants.test.ts`） |
+
+回滚后已全部还原，`npm test` 回到 357/357。
+
+## 板端验证（K3，`ssh K3`／`10.0.91.51`，bi-bit 0.1.18）
+
+板端现状（实测）：
+
+| 事实 | 证据 |
+| --- | --- |
+| 板上插件是 0.3.3 之前的构建，声明里没有 `host:actions` | `/usr/lib/bibit/plugins/agent-hub.bibit-plugin.tgz` 的 `plugin.json` → `requiredHostCapabilities: ["service:store"]`；bundle sha256 与本仓库 `artifacts/agent-hub-0.3.3.bibit-plugin.tgz`（0.3.3 之前的那个）一致 |
+| 板上 grant 只批了 `service:store` | `/etc/bibit/feature-capability-grants.d/agenthub.json` |
+| 板端宿主不登记 `conversation.compose` | `grep -c conversation.compose /usr/bin/bibit-gui` → 0；`grep -c host:actions` → 2（能力与 grant 白名单都在，只是动作表只有 `conversation.create`） |
+| 已发布的 bi-bit 都没有该动作 | 仓库 tag `bianbu/0.1.18`…`bianbu/0.1.22` 的 `hostActions.ts` 都只有 `conversation.create`；`archive.bianbu.xyz` 上可下载的最新版是 0.1.22 |
+| `using-apm` 确实是板端预置技能 | `/usr/share/bianbu-agent-runtime/default-profile/config.yaml` → `presets.skills: [using-apm]`；该技能 `SKILL.md` 的 `name: using-apm` |
+
+因此板端本次可以验证的两条降级路径（部署新 bundle 后再走一次）：
+
+1. **能力缺失即禁用**：只装 bundle、不改 drop-in grant → 重启 GUI → Agent Hub 页头按钮 `disabled` 且旁边显示「当前宿主未提供发起会话的能力」，点击不发请求。
+2. **宿主不认识该动作**：把 `debian/agenthub-feature-grants.json` 装到 `/etc/bibit/feature-capability-grants.d/agenthub.json` 后重启 GUI → 按钮可点，点击后显示「当前宿主不支持发起会话」（对应 `UNSUPPORTED`）。
+
+这两条与单测覆盖的是同一套分支，但它们是**实机**证据，用于证明 capability 判定与动作结果映射在真实宿主上成立。
+
+## 实机阻塞（happy path 未验证）
+
+以下判据**尚未执行**，需要「由 bibit 主线 ≥ `0e3d7b4` 构建的 bi-bit」，否则不可能观察到：
+
+- 点入口 → 新会话首页打开（不是复用当前会话）；
+- 技能以临时 chip 附上、提示词预填在输入框、**消息列表仍为空**（没有自动发送）；
+- 用户补充文字后能正常发送，`using-apm` 接住任务；
+- 首页先打半截字不发送，再触发入口 → 返回可重试的 `FAILED`、`message` 为「输入框仍有未发送内容」、原草稿**不被覆盖**。
+
+已排除的路径：板端 `bi-bit 0.1.18`、仓库 tag `bianbu/0.1.21`/`0.1.22`、`archive.bianbu.xyz` 上可下载的 0.1.22（`apt-get download` 后 `bi-bit_0.1.21` 已 404，0.1.22 存在但同样不含该动作）。板端 `apt-cache policy bi-bit` 的候选是 0.1.21，也不含该动作。
+
+拿到该构建后按上表逐条执行；在此之前不得把「插件装上了／按钮能点了」当作验收通过。
+
+## 与既有交付的关系
+
+本分支基线是 `bianbu-26.04` 的已提交 HEAD（`0.3.2`）。主工作树里另有一批未提交的 0.3.3 改动（自定义资源扫描、展示字段等）也占用了 `0.3.3` 这个版本号；两者合并时需要按仓库既有做法（0.3.2–0.3.5 曾统一为 0.3.1）重新编号，本次未替那个决策做预判。

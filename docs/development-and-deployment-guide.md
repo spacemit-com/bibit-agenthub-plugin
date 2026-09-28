@@ -6,16 +6,19 @@
 
 | 项目 | 当前版本 |
 | --- | --- |
-| Agent Hub 插件 | `0.3.2` |
+| Agent Hub 插件 | `0.3.3` |
 | `manifestSchemaVersion` | `1` |
 | `sdkApiVersion` | `1` |
-| `@bibit/feature-contracts` | `0.3.0` |
-| `@bibit/feature-sdk` | `0.3.0` |
-| `@bibit/feature-plugin-sdk` | `0.3.0` |
-| `@bibit/feature-dev-host` | `0.3.0` |
+| `@bibit/feature-contracts` | `0.4.0` |
+| `@bibit/feature-sdk` | `0.4.0` |
+| `@bibit/feature-plugin-sdk` | `0.4.0` |
+| `@bibit/feature-dev-host` | `0.4.0` |
 | React / React DOM | `19.0.0` |
-| 已验证目标 Bibit | `b5387833927e052fe3728bc0631cef2df0138092`（`bianbu/0.1.8`） |
+| 已验证目标 Bibit | `0e3d7b4f820f3a75c1ac549f4488c6f2fd45c91d`（bibit 主线，`conversation.compose` 首次出现于此） |
 | 宿主语言支持 | 插件中英文文案跟随宿主 `language`；需要 `bi-bit` 0.1.4 及以上的宿主（设置菜单 `titleKey` 同样自 0.1.4 起生效） |
+| 新会话入口所需宿主 | 需要登记了 `conversation.compose` 的宿主。已发布的 `bi-bit`（板端 0.1.18、`bianbu/0.1.22`）只有 `conversation.create`，此时入口提示「当前宿主不支持发起会话」 |
+
+> SDK 版本与目标宿主的对应关系是刻意锁定的：`conversation.compose` 的类型与 `host:actions` capability 只存在于 `@bibit/feature-*@0.4.0`，而 0.4.0 随 bibit 主线一起发布。因此本插件必须与「由 bibit 主线 ≥ `0e3d7b4` 构建的宿主」一起发布；升级 vendor 时不要单独升某一个包。
 
 当前插件提供两个贡献点：
 
@@ -26,7 +29,9 @@
 
 当前 Demo 已实现 APC Power 展示与安装原型：通过 `powers.list.v1` 提供“我的 Power / Power 市场”两种数据范围、Agent / 类型 / tags 分层筛选、系列级卡片、版本选择与每页 20 张卡片的分页，并配套 Local Preview；通过 `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` 提供详情查看与单版本安装/卸载闭环。设置页仍提供实验 Agent 开关和刷新间隔两个字段。Power 下载、提交、审核、下架、恢复以及搜索等能力尚未实现，这些属于 Agent Hub 模块团队后续定制范围。
 
-当前插件使用平台随目标 Bibit 一并发布的 `@bibit/feature-ui@0.3.0`，复用 `FeatureSettingsPage`、`Button`、状态组件和图标，并通过 Bibit 主题 token 适配明暗主题。该包必须与 React 及其余 SDK 一起锁定升级；不得直接导入 Bibit 私有 UI 源码。
+页头另有**「创建资源」入口**：点击后经 `host:actions` 的 `conversation.compose` 打开一个新会话，默认 Agent 不变，输入框里预填一段点名 `using-apm` 的草稿，**不发送**。用户补充需求后自己发送，由 bibit 内置的 `using-apm` skill 完成资源创建。该入口的降级规则见 §17「创建资源」入口变灰，或点击后提示不支持」一节。
+
+当前插件使用平台随目标 Bibit 一并发布的 `@bibit/feature-ui@0.4.0`，复用 `FeatureSettingsPage`、`Button`、状态组件和图标，并通过 Bibit 主题 token 适配明暗主题。该包必须与 React 及其余 SDK 一起锁定升级；不得直接导入 Bibit 私有 UI 源码。
 
 ## 2. 总体职责边界
 
@@ -88,11 +93,12 @@ bibit-agenthub-plugin/
 │   ├── agentHubI18n.tsx   # 中英文词典、Provider、菜单 locales
 │   ├── agentHub.css
 │   ├── api/
-│   │   ├── contracts.ts          # 协议边界 DTO + wire 信封
-│   │   ├── apm.ts                # installed 解析/聚合
-│   │   ├── apc.ts                # market 解析
-│   │   ├── powerCatalogClient.ts # 共享缓存客户端
-│   │   └── catalogIntegrity.ts   # SHA-256 校验
+│   │   ├── contracts.ts            # 协议边界 DTO + wire 信封
+│   │   ├── apm.ts                  # installed 解析/聚合
+│   │   ├── apc.ts                  # market 解析
+│   │   ├── powerCatalogClient.ts   # 共享缓存客户端
+│   │   ├── conversationCompose.ts  # host:actions 预置新会话
+│   │   └── catalogIntegrity.ts     # SHA-256 校验
 │   └── components/
 │       ├── PowerCard.tsx
 │       ├── PowerFilters.tsx
@@ -108,6 +114,7 @@ bibit-agenthub-plugin/
 │   ├── rules
 │   ├── changelog
 │   ├── agenthub-provider.json     # Registry v2 drop-in
+│   ├── agenthub-feature-grants.json # capability/operation 授权（安装为系统 drop-in）
 │   └── vendor/                    # 公司签名 bundle（不提交）
 ├── vendor/                        # bibit-feature-* tarball（锁定版本）
 ├── .bibit-keys/                   # 忽略
@@ -202,6 +209,7 @@ src/
 | 改设置字段或校验 | `AgentHubSettingsPage.tsx`、DTO、Store operation、Mock | Bibit Settings Shell、宿主 Store |
 | 新增后端能力 | 模块 DTO、带版本 operation、Store 服务、Mock | 直接 `fetch`、Tauri command、凭据字段 |
 | 新增 Agent Hub 内部详情路由 | 页面组件和 `FeaturePageProps.navigation` | Bibit Router、全局 URL 前缀、主侧边栏源码 |
+| 需要跨 Feature 行为（打开会话、跳宿主界面、交接上下文） | Manifest 声明 `host:actions`、drop-in grant、调用登记动作（见 §9.1） | Feature 内导航、localStorage/URL 传状态、直接调 Tauri command |
 | 新增主页面或设置贡献点 | 组件、`feature.tsx`、Manifest 三者同步 | 只改 Manifest 或只改 Feature Module |
 | 需要新 icon、navigation group 或非 Service capability | 先提交平台契约缺口 | 在 Manifest 写入 Schema 未允许的字符串 |
 | 需要新的模块 Service | 使用合法 `service:<kebab-id>`，提交 operation grant 与 Registry | 为每个 Service 新增 Tauri command 或直接执行 CLI |
@@ -221,7 +229,7 @@ src/
   "manifestSchemaVersion": 1,
   "sdkApiVersion": 1,
   "id": "agent-hub",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "owner": "agent-hub-team",
   "display": {
     "titleKey": "agent-hub:title",
@@ -231,7 +239,7 @@ src/
     "fallbackDescription": "Browse and manage Agent packages"
   },
   "targets": ["desktop"],
-  "requiredHostCapabilities": ["service:store", "file:transfer", "job:manage"],
+  "requiredHostCapabilities": ["service:store", "host:actions"],
   "contributions": {
     "pages": [
       {
@@ -509,7 +517,7 @@ const result = await listPowers(store, input, controller.signal)
 return () => controller.abort()
 ```
 
-必须遵守：
+失败路径与五条铁律：
 
 - capability 不存在时显示 Agent Hub 局部错误，不直接回退到 `fetch`；
 - `serviceId` 固定为 `store`；
@@ -521,6 +529,39 @@ return () => controller.abort()
 - 不显示或记录原始凭据、请求 header 或后端内部堆栈。
 
 `powers.list.v1` 在插件 API 边界执行闭集运行时校验（`parseListPowersInput` / `parseListPowersResult`）：未知字段、非法 Power 类型、非 20 的 pageSize、版本乱序、重复或未排序 tags、market 携带 agent 等都会被拒绝。`powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` 用 `parsePowerTarget` / `parseInstallInput` 校验（安装必须带规范版本，卸载/详情不带版本；agent/type/name 必须满足规范命名）。`settings.get.v1` / `settings.update.v1` 由 store 服务处理（dev 为内存 echo；settings 持久化不在本期范围）。校验失败或后端返回未知结构时映射为局部错误态（`incompatible`），不能让页面白屏。
+
+### 9.1 跨 Feature 动作（`host:actions`）
+
+跨 Feature 的行为只走宿主动作，插件内不做导航、也不为某个插件加宿主特判。v1 登记的动作里本插件只用 `conversation.compose`：
+
+```tsx
+const actions = useFeatureCapability('host:actions')
+if (!actions) return /* 入口禁用并说明原因 */
+
+const result = await actions.invoke('conversation.compose', {
+  prompt: composePrompt(t),   // 可选；也可带 target / skills，本插件不用
+})
+```
+
+语义保证（写在契约里，不用猜）：
+
+- **一定新建会话**，不会复用当前会话；
+- **一定不发送**：草稿留在输入框，等用户自己编辑后发送；
+- `target` 与 `skills` 互相独立，只给 `prompt` 就沿用用户的默认专家；
+- 输入上限：`skills` 去重后 ≤ 100 个（对齐 Runtime 的 `skill_ids`），`prompt` ≤ 16 000 字符，空白文本按未提供处理；
+- 结果只有三种：`completed` / `cancelled` / `rejected`。
+
+实际要处理的 `rejected.error.code`：
+
+| code | 触发条件 | 处理 |
+| --- | --- | --- |
+| `UNSUPPORTED` | 宿主没登记这个动作（宿主机版本较旧） | 禁用或提示「宿主不支持」；`message` 是 `Unknown host action: …` 开发者串，**不要上屏** |
+| `INVALID_INPUT` | 资源引用不是 `runtime/skill`、技能不存在或不可分配、`prompt` 超长、技能超过 100 个 | 上屏 `message`；这是调用方问题，不要重试 |
+| `FAILED` | 无可用 Runtime 目标、校验期间目标被切换、输入框已有未发送草稿 | 上屏 `message`；`retryable` 为 true 时提示用户处理后重试，**不要自动重试循环** |
+
+`NOT_GRANTED` 在类型里存在，但**不会作为动作结果返回**：没 grant 时 `getCapability('host:actions')` 直接是 `undefined`，调用方根本拿不到 `invoke`。所以「能力缺失」必须在取能力时判空降级，不能用 `?.` 把「能力缺失」和「调用成功」抹平。
+
+技能 id 的形态：`skills[].id` 必须与 Runtime 技能目录里的 id 完全一致（Agent 声明里的 `plugin/成员`，例如 `spacemit-power/vibe-coder`），用展示名 `plugin:成员` 会直接拿到 `INVALID_INPUT`。插件拿不到 Runtime 技能目录（`runtime_skills_list` 是宿主内部命令，插件不得绕走 Tauri 命令），所以 id 只能来自自己的 Power / Agent 包声明；确实需要运行时枚举技能时先提需求在框架侧加动作。
 
 ## 10. Store 服务协议
 
@@ -715,7 +756,7 @@ Bibit Host 会自动追加 `/bibit/v1/invoke`。`baseUrl` 不得包含用户名�
 /etc/bibit/feature-capability-grants.d/agenthub.json
 ```
 
-HTTP 模式仍使用上面的 `version/services/store` 结构，并由模块安装包提供 Adapter、systemd unit 和 Provider drop-in。CLI 模式不需要 Adapter 或 systemd unit，由 CLI 包安装 executable 和 Registry v2 drop-in。插件 deb 安装经平台批准的 capability/operation grant，参考 `deploy/agenthub-feature-grants.example.json`。具体内容见 CLI Provider 指南。两种模式都不得从安装或维护脚本写入任何用户 home；用户数据目录配置和 `BIBIT_EXTERNAL_SERVICE_CONFIG` 只作为更高优先级的显式覆盖。
+HTTP 模式仍使用上面的 `version/services/store` 结构，并由模块安装包提供 Adapter、systemd unit 和 Provider drop-in。CLI 模式不需要 Adapter 或 systemd unit，由 CLI 包安装 executable 和 Registry v2 drop-in。插件 deb 安装经平台批准的 capability/operation grant，参考 `debian/agenthub-feature-grants.json`（`debian/rules` 安装为系统 drop-in）。具体内容见 CLI Provider 指南。两种模式都不得从安装或维护脚本写入任何用户 home；用户数据目录配置和 `BIBIT_EXTERNAL_SERVICE_CONFIG` 只作为更高优先级的显式覆盖。
 
 需要认证时只在连接配置中填写 `authRef`：
 
@@ -883,7 +924,8 @@ APC Base URL 默认测试环境 `https://developer.bianbu.xyz/api-server/apc/api
 - 切换语言后当前列表、筛选、分页与已打开的详情弹窗保持不变，只替换文案，且不重新请求 `powers.list.v1`；
 - 停止或未连接 Store 时页面显示局部错误与 Retry，恢复后 Retry 可恢复列表；
 - `Settings · settings` 可以读取当前 Mock 设置、保存后再次进入值一致；
-- 未知 operation 返回错误，而不是伪造成功。
+- 未知 operation 返回错误，而不是伪造成功；
+- 页头「创建资源」按钮在本模式下是**禁用**的，并显示「当前宿主未提供发起会话的能力」：Dev Host 只为 service mock / connection（以及 `file:transfer`）构造 capability，不提供 `host:actions` mock。这正好复现旧宿主的降级形态；要预览可点状态，需要注入自定义 `hostApi`（`FeatureDevHost` 支持 `hostApi` 属性），或等宿主提供 Dev Host 的 `host:actions` mock。
 
 该模式只验证插件业务状态机、公开 SDK 用法、apm CLI 数据投影与 APC 公开目录投影，不启动 Provider、不读取真实文件，也不会产生下载文件；它不构成 Tauri、FileGrant staging 或 CLI Provider 端到端证据。
 
@@ -952,16 +994,16 @@ npm run build:plugin
 产物：
 
 ```text
-artifacts/agent-hub-0.3.2.bibit-plugin.tgz
+artifacts/agent-hub-0.3.3.bibit-plugin.tgz
 ```
 
 检查：
 
 ```bash
-tar -tzf artifacts/agent-hub-0.3.2.bibit-plugin.tgz
-tar -xOf artifacts/agent-hub-0.3.2.bibit-plugin.tgz plugin.json
-tar -xOf artifacts/agent-hub-0.3.2.bibit-plugin.tgz plugin.sig
-sha256sum artifacts/agent-hub-0.3.2.bibit-plugin.tgz
+tar -tzf artifacts/agent-hub-0.3.3.bibit-plugin.tgz
+tar -xOf artifacts/agent-hub-0.3.3.bibit-plugin.tgz plugin.json
+tar -xOf artifacts/agent-hub-0.3.3.bibit-plugin.tgz plugin.sig
+sha256sum artifacts/agent-hub-0.3.3.bibit-plugin.tgz
 ```
 
 归档必须包含：
@@ -1012,7 +1054,7 @@ Settings > Extensions > Trusted plugins
 选择：
 
 ```text
-artifacts/agent-hub-0.3.2.bibit-plugin.tgz
+artifacts/agent-hub-0.3.3.bibit-plugin.tgz
 ```
 
 Bibit 会验签、校验 hash、安装、激活并刷新 Feature Registry。确认主导航出现 Agent Hub，设置子菜单也出现 Agent Hub。
@@ -1021,7 +1063,7 @@ Bibit 会验签、校验 hash、安装、激活并刷新 Feature Registry。确�
 
 Debug Bibit 使用真实 Store 服务时，还要配置第 10.3 节的 `BIBIT_EXTERNAL_SERVICE_CONFIG`。插件成功加载不代表 Store 服务已经接通。
 
-若不写系统目录，Debug Bibit 可设置 `BIBIT_FEATURE_CAPABILITY_GRANTS_DIR` 指向包含 `deploy/agenthub-feature-grants.example.json` 的开发目录；Release Bibit 忽略该环境变量。授权与插件均在启动阶段装载，修改后需要重启 Bibit。
+若不写系统目录，Debug Bibit 可设置 `BIBIT_FEATURE_CAPABILITY_GRANTS_DIR` 指向包含 `debian/agenthub-feature-grants.json` 的开发目录；Release Bibit 忽略该环境变量。授权与插件均在启动阶段装载，修改后需要重启 Bibit。
 
 ## 14. 系统插件与 Debian 部署
 
@@ -1038,10 +1080,10 @@ Agent Hub 插件 deb 应安装：
 
 ```bash
 sudo install -Dm0644 \
-  artifacts/agent-hub-0.3.2.bibit-plugin.tgz \
+  artifacts/agent-hub-0.3.3.bibit-plugin.tgz \
   /usr/lib/bibit/plugins/agent-hub.bibit-plugin.tgz
 sudo install -Dm0644 \
-  deploy/agenthub-feature-grants.example.json \
+  debian/agenthub-feature-grants.json \
   /etc/bibit/feature-capability-grants.d/agenthub.json
 ```
 
@@ -1121,7 +1163,7 @@ dpkg-buildpackage -us -uc -b
 K3DEB1 的 Release 部署必须使用正式签名、且 `keyId` 已进入目标 Bibit 内置信任库的 bundle：
 
 ```bash
-export SIGNED_AGENT_HUB_BUNDLE=/absolute/path/agent-hub-0.3.2.bibit-plugin.tgz
+export SIGNED_AGENT_HUB_BUNDLE=/absolute/path/agent-hub-0.3.3.bibit-plugin.tgz
 test -f "$SIGNED_AGENT_HUB_BUNDLE"
 tar -xOf "$SIGNED_AGENT_HUB_BUNDLE" plugin.json
 tar -xOf "$SIGNED_AGENT_HUB_BUNDLE" plugin.sig
@@ -1215,7 +1257,7 @@ npm run build:plugin
 
 - 目标 Bibit 信任正式 `keyId`；
 - 系统目录只有预期 Agent Hub bundle；
-- Bibit 插件管理页显示 `agent-hub@0.3.2` 已激活；
+- Bibit 插件管理页显示 `agent-hub@0.3.3` 已激活；
 - 主导航出现 Agent Hub；
 - 设置子菜单出现 Agent Hub；
 - 选中设置页后全局“设置”页头和子菜单滚动不消失；
@@ -1269,6 +1311,19 @@ Store service version
 
 依次检查 Manifest 的 `requiredHostCapabilities`、`/etc/bibit/feature-capability-grants.d/agenthub.json`、operation allowlist、Provider Registry 和插件是否运行在 `main` surface。不要回退到直接 `fetch`。
 
+### 「创建资源」入口变灰，或点击后提示不支持
+
+两种情况要分开看，因为它们的修复方不同：
+
+| 现象 | 含义 | 处理 |
+| --- | --- | --- |
+| 按钮 `disabled`，旁边显示「当前宿主未提供发起会话的能力」 | `getCapability('host:actions')` 返回 `undefined` | 插件侧缺 `host:actions` 声明、系统 drop-in 缺该 grant，或宿主根本没注册这个 capability。先核对 `bibit.feature.json` 的 `requiredHostCapabilities` 与 `/etc/bibit/feature-capability-grants.d/agenthub.json`（两者由 `src/manifestGrants.test.ts` 守住）；仍然变灰说明宿主版本不带 `host:actions` |
+| 按钮可点，点击后显示「当前宿主不支持发起会话」 | capability 拿到了，但动作表里没有 `conversation.compose`（宿主返回 `UNSUPPORTED`） | 宿主较旧。任何已发布的 `bi-bit`（板端 0.1.18、`bianbu/0.1.22`）都只有 `conversation.create`；需要由 bibit 主线 ≥ `0e3d7b4` 构建的宿主 |
+| 点击后显示「输入框仍有未发送内容」+「请先清空输入框，再重试」 | 首页存在未发送草稿，宿主按设计拒绝，`retryable: true` | 提示用户清空后重试。插件**不会**自动重试，也不会覆盖用户的草稿 |
+| 点击后显示宿主给的其他 message（例如技能不可分配） | `INVALID_INPUT`：调用或资源引用有问题 | 修调用方或资源，不要重试 |
+
+不要为了「让按钮可点」而把技能 id、提示词或跳转逻辑塞进别处：跨模块行为只能走 `host:actions`，插件也不得直接调 Tauri 命令或 import 宿主私有模块。
+
 ### Dev Host Mock 正常，真实服务失败
 
 Dev Host 当前只注入内存 Host API，不接受 `storeEndpoint` URL 参数，也不会启动 CLI。执行第 11.3 节的隔离 Tauri 调试，依次核对插件激活、capability grant、Provider Registry、协议 v2 协商和 operation 集合。
@@ -1305,6 +1360,7 @@ CLI 模式检查 Registry 是否为 `version: 2`、`transport: stdio`、固定�
 - Bibit 插件加载、激活、停用和回退结果；
 - 真实 Power 列表、设置持久化、错误映射与重试证据；
 - 中英文切换证据（系统语言切换后页面文案、菜单标题与不重新请求的观察结果）；
+- 「创建资源」入口的证据：新会话已打开、提示词预填、消息列表为空（未自动发送）、补字后可发送，以及首页已有未发送草稿时返回 `FAILED` 且原草稿不被覆盖；
 - 已知限制和可用回滚版本。
 
 不要交付：
@@ -1319,6 +1375,8 @@ CLI 模式检查 Registry 是否为 `version: 2`、`transport: stdio`、固定�
 ## 19. 当前已知边界
 
 - v1 只支持 `desktop/main`；
+- 页头「创建资源」入口经 `conversation.compose` 打开新会话并预置草稿，但**实机 happy path 尚未验证**：该动作只在 bibit 主线 `0e3d7b4` 之后存在，已发布的 `bi-bit` 都还没有，因此当前板上点击只会得到「当前宿主不支持发起会话」。降级路径（能力缺失即禁用、`UNSUPPORTED` 提示、可重试 `FAILED` 只提示不自动重试）已由单测锁定；
+- 预置草稿只点名 `using-apm`，不把该技能作为临时 chip 挂到输入框：`using-apm` 是 `presets.skills` 里对所有专家固定启用的技能，且设备未装该技能时带 `skills` 会让整次调用以 `INVALID_INPUT` 失败；
 - 当前插件实现 APC Power 展示原型（筛选、系列卡、版本选择、每页 20 的分页、warning 与 Retry）、详情弹窗与单版本安装/卸载，和两个设置字段；
 - Power 下载、提交、审核、下架、恢复以及搜索尚未实现；
 - `powers.list.v1` / `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` DTO 已做闭集运行时校验；`settings.get.v1` / `settings.update.v1` 由 store 服务处理（dev 为内存 echo，settings 持久化不在本期范围）；

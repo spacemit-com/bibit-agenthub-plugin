@@ -1,7 +1,7 @@
 {
   "version": 1,
   "features": {
-    "agent-hub": ["service:store"]
+    "agent-hub": ["service:store", "host:actions"]
   },
   "serviceOperations": {
     "agent-hub": {

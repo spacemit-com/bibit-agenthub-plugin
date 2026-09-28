@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import userEvent from '@testing-library/user-event'
 import {
   FeatureHostApiProvider,
+  type FeatureHostActionApiV1,
   type FeatureServiceApiV1,
   type FeatureServiceErrorV1,
   type FeatureServiceRequestV1,
@@ -11,9 +12,20 @@ import {
   type FeatureHostCapabilityApiV1,
   type FeaturePageProps,
 } from '@bibit/feature-sdk'
-import type { FeatureHostCapability } from '@bibit/feature-contracts'
+import type {
+  FeatureHostActionRegistryV1,
+  FeatureHostActionResultV1,
+  FeatureHostCapability,
+} from '@bibit/feature-contracts'
 import { AgentHubPage } from './AgentHubPage'
 import { withAgentHubI18n } from './agentHubI18n'
+import {
+  ACTIONS_UNAVAILABLE_TEXT,
+  COMPOSE_RETRY_HINT,
+  COMPOSE_UNSUPPORTED_TEXT,
+  CREATE_RESOURCE_ACTION,
+  CREATE_RESOURCE_PROMPT_LINES,
+} from './api/conversationCompose'
 
 afterEach(cleanup)
 
@@ -104,7 +116,37 @@ function wireParamsOf(call: StoreRequest): WireParams {
   return call.params as WireParams
 }
 
-function makeStoreHost(respond?: (input: StoreRequest) => unknown): {
+type ComposeCall = {
+  action: keyof FeatureHostActionRegistryV1
+  input: FeatureHostActionRegistryV1[keyof FeatureHostActionRegistryV1]['input']
+}
+
+/**
+ * `conversation.compose` spy. The default answer is `completed`, which is what
+ * the host reports right before it navigates to the new session.
+ */
+function makeComposeActions(
+  respond?: (
+    call: ComposeCall
+  ) => FeatureHostActionResultV1 | Promise<FeatureHostActionResultV1>
+): {
+  actions: FeatureHostActionApiV1
+  calls: ComposeCall[]
+} {
+  const calls: ComposeCall[] = []
+  const actions: FeatureHostActionApiV1 = {
+    async invoke(action, input) {
+      calls.push({ action, input } as ComposeCall)
+      return respond ? respond(calls[calls.length - 1]) : { status: 'completed' }
+    },
+  }
+  return { actions, calls }
+}
+
+function makeStoreHost(
+  respond?: (input: StoreRequest) => unknown,
+  compose?: FeatureHostActionApiV1
+): {
   hostApi: FeatureHostApiV1
   calls: StoreRequest[]
 } {
@@ -122,12 +164,15 @@ function makeStoreHost(respond?: (input: StoreRequest) => unknown): {
     if ((capability as FeatureHostCapability) === 'service:store') {
       return service as unknown as FeatureHostCapabilityApiV1<K>
     }
+    if ((capability as FeatureHostCapability) === 'host:actions' && compose) {
+      return compose as unknown as FeatureHostCapabilityApiV1<K>
+    }
     return undefined
   }
   const hostApi: FeatureHostApiV1 = {
     sdkApiVersion: 1,
     featureId: 'agent-hub',
-    grantedCapabilities: ['service:store'],
+    grantedCapabilities: compose ? ['service:store', 'host:actions'] : ['service:store'],
     getCapability,
   }
   return { hostApi, calls }
@@ -902,5 +947,117 @@ describe('AgentHubPage', () => {
       expect(screen.queryByRole('button', { name: 'Uninstall' })).toBeNull()
       expect((dialog.getByLabelText('Version') as HTMLSelectElement).disabled).toBe(false)
     })
+  })
+})
+
+describe('create-resource entry (host:actions)', () => {
+  const draft = CREATE_RESOURCE_PROMPT_LINES.join('\n')
+  const createButton = () => screen.getByRole('button', { name: 'Create a resource' })
+
+  it('asks the host to compose a new conversation with the preset draft', async () => {
+    const user = userEvent.setup()
+    const { actions, calls } = makeComposeActions()
+    const { hostApi } = makeStoreHost(undefined, actions)
+    renderPage(hostApi)
+    await screen.findByRole('heading', { name: 'code-review' })
+
+    await user.click(createButton())
+
+    // Exactly one call: the action only stages a draft, so the entry neither
+    // sends a message nor retries anything by itself.
+    await waitFor(() => expect(calls).toHaveLength(1))
+    expect(calls[0].action).toBe(CREATE_RESOURCE_ACTION)
+    expect(calls[0].input).toEqual({ prompt: draft })
+    // The draft is what makes the built-in using-apm skill take over the task.
+    expect((calls[0].input as { prompt: string }).prompt).toContain('using-apm')
+  })
+
+  it('keeps the entry disabled without the capability and sends nothing', async () => {
+    const user = userEvent.setup()
+    // The host reports no `host:actions` at all: missing grant, older host, or a
+    // build without the action registry. That is a supported state, not a bug.
+    const { hostApi } = makeStoreHost()
+    renderPage(hostApi)
+    await screen.findByRole('heading', { name: 'code-review' })
+
+    expect((createButton() as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByText(ACTIONS_UNAVAILABLE_TEXT)).toBeTruthy()
+
+    await user.click(createButton())
+    await user.click(createButton())
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('reports an unsupported action with plugin copy, not the host debug string', async () => {
+    const user = userEvent.setup()
+    const { actions, calls } = makeComposeActions(() => ({
+      status: 'rejected',
+      error: { code: 'UNSUPPORTED', message: 'Unknown host action: conversation.compose' },
+    }))
+    const { hostApi } = makeStoreHost(undefined, actions)
+    renderPage(hostApi)
+    await screen.findByRole('heading', { name: 'code-review' })
+
+    await user.click(createButton())
+
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toContain(COMPOSE_UNSUPPORTED_TEXT)
+    expect(alert.textContent).not.toContain('Unknown host action')
+    expect(calls).toHaveLength(1)
+  })
+
+  it('shows a retryable host failure and leaves retrying to the user', async () => {
+    const user = userEvent.setup()
+    const { actions, calls } = makeComposeActions(() => ({
+      status: 'rejected',
+      error: { code: 'FAILED', message: '输入框仍有未发送内容', retryable: true },
+    }))
+    const { hostApi } = makeStoreHost(undefined, actions)
+    renderPage(hostApi)
+    await screen.findByRole('heading', { name: 'code-review' })
+
+    await user.click(createButton())
+
+    const alert = await screen.findByRole('alert')
+    // The host already localized its own message, so it is rendered as-is.
+    expect(alert.textContent).toContain('输入框仍有未发送内容')
+    expect(alert.textContent).toContain(COMPOSE_RETRY_HINT)
+    // No automatic retry loop: still the single user-initiated call.
+    await waitFor(() => expect(calls).toHaveLength(1))
+    expect((createButton() as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('treats a cancelled compose as the user backing out, not an error', async () => {
+    const user = userEvent.setup()
+    const { actions, calls } = makeComposeActions(() => ({ status: 'cancelled' }))
+    const { hostApi } = makeStoreHost(undefined, actions)
+    renderPage(hostApi)
+    await screen.findByRole('heading', { name: 'code-review' })
+
+    await user.click(createButton())
+
+    await waitFor(() => expect(calls).toHaveLength(1))
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('does not start a second compose while the first one is in flight', async () => {
+    const user = userEvent.setup()
+    let resolveCompose!: (result: FeatureHostActionResultV1) => void
+    const { actions, calls } = makeComposeActions(
+      () => new Promise<FeatureHostActionResultV1>((resolve) => (resolveCompose = resolve))
+    )
+    const { hostApi } = makeStoreHost(undefined, actions)
+    renderPage(hostApi)
+    await screen.findByRole('heading', { name: 'code-review' })
+
+    await user.click(createButton())
+    await waitFor(() => expect(calls).toHaveLength(1))
+    expect((createButton() as HTMLButtonElement).disabled).toBe(true)
+
+    await user.click(createButton())
+    expect(calls).toHaveLength(1)
+
+    resolveCompose({ status: 'completed' })
+    await waitFor(() => expect((createButton() as HTMLButtonElement).disabled).toBe(false))
   })
 })
