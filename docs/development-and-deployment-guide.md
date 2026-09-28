@@ -31,7 +31,7 @@
 
 页头另有**「创建资源」入口**：点击后经 `host:actions` 的 `conversation.compose` 打开一个新会话，默认 Agent 不变，输入框里预填一段点名 `using-apm` 的草稿，**不发送**。用户补充需求后自己发送，由 bibit 内置的 `using-apm` skill 完成资源创建。该入口的降级规则见 §17「创建资源」入口变灰，或点击后提示不支持」一节。
 
-当前插件使用平台随目标 Bibit 一并发布的 `@bibit/feature-ui@0.4.0`，复用 `FeatureSettingsPage`、`Button`、状态组件和图标，并通过 Bibit 主题 token 适配明暗主题。该包必须与 React 及其余 SDK 一起锁定升级；不得直接导入 Bibit 私有 UI 源码。
+当前插件**不依赖** `@bibit/feature-ui`：市场页与设置页用 `.agent-hub*` 命名空间内的自持 CSS 和原生控件，只通过 Bibit 主题 token 适配明暗主题。若某个贡献点需要 `FeatureSettingsPage` / `Button` / 状态组件等平台 UI，必须与 React 及其余 SDK 一起锁定升级该包；不得直接导入 Bibit 私有 UI 源码。
 
 ## 2. 总体职责边界
 
@@ -1382,7 +1382,7 @@ CLI 模式检查 Registry 是否为 `version: 2`、`transport: stdio`、固定�
 - `powers.list.v1` / `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` DTO 已做闭集运行时校验；`settings.get.v1` / `settings.update.v1` 由 store 服务处理（dev 为内存 echo，settings 持久化不在本期范围）；
 - 安装/卸载依赖 Agent 自身 `apm` CLI；无 `apm` 时详情与写入降级为可重试 `unavailable`，页面显示固定“操作不可用”文案；
 - 自动化测试使用 Vitest 覆盖 DTO、dev transport、客户端、组件与页面行为（`src/api/contracts.test.ts` 等与源文件同目录）；
-- 设置页复用目标 Bibit 同版本的 `@bibit/feature-ui`；市场页使用 `.agent-hub*` 命名空间内的独立 CSS；
+- 当前插件不使用 `@bibit/feature-ui`；市场页与设置页都使用 `.agent-hub*` 命名空间内的独立 CSS；
 - 中英文由插件自带词典（`src/agentHubI18n.tsx`）提供，跟随宿主 `language`，目前只有 `en` 与 `zh-CN` 两种；新增语言需要同时扩展 `agentHubChinese`/`agentHubLocales` 与 `bibit.feature.json` 的 `contributions.locales`；
 - 宿主 `language` 传入组件自 `bi-bit` 0.1.4 起；更早的宿主不传该值时页面固定为英文；
 - 插件属于公司可信内部代码，不是不可信代码沙箱；

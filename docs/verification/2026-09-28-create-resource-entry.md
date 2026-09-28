@@ -139,14 +139,35 @@ git diff --check
 | 已发布的 bi-bit 都没有该动作 | 仓库 tag `bianbu/0.1.18`…`bianbu/0.1.22` 的 `hostActions.ts` 都只有 `conversation.create`；`archive.bianbu.xyz` 上可下载的最新版是 0.1.22 |
 | `using-apm` 确实是板端预置技能 | `/usr/share/bianbu-agent-runtime/default-profile/config.yaml` → `presets.skills: [using-apm]`；该技能 `SKILL.md` 的 `name: using-apm` |
 
-因此板端本次可以验证的两条降级路径（部署新 bundle 后再走一次）：
+因此板端本次可以验证的两条降级路径。它们还没执行，原因见文末「实机阻塞」；执行方式已脚本化：
 
-1. **能力缺失即禁用**：只装 bundle、不改 drop-in grant → 重启 GUI → Agent Hub 页头按钮 `disabled` 且旁边显示「当前宿主未提供发起会话的能力」，点击不发请求。
-2. **宿主不认识该动作**：把 `debian/agenthub-feature-grants.json` 装到 `/etc/bibit/feature-capability-grants.d/agenthub.json` 后重启 GUI → 按钮可点，点击后显示「当前宿主不支持发起会话」（对应 `UNSUPPORTED`）。
+```bash
+# 在 .worktrees/hub-compose 下（先 npm run build:plugin）
+docs/verification/deploy-create-resource-entry.sh <board-host> 1        # 只换 bundle，grant 仍是旧的
+docs/verification/deploy-create-resource-entry.sh <board-host> 2        # 再装上含 host:actions 的 grant
+docs/verification/deploy-create-resource-entry.sh <board-host> restore  # 还原备份
+```
+
+1. **能力缺失即禁用**（step 1）：只装 bundle、不改 drop-in grant → 重启 GUI → Agent Hub 页头按钮 `disabled` 且旁边显示「当前宿主未提供发起会话的能力」，点击不发请求。
+2. **宿主不认识该动作**（step 2）：把 `debian/agenthub-feature-grants.json` 装到 `/etc/bibit/feature-capability-grants.d/agenthub.json` 后重启 GUI → 按钮可点，点击后显示「当前宿主不支持发起会话」（对应 `UNSUPPORTED`）。
 
 这两条与单测覆盖的是同一套分支，但它们是**实机**证据，用于证明 capability 判定与动作结果映射在真实宿主上成立。
 
-## 实机阻塞（happy path 未验证）
+## 实机状态
+
+**已做的板端只读侦察**（未改动板上任何文件）：板上 `bi-bit 0.1.18`、`bibit-agenthub-plugin 0.3.3`（升级前的构建）、`/etc/bibit/feature-capability-grants.d/agenthub.json` 只批 `service:store`；`grep -c` 证明宿主实现里没有 `conversation.compose`。板上可用 `grim` / `wtype` / `ffmpeg`，GUI 以 `bianbu` 跑在 `:0`。
+
+**未执行的写入类验证**（step 1 / step 2）卡在两个环境前提上，都不是代码问题：
+
+1. 目标路径归 root，`bianbu` 无权写入（`test -w` 均为 false），且板上 `sudo` 需要交互式密码、`root` 不接受公钥、没有 `bibit-dev`；
+2. 开发签名与板上信任库不匹配：`/usr/lib/BiBit/resources/plugin-trusted-keys.json` 里 `agent-hub-development` 的公钥是 `LAZehiB6ST/pKRAF6wqrKpTNJdIAo/L9o3LUeTbiIqM=`，而工作区里能找到的 `agent-hub-development` 私钥（含主工作树那把）公钥为 `NpF8QLmbHyj1ofAT7ImYqBUqYhO+qz7Ym+wKWo6ijTI=`，本 worktree 新生成的是 `KSR2rh7REBzK0dag+P1Cb4iGFSsIsRVuQqDF6emFO90=`。也就是说，即使装上 bundle，宿主也会因验签失败而拒绝激活。
+
+要推进这一步，需要其中之一（都属于环境/权限决定，故未擅自执行）：
+
+- 授权我在板上执行 `sudo`（或在 `ssh K3` 用 root），或由你手工跑 `docs/verification/deploy-create-resource-entry.sh <host> 1|2`；
+- 提供与板上信任库匹配的那把 `agent-hub-development` 私钥（或允许把本 worktree 生成的开发公钥写进板上的 `plugin-trusted-keys.json`）。
+
+## happy path 未验证
 
 以下判据**尚未执行**，需要「由 bibit 主线 ≥ `0e3d7b4` 构建的 bi-bit」，否则不可能观察到：
 
@@ -155,7 +176,7 @@ git diff --check
 - 用户补充文字后能正常发送，`using-apm` 接住任务；
 - 首页先打半截字不发送，再触发入口 → 返回可重试的 `FAILED`、`message` 为「输入框仍有未发送内容」、原草稿**不被覆盖**。
 
-已排除的路径：板端 `bi-bit 0.1.18`、仓库 tag `bianbu/0.1.21`/`0.1.22`、`archive.bianbu.xyz` 上可下载的 0.1.22（`apt-get download` 后 `bi-bit_0.1.21` 已 404，0.1.22 存在但同样不含该动作）。板端 `apt-cache policy bi-bit` 的候选是 0.1.21，也不含该动作。
+已排除的路径：板端 `bi-bit 0.1.18`、仓库 tag `bianbu/0.1.21`/`0.1.22`、`archive.bianbu.xyz` 上可下载的 0.1.22（`apt-get download bi-bit=0.1.21` 已 404，0.1.22 存在但同样不含该动作）。板端 `apt-cache policy bi-bit` 的候选是 0.1.21，也不含该动作。
 
 拿到该构建后按上表逐条执行；在此之前不得把「插件装上了／按钮能点了」当作验收通过。
 
