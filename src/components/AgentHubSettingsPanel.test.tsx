@@ -1,32 +1,16 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import {
-  FeatureHostApiProvider,
-  type FeatureHostApiV1,
-  type FeatureHostCapabilityApiV1,
-  type FeatureServiceApiV1,
-  type FeatureServiceRequestV1,
-  type FeatureSettingsProps,
-} from '@bibit/feature-sdk'
-import type { FeatureHostCapability } from '@bibit/feature-contracts'
-import { AgentHubSettingsPage } from './AgentHubSettingsPage'
-import { withAgentHubI18n } from './agentHubI18n'
+import type { FeatureServiceApiV1, FeatureServiceRequestV1 } from '@bibit/feature-sdk'
+import { AgentHubSettingsPanel } from './AgentHubSettingsPanel'
+import { AgentHubI18nProvider } from '../agentHubI18n'
 
 afterEach(cleanup)
 
 type StoreRequest = FeatureServiceRequestV1<'store'>
 
-const settingsProps: FeatureSettingsProps = {
-  featureId: 'agent-hub',
-  contributionId: 'settings',
-  subpath: '',
-  search: {},
-  navigation: { push: () => {}, replace: () => {}, back: () => {} },
-}
-
-function makeStoreHost(respond?: (input: StoreRequest) => unknown): {
-  hostApi: FeatureHostApiV1
+function makeService(respond?: (input: StoreRequest) => unknown): {
+  service: FeatureServiceApiV1<'store'>
   calls: StoreRequest[]
 } {
   const calls: StoreRequest[] = []
@@ -37,71 +21,62 @@ function makeStoreHost(respond?: (input: StoreRequest) => unknown): {
       return { showExperimental: false, refreshMinutes: 15, hasApiKey: false } as TResult
     },
   }
-  function getCapability<K extends FeatureHostCapability>(
-    capability: K
-  ): FeatureHostCapabilityApiV1<K> | undefined {
-    if ((capability as FeatureHostCapability) === 'service:store') {
-      return service as unknown as FeatureHostCapabilityApiV1<K>
-    }
-    return undefined
-  }
-  return {
-    hostApi: {
-      sdkApiVersion: 1,
-      featureId: 'agent-hub',
-      grantedCapabilities: ['service:store'],
-      getCapability,
-    },
-    calls,
-  }
+  return { service, calls }
 }
 
-// Same wrapping the production module applies to the settings contribution.
-const LocalizedSettingsPage = withAgentHubI18n(AgentHubSettingsPage)
-
-function renderSettings(hostApi: FeatureHostApiV1, language?: string) {
+function renderPanel(service: FeatureServiceApiV1<'store'> | undefined, language?: string) {
   return render(
-    <FeatureHostApiProvider value={hostApi}>
-      <LocalizedSettingsPage {...settingsProps} language={language} />
-    </FeatureHostApiProvider>
+    <AgentHubI18nProvider language={language}>
+      <AgentHubSettingsPanel service={service} />
+    </AgentHubI18nProvider>
   )
 }
 
-function rerenderSettings(
+function rerenderPanel(
   view: ReturnType<typeof render>,
-  hostApi: FeatureHostApiV1,
+  service: FeatureServiceApiV1<'store'> | undefined,
   language: string
 ) {
   view.rerender(
-    <FeatureHostApiProvider value={hostApi}>
-      <LocalizedSettingsPage {...settingsProps} language={language} />
-    </FeatureHostApiProvider>
+    <AgentHubI18nProvider language={language}>
+      <AgentHubSettingsPanel service={service} />
+    </AgentHubI18nProvider>
   )
 }
 
-describe('AgentHubSettingsPage', () => {
-  it('renders the settings fields and the synchronized status in English', async () => {
-    const { hostApi, calls } = makeStoreHost()
-    renderSettings(hostApi, 'en')
+describe('AgentHubSettingsPanel', () => {
+  it('renders the credential field and the synchronized status in English', async () => {
+    const { service, calls } = makeService()
+    renderPanel(service, 'en')
 
-    expect(screen.getByRole('heading', { name: 'Agent Hub settings' })).toBeTruthy()
-    expect(screen.getByText('Experimental Agents')).toBeTruthy()
-    expect(screen.getByText('Catalog refresh')).toBeTruthy()
+    expect(screen.getByText('APC API Key')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Save settings' })).toBeTruthy()
     expect(await screen.findByText('Settings synchronized.')).toBeTruthy()
     expect(calls[0].operationId).toBe('settings.get.v1')
   })
 
-  it('switches every settings label and status with the host language prop', async () => {
-    const { hostApi } = makeStoreHost()
-    const view = renderSettings(hostApi, 'en')
+  it('carries no controls for the settings the page no longer exposes', async () => {
+    // `showExperimental` and `refreshMinutes` are still part of the closed
+    // settings.update.v1 DTO but nothing consumes them, so the panel must not
+    // grow controls that would quietly do nothing.
+    const { service } = makeService()
+    renderPanel(service, 'en')
     await screen.findByText('Settings synchronized.')
 
-    rerenderSettings(view, hostApi, 'zh-CN')
+    expect(screen.queryByText('Experimental Agents')).toBeNull()
+    expect(screen.queryByText('Catalog refresh')).toBeNull()
+    expect(screen.queryByRole('checkbox')).toBeNull()
+    expect(screen.queryByRole('spinbutton')).toBeNull()
+  })
 
-    expect(screen.getByRole('heading', { name: 'Agent Hub 设置' })).toBeTruthy()
-    expect(screen.getByText('实验性 Agent')).toBeTruthy()
-    expect(screen.getByText('目录刷新')).toBeTruthy()
+  it('switches every label and status with the host language prop', async () => {
+    const { service } = makeService()
+    const view = renderPanel(service, 'en')
+    await screen.findByText('Settings synchronized.')
+
+    rerenderPanel(view, service, 'zh-CN')
+
+    expect(screen.getByText('APC API Key')).toBeTruthy()
     expect(screen.getByRole('button', { name: '保存设置' })).toBeTruthy()
     expect(screen.getByText('设置已同步。')).toBeTruthy()
     expect(screen.queryByText('Settings synchronized.')).toBeNull()
@@ -109,14 +84,14 @@ describe('AgentHubSettingsPage', () => {
 
   it('translates the save status without resubmitting when the language changes', async () => {
     const user = userEvent.setup()
-    const { hostApi, calls } = makeStoreHost()
-    const view = renderSettings(hostApi, 'en')
+    const { service, calls } = makeService()
+    const view = renderPanel(service, 'en')
     await screen.findByText('Settings synchronized.')
 
     await user.click(screen.getByRole('button', { name: 'Save settings' }))
     expect(await screen.findByText('Settings saved.')).toBeTruthy()
 
-    rerenderSettings(view, hostApi, 'zh-CN')
+    rerenderPanel(view, service, 'zh-CN')
 
     expect(screen.getByText('设置已保存。')).toBeTruthy()
     expect(calls.filter((call) => call.operationId === 'settings.update.v1')).toHaveLength(1)
@@ -124,11 +99,11 @@ describe('AgentHubSettingsPage', () => {
 
   it('reports a localized save failure', async () => {
     const user = userEvent.setup()
-    const { hostApi } = makeStoreHost((input) => {
+    const { service } = makeService((input) => {
       if (input.operationId === 'settings.update.v1') throw new Error('write rejected')
-      return { showExperimental: true, refreshMinutes: 30, hasApiKey: false }
+      return { showExperimental: false, refreshMinutes: 15, hasApiKey: false }
     })
-    renderSettings(hostApi, 'zh-CN')
+    renderPanel(service, 'zh-CN')
 
     await screen.findByText('设置已同步。')
     await user.click(screen.getByRole('button', { name: '保存设置' }))
@@ -137,12 +112,12 @@ describe('AgentHubSettingsPage', () => {
   })
 
   it('reports whether an APC API key is configured without ever showing it', async () => {
-    const { hostApi } = makeStoreHost(() => ({
+    const { service } = makeService(() => ({
       showExperimental: false,
       refreshMinutes: 15,
       hasApiKey: true,
     }))
-    renderSettings(hostApi, 'en')
+    renderPanel(service, 'en')
 
     expect((await screen.findByTestId('api-key-state')).textContent).toBe('Configured')
     const field = screen.getByLabelText('APC API Key') as HTMLInputElement
@@ -152,15 +127,16 @@ describe('AgentHubSettingsPage', () => {
 
   it('sends apiKey only after a user edit, and clears it through the save', async () => {
     const user = userEvent.setup()
-    const { hostApi, calls } = makeStoreHost((input) =>
+    const { service, calls } = makeService((input) =>
       input.operationId === 'settings.update.v1'
         ? { showExperimental: false, refreshMinutes: 15, hasApiKey: true }
         : { showExperimental: false, refreshMinutes: 15, hasApiKey: false }
     )
-    renderSettings(hostApi, 'en')
+    renderPanel(service, 'en')
     await screen.findByText('Settings synchronized.')
 
-    // An untouched field must not appear in the update at all.
+    // An untouched field must not appear in the update at all, and the two
+    // unconsumed settings still round-trip so the closed DTO stays satisfied.
     await user.click(screen.getByRole('button', { name: 'Save settings' }))
     await screen.findByText('Settings saved.')
     const firstUpdate = calls.find((call) => call.operationId === 'settings.update.v1')
@@ -183,8 +159,8 @@ describe('AgentHubSettingsPage', () => {
 
   it('keeps the typed key out of the rendered document', async () => {
     const user = userEvent.setup()
-    const { hostApi } = makeStoreHost()
-    renderSettings(hostApi, 'en')
+    const { service } = makeService()
+    renderPanel(service, 'en')
     await screen.findByText('Settings synchronized.')
 
     const field = screen.getByLabelText('APC API Key') as HTMLInputElement
@@ -201,13 +177,13 @@ describe('AgentHubSettingsPage', () => {
   it('prevents a double submit while a save is in flight', async () => {
     const user = userEvent.setup()
     let resolveSave!: (value: unknown) => void
-    const { hostApi, calls } = makeStoreHost((input) => {
+    const { service, calls } = makeService((input) => {
       if (input.operationId === 'settings.update.v1') {
         return new Promise((resolve) => (resolveSave = resolve))
       }
       return { showExperimental: false, refreshMinutes: 15, hasApiKey: false }
     })
-    renderSettings(hostApi, 'en')
+    renderPanel(service, 'en')
     await screen.findByText('Settings synchronized.')
 
     const saveButton = screen.getByRole('button', { name: 'Save settings' }) as HTMLButtonElement
@@ -221,12 +197,36 @@ describe('AgentHubSettingsPage', () => {
   })
 
   it('reports a localized read failure', async () => {
-    const { hostApi } = makeStoreHost(() => {
+    const { service } = makeService(() => {
       throw new Error('read rejected')
     })
-    renderSettings(hostApi, 'zh-CN')
+    renderPanel(service, 'zh-CN')
 
     expect(await screen.findByText('无法加载 Agent Hub 设置。')).toBeTruthy()
     await waitFor(() => expect(screen.queryByText('设置已同步。')).toBeNull())
+  })
+
+  it('reports a missing Store capability instead of an empty form', () => {
+    renderPanel(undefined, 'en')
+
+    expect(screen.getByText('Store capability is unavailable.')).toBeTruthy()
+    expect((screen.getByLabelText('APC API Key') as HTMLInputElement).disabled).toBe(true)
+  })
+
+  it('aborts the in-flight settings read when the tab is left', async () => {
+    let captured: StoreRequest | undefined
+    const { service } = makeService((input) => {
+      captured = input
+      return new Promise(() => {})
+    })
+    const view = renderPanel(service, 'en')
+
+    await waitFor(() => expect(captured?.operationId).toBe('settings.get.v1'))
+    expect(captured?.signal?.aborted).toBe(false)
+
+    // Leaving the tab unmounts the panel; the request must not outlive it.
+    view.unmount()
+
+    expect(captured?.signal?.aborted).toBe(true)
   })
 })

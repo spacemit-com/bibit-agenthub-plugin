@@ -33,7 +33,7 @@ const (
 	// maxIDLength bounds a JSON-RPC string id; the host uses 1..128.
 	maxIDLength = 128
 
-	providerVersion = "0.3.4"
+	providerVersion = "0.3.6"
 )
 
 // declaredOperations is the closed set reported to the host at initialize and

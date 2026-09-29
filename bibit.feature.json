@@ -2,7 +2,7 @@
   "manifestSchemaVersion": 1,
   "sdkApiVersion": 1,
   "id": "agent-hub",
-  "version": "0.3.4",
+  "version": "0.3.6",
   "owner": "agent-hub-team",
   "display": {
     "titleKey": "agent-hub:title",
@@ -17,19 +17,7 @@
     "pages": [
       { "id": "home", "path": "", "surfaces": ["main"], "navigation": { "group": "library", "order": 100 } }
     ],
-    "settings": [
-      {
-        "id": "settings",
-        "path": "",
-        "surfaces": ["main"],
-        "navigation": {
-          "group": "integrations",
-          "order": 100,
-          "titleKey": "agent-hub:settings",
-          "fallbackTitle": "Agent Hub settings"
-        }
-      }
-    ],
+    "settings": [],
     "conversation": [],
     "locales": ["en", "zh-CN"]
   }

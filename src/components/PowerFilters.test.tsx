@@ -8,13 +8,13 @@ afterEach(cleanup)
 
 function renderFilters(overrides: Partial<PowerFiltersProps> = {}) {
   const props: PowerFiltersProps = {
-    scope: 'installed',
+    tab: 'installed',
     agents: ['bibit', 'atlas'],
     agent: 'bibit',
     type: 'skill',
     availableTags: ['alpha', 'beta', 'gamma'],
     selectedTags: [],
-    onScopeChange: vi.fn(),
+    onTabChange: vi.fn(),
     onAgentChange: vi.fn(),
     onTypeChange: vi.fn(),
     onTagsChange: vi.fn(),
@@ -27,13 +27,13 @@ function renderFilters(overrides: Partial<PowerFiltersProps> = {}) {
 describe('PowerFilters', () => {
   it('switches the scope and filter labels with the host language prop', () => {
     const props: PowerFiltersProps = {
-      scope: 'installed',
+      tab: 'installed',
       agents: ['bibit', 'atlas'],
       agent: 'bibit',
       type: 'skill',
       availableTags: ['alpha', 'beta'],
       selectedTags: [],
-      onScopeChange: vi.fn(),
+      onTabChange: vi.fn(),
       onAgentChange: vi.fn(),
       onTypeChange: vi.fn(),
       onTagsChange: vi.fn(),
@@ -46,14 +46,38 @@ describe('PowerFilters', () => {
     const view = render(filters('en'))
     expect(screen.getByRole('button', { name: 'My Powers' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Power market' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy()
     expect(screen.getByText('Type')).toBeTruthy()
     expect(screen.getByText('Tags')).toBeTruthy()
 
     view.rerender(filters('zh-CN'))
     expect(screen.getByRole('button', { name: '我的 Power' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Power 市场' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '设置' })).toBeTruthy()
     expect(screen.getByText('类型')).toBeTruthy()
     expect(screen.getByText('标签')).toBeTruthy()
+  })
+
+  it('selects the Settings tab and drops the catalog filters with it', async () => {
+    const user = userEvent.setup()
+    const props = renderFilters()
+
+    // The two catalog scopes and Settings are one mutually exclusive tab row.
+    expect(screen.getByRole('button', { name: 'Settings' }).getAttribute('aria-pressed')).toBe('false')
+    await user.click(screen.getByRole('button', { name: 'Settings' }))
+
+    expect(props.onTabChange).toHaveBeenCalledWith('settings')
+  })
+
+  it('hides the Type and Tag filters on the Settings tab', () => {
+    renderFilters({ tab: 'settings' })
+
+    expect(screen.queryByText('Type')).toBeNull()
+    expect(screen.queryByText('Tags')).toBeNull()
+    expect(screen.queryByRole('group', { name: 'Type' })).toBeNull()
+    // The tab row itself stays, so the user can come back to the catalog.
+    expect(screen.getByRole('button', { name: 'My Powers' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Settings' }).getAttribute('aria-pressed')).toBe('true')
   })
 
   it('opens the Agent menu from My Powers and marks the current Agent', async () => {
@@ -86,18 +110,18 @@ describe('PowerFilters', () => {
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'atlas' }))
 
     expect(props.onAgentChange).toHaveBeenCalledWith('atlas')
-    expect(props.onScopeChange).not.toHaveBeenCalled()
+    expect(props.onTabChange).not.toHaveBeenCalled()
     expect(screen.queryByRole('menu', { name: 'Agent' })).toBeNull()
   })
 
   it('switches from market to the selected installed Agent from the menu', async () => {
     const user = userEvent.setup()
-    const props = renderFilters({ scope: 'market' })
+    const props = renderFilters({ tab: 'market' })
 
     await user.hover(screen.getByRole('button', { name: 'My Powers' }))
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'atlas' }))
 
-    expect(props.onScopeChange).toHaveBeenCalledWith('installed')
+    expect(props.onTabChange).toHaveBeenCalledWith('installed')
     expect(props.onAgentChange).toHaveBeenCalledWith('atlas')
   })
 
@@ -167,13 +191,13 @@ describe('PowerFilters', () => {
     const user = userEvent.setup()
     const onTagsChange = vi.fn()
     const base: PowerFiltersProps = {
-      scope: 'installed',
+      tab: 'installed',
       agents: ['bibit', 'atlas'],
       agent: 'bibit',
       type: 'skill',
       availableTags: ['alpha', 'beta', 'gamma'],
       selectedTags: [],
-      onScopeChange: vi.fn(),
+      onTabChange: vi.fn(),
       onAgentChange: vi.fn(),
       onTypeChange: vi.fn(),
       onTagsChange,

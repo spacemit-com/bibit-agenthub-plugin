@@ -154,14 +154,15 @@ describe('agentHubLocales', () => {
     const english = Object.keys(agentHubLocales.en).sort()
     const chinese = Object.keys(agentHubLocales['zh-CN']).sort()
     expect(chinese).toEqual(english)
-    expect(english).toEqual(['description', 'settings', 'title'])
+    // The plugin ships no settings contribution any more, so the namespace only
+    // carries the page's own menu copy.
+    expect(english).toEqual(['description', 'title'])
   })
 
-  it('keeps the manifest display and settings navigation keys resolvable', () => {
+  it('keeps the manifest display keys resolvable', () => {
     for (const locale of Object.values(agentHubLocales)) {
       expect(locale.title).toBeTruthy()
       expect(locale.description).toBeTruthy()
-      expect(locale.settings).toBeTruthy()
     }
   })
 })

@@ -1,3 +1,20 @@
+bibit-agenthub-plugin (0.3.6) resolute-porting; urgency=medium
+
+  * Return to the Hub list after deleting a hand-installed resource. The dialog
+    described a Power that no longer exists, so a successful delete now closes it
+    and reloads the list; a failed delete still keeps the dialog open with the
+    reason, and the page returns to the first page so a removed last item cannot
+    leave an empty page behind.
+  * Move the APC credential into the Agent Hub page. The plugin no longer
+    declares a settings contribution, so Bibit's Settings submenu has no Agent
+    Hub entry; the page's first-level tabs are now My Powers / Power market /
+    Settings, and the Settings tab holds the APC API Key field, its configured
+    state and the clear action. settings.get.v1 and settings.update.v1 are
+    unchanged: the panel still round-trips showExperimental/refreshMinutes, which
+    have no consumer.
+
+ -- liangjunzhao <junzhao.liang@spacemit.com>  Mon, 29 Sep 2026 11:00:00 +0800
+
 bibit-agenthub-plugin (0.3.4) resolute-porting; urgency=medium
 
   * Show hand-installed resources next to the APM manifest. "My Powers" now

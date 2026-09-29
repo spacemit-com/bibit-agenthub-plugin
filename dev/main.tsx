@@ -13,7 +13,9 @@ import { featureModule } from '../src/feature'
 // production Go provider: powers.list.v1, powers.inspect.v1, powers.install.v1,
 // powers.uninstall.v1, powers.custom.list.v1, powers.upload.v1,
 // powers.delete.v1 and settings.get.v1 / settings.update.v1, with the read 30 s
-// / write 120 s deadlines. The custom operations scan the real home directory of
+// / write 120 s deadlines. The settings operations are reached from the page's own
+// Settings tab: the plugin declares no settings contribution, so the Dev Host
+// lists a page preview only. The custom operations scan the real home directory of
 // the machine running Vite (`dev/custom.ts` mirrors the provider's rules), which
 // is what makes hand-installed resources visible in Local Preview.
 // Agent choices and validation share INSTALLED_AGENTS (including hermes-agent)

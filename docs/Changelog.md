@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-09-29 — 删除后回到 Hub 列表；APC 凭据并入页面「设置」标签页（0.3.6）
+
+分类：问题修复 + 需求改进
+
+用户反馈与需求（原文）：
+
+> 能正常显示自定义资源并执行上传和删除。但删除后仍停留在已被删除资源的弹窗，应该回到 Hub 页面。
+> 另外删除 Agenthub 设置页面。APC API KEY 的配置改到 Agenthub 页面和我的 Power、Power 市场一级，添加设置/Setting 标签页。
+
+已确认的边界：
+
+- 「设置」标签页**只放 APC API Key**；`showExperimental` / `refreshMinutes` 不再有任何 UI（它们已确认无消费方），DTO 与 Provider 保持原样，页面读取后原样回填。
+- 删除成功后**只关闭弹窗、不显示提示**；列表刷新与卡片消失本身就是反馈。
+- 删除**失败**时弹窗保持打开并显示原因。
+
+改动：
+
+- 前端：`src/AgentHubPage.tsx`（`runCustomAction` 新增 `closeOnSuccess`；`tab` 状态与 `changeTab`；载入 effect 在设置标签下提前返回；`closeDetails` 改为 `useCallback`）、`src/components/PowerFilters.tsx`（导出 `PowerTab = PowerScope | 'settings'`，props 由 `scope/onScopeChange` 改为 `tab/onTabChange`，设置标签下不渲染 Type/Tags 面板）、`src/components/AgentHubSettingsPanel.tsx`（新，由 `AgentHubSettingsPage.tsx` 迁移并只保留 APC API Key）、`src/feature.tsx` 与 `bibit.feature.json`（移除 settings contribution）、`src/agentHubI18n.tsx`（新增 `Settings`；改写 unauthorized 文案；删除只服务于已删字段的 6 个键；`agentHubLocales` 去掉 `settings`）、`src/agentHub.css`（`.agent-hub-settings` → `.agent-hub-settings-panel`，改为页内卡片面板）。
+- 删除：`src/AgentHubSettingsPage.tsx`、`src/AgentHubSettingsPage.test.tsx`。
+- 测试：新增 `src/components/AgentHubSettingsPanel.test.tsx`（12 例）；`AgentHubPage.test.tsx` 新增设置标签 2 例与删除失败 1 例、改写删除成功用例（弹窗关闭 + 无提示）与 unauthorized 文案；`PowerFilters.test.tsx` 新增设置标签 2 例；`feature.test.ts` / `agentHubI18n.test.tsx` / `agentHubLayout.test.ts` 同步。
+- 版本：`package.json`、`package-lock.json`、`bibit.feature.json`、`providerVersion` 统一提升到 `0.3.6`。
+
+门禁：`npm test` 456/456（25 个文件）、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin`、`make -C provider test vet build`、`--self-test` exit 0。反向验证 8 项，其中 2 项首次未生效（CSS 变异打到了 `.power-filters__panel`；`savingRef` 在同 tick 内不可从 DOM 触达，实际生效的是按钮的 `disabled={saving …}` 绑定），已分别纠正为打中目标规则与绑定后确认失败。详见 `docs/verification/2026-09-29-settings-tab-and-delete-return.md`。
+
 ## 2026-09-28 — 自定义（手动安装）资源：展示、APC 上传与本地删除（0.3.4）
 
 分类：需求改进

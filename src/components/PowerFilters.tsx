@@ -3,27 +3,34 @@ import { ScrollThumb } from '../ScrollThumb'
 import { useAgentHubI18n } from '../agentHubI18n'
 import { POWER_TYPES, type PowerScope, type PowerType } from '../api/contracts'
 
+/**
+ * The page's first-level tab. `PowerScope` stays the wire-level data scope, so
+ * the Settings tab is a UI sibling of the two catalog scopes and never reaches
+ * a `powers.list.v1` request.
+ */
+export type PowerTab = PowerScope | 'settings'
+
 export interface PowerFiltersProps {
-  scope: PowerScope
+  tab: PowerTab
   agents: readonly string[]
   agent: string
   type: PowerType
   availableTags: readonly string[]
   selectedTags: readonly string[]
-  onScopeChange(scope: PowerScope): void
+  onTabChange(tab: PowerTab): void
   onAgentChange(agent: string): void
   onTypeChange(type: PowerType): void
   onTagsChange(tags: string[]): void
 }
 
 export function PowerFilters({
-  scope,
+  tab,
   agents,
   agent,
   type,
   availableTags,
   selectedTags,
-  onScopeChange,
+  onTabChange,
   onAgentChange,
   onTypeChange,
   onTagsChange,
@@ -95,11 +102,11 @@ export function PowerFilters({
             ref={installedTriggerRef}
             type="button"
             className="power-filters__scope"
-            aria-pressed={scope === 'installed'}
+            aria-pressed={tab === 'installed'}
             aria-haspopup="menu"
             aria-expanded={agentMenuOpen}
             onClick={() => {
-              if (scope !== 'installed') onScopeChange('installed')
+              if (tab !== 'installed') onTabChange('installed')
               openAgentMenu()
             }}
             onKeyDown={(event) => {
@@ -121,7 +128,7 @@ export function PowerFilters({
                   role="menuitemradio"
                   aria-checked={value === agent}
                   onClick={() => {
-                    if (scope !== 'installed') onScopeChange('installed')
+                    if (tab !== 'installed') onTabChange('installed')
                     if (value !== agent) onAgentChange(value)
                     closeAgentMenu(true)
                   }}
@@ -136,12 +143,23 @@ export function PowerFilters({
         <button
           type="button"
           className="power-filters__scope"
-          aria-pressed={scope === 'market'}
-          onClick={() => scope !== 'market' && onScopeChange('market')}
+          aria-pressed={tab === 'market'}
+          onClick={() => tab !== 'market' && onTabChange('market')}
         >
           {t('Power market')}
         </button>
+        <button
+          type="button"
+          className="power-filters__scope"
+          aria-pressed={tab === 'settings'}
+          onClick={() => tab !== 'settings' && onTabChange('settings')}
+        >
+          {t('Settings')}
+        </button>
       </div>
+      {/* Type and tag filters describe the catalog only; the Settings tab has
+          neither, so its panel would be a row of controls that do nothing. */}
+      {tab !== 'settings' && (
       <div className="power-filters__panel">
         <div className="power-filters__filter-row">
           <span className="power-filters__label">{t('Type')}</span>
@@ -187,6 +205,7 @@ export function PowerFilters({
           </div>
         </div>
       </div>
+      )}
     </div>
   )
 }

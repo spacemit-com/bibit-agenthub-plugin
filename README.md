@@ -2,10 +2,10 @@
 
 Bibit Agent Hub 的独立前端插件 + 独立 Go CLI Provider，当前包含：
 
-- Bibit 主侧边栏中的 Agent Hub 页面（installed / market 两个 scope）；
+- Bibit 主侧边栏中的 Agent Hub 页面（一级标签：我的 Power / Power 市场 / 设置）；
 - Power 详情弹窗（描述、tags、Agent 归属、版本选择）与安装/卸载闭环；
 - 「我的 Power」里除 APM 清单外，还展示手动安装到各 Agent 目录下的自定义资源（卡片带 `Custom` 标记），并在弹窗内提供 APC 上传与本地删除；
-- Agent Hub 设置子页面（含 APC API Key）；
+- 页面「设置」标签页（APC API Key 的配置状态、写入与清除；不再有独立的设置子页面）；
 - `service:store` Host API 接入（`powers.list.v1` / `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` / `powers.custom.list.v1` / `powers.upload.v1` / `powers.delete.v1` + `settings.get.v1`/`settings.update.v1`）；
 - 独立 Feature Dev Host 与共享的前端数据层（解析、过滤、聚合、分页、facets、snapshot 判断、共享安装状态）；
 - 纯 Go 标准库 CLI Provider（仅 Provider Protocol v1，`bibit-agenthub`）。
@@ -38,7 +38,7 @@ npm run keygen
 npm run build:plugin
 ```
 
-当前产物：`artifacts/agent-hub-0.3.4.bibit-plugin.tgz`。`.bibit-keys/` 中的私钥禁止提交，开发签名不能代替目标 Release 的信任链。开发预览地址追加 `?lang=zh-CN` 可查看中文界面；页面语言跟随 Bibit 系统语言，插件本身不提供语言设置。Local Preview 的 Store 中间件会扫描本机 home（`dev/custom.ts`），因此自定义资源在开发环境也可见。
+当前产物：`artifacts/agent-hub-0.3.6.bibit-plugin.tgz`。`.bibit-keys/` 中的私钥禁止提交，开发签名不能代替目标 Release 的信任链。开发预览地址追加 `?lang=zh-CN` 可查看中文界面；页面语言跟随 Bibit 系统语言，插件本身不提供语言设置。Local Preview 的 Store 中间件会扫描本机 home（`dev/custom.ts`），因此自定义资源在开发环境也可见。
 
 ## CLI Provider 构建与自检
 

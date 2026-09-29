@@ -6,7 +6,7 @@
 
 | 项目 | 当前版本 |
 | --- | --- |
-| Agent Hub 插件 | `0.3.4` |
+| Agent Hub 插件 | `0.3.6` |
 | `manifestSchemaVersion` | `1` |
 | `sdkApiVersion` | `1` |
 | `@bibit/feature-contracts` | `0.3.0` |
@@ -15,16 +15,11 @@
 | `@bibit/feature-dev-host` | `0.3.0` |
 | React / React DOM | `19.0.0` |
 | 已验证目标 Bibit | `b5387833927e052fe3728bc0631cef2df0138092`（`bianbu/0.1.8`） |
-| 宿主语言支持 | 插件中英文文案跟随宿主 `language`；需要 `bi-bit` 0.1.4 及以上的宿主（设置菜单 `titleKey` 同样自 0.1.4 起生效） |
+| 宿主语言支持 | 插件中英文文案跟随宿主 `language`；需要 `bi-bit` 0.1.4 及以上的宿主。插件已不声明 settings contribution，因此不再有设置菜单 `titleKey` |
 
-当前插件提供两个贡献点：
+当前插件只提供一个贡献点：`pages.home`，显示在 Bibit 主导航的 Agent Hub 页面。它不包含语言设置项：页面中英文文案跟随 Bibit 系统语言（宿主传入 `language`），菜单、导航与描述键通过 `pluginLocales` 交给宿主解析。详细规则见 7.1。
 
-- `pages.home`：显示在 Bibit 主导航的 Agent Hub 页面；
-- `settings.settings`：显示在 Bibit 设置子菜单的 Agent Hub 设置页面。
-
-两个贡献点都不包含语言设置项：页面中英文文案跟随 Bibit 系统语言（宿主传入 `language`），菜单、导航与描述键通过 `pluginLocales` 交给宿主解析。详细规则见 7.1。
-
-当前 Demo 已实现 APC Power 展示与安装原型：通过 `powers.list.v1` 提供“我的 Power / Power 市场”两种数据范围、Agent / 类型 / tags 分层筛选、系列级卡片、版本选择与每页 20 张卡片的分页，并配套 Local Preview；通过 `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` 提供详情查看与单版本安装/卸载闭环。`powers.custom.list.v1` 在“我的 Power”里额外并入手动安装到各 Agent 目录下的自定义资源（卡片带 `Custom` 标记，版本位置换成静态标签，不满足最低格式的目录以 warning 提示），`powers.upload.v1` / `powers.delete.v1` 提供卡片弹窗内的 APC 上传与本地删除；上传所需的 APC API Key 在设置页维护。设置页字段为实验 Agent 开关、刷新间隔与 APC API Key。Power 下载、提交审核、搜索等能力尚未实现，这些属于 Agent Hub 模块团队后续定制范围。
+当前 Demo 已实现 APC Power 展示与安装原型：通过 `powers.list.v1` 提供“我的 Power / Power 市场”两种数据范围、Agent / 类型 / tags 分层筛选、系列级卡片、版本选择与每页 20 张卡片的分页，并配套 Local Preview；通过 `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` 提供详情查看与单版本安装/卸载闭环。`powers.custom.list.v1` 在“我的 Power”里额外并入手动安装到各 Agent 目录下的自定义资源（卡片带 `Custom` 标记，版本位置换成静态标签，不满足最低格式的目录以 warning 提示），`powers.upload.v1` / `powers.delete.v1` 提供卡片弹窗内的 APC 上传与本地删除；上传所需的 APC API Key 在页面内的「设置」标签页维护。页面一级标签为「我的 Power / Power 市场 / 设置」，设置标签只显示 APC API Key 的配置状态、输入框与「清除已保存的 Key」。删除成功后弹窗关闭、回到列表；删除失败时弹窗保留并显示原因。Power 下载、提交审核、搜索等能力尚未实现，这些属于 Agent Hub 模块团队后续定制范围。
 
 当前插件使用平台随目标 Bibit 一并发布的 `@bibit/feature-ui@0.3.0`，复用 `FeatureSettingsPage`、`Button`、状态组件和图标，并通过 Bibit 主题 token 适配明暗主题。该包必须与 React 及其余 SDK 一起锁定升级；不得直接导入 Bibit 私有 UI 源码。
 
@@ -85,10 +80,12 @@ bibit-agenthub-plugin/
 │   ├── feature.tsx
 │   ├── plugin.tsx
 │   ├── AgentHubPage.tsx
-│   ├── AgentHubSettingsPage.tsx
 │   ├── agentHubI18n.tsx   # 中英文词典、Provider、语言 context、菜单 locales
 │   ├── displayFields.ts   # V2 展示字段的语言回退（name_zh/name_en/description_zh）
 │   ├── agentHub.css
+│   ├── components/
+│   │   ├── PowerCard.tsx / PowerFilters.tsx / PowerDetailsDialog.tsx / PowerPagination.tsx
+│   │   └── AgentHubSettingsPanel.tsx   # 页面「设置」标签页内容（只放 APC API Key）
 │   ├── api/
 │   │   ├── contracts.ts          # 协议边界 DTO + wire 信封（含 custom/settings）
 │   │   ├── apm.ts                # installed 解析/聚合（含 custom 合并）
@@ -168,12 +165,12 @@ registerFeaturePlugin({
 | 文件或内容 | 定制范围 | 必须遵守的边界 |
 | --- | --- | --- |
 | `src/AgentHubPage.tsx` | 列表、搜索、筛选、详情入口、上传/删除入口、空态、错误态 | 只通过 Host capability 获取数据；卸载时取消请求 |
-| `src/AgentHubSettingsPage.tsx` | Agent Hub 自身设置字段、校验、保存状态 | 只渲染设置内容（根节点必须是 `section`/`div`，不能是 `main`），不复制 Bibit Settings Shell，不回显已保存的凭据 |
-| `src/agentHub.css` | 页面和设置内容样式 | 不覆盖 Bibit 全局选择器，不依赖宿主私有 class |
+| `src/components/AgentHubSettingsPanel.tsx` | 「设置」标签页内容：APC 凭据字段、校验、保存状态 | 只渲染页内 `section`（不能是 `main`，不能自带滚动容器），不回显已保存的凭据 |
+| `src/agentHub.css` | 页面与页内面板样式 | 不覆盖 Bibit 全局选择器，不依赖宿主私有 class |
 | 业务 DTO 和 operation ID | 请求参数、返回数据、错误语义、版本 | 破坏性变更发布新 operation 版本 |
 | `dev/main.tsx` | Mock 数据、Mock operation、真实开发服务地址注入 | Mock 必须与生产 DTO 一致；不得导入生产插件包 |
 | Manifest `display` | 标题、说明、合法 icon | `iconKey` 只能使用平台 Schema 已允许的 token |
-| Manifest `navigation` | 合法 group 和排序 | 主页面和设置页分别使用各自允许的 group |
+| Manifest `navigation` | 合法 group 和排序 | 主页面用页面允许的 group；插件当前不声明 settings contribution，故不再使用设置页的 group |
 | Manifest `owner`、`version` | 团队标识和发布版本 | `version` 必须与 `package.json.version` 一致 |
 | 文档和发布说明 | operation、兼容性、验收证据、已知限制 | 固定到 commit 和 bundle SHA-256，不只给分支链接 |
 
@@ -187,8 +184,6 @@ src/
 ├── pages/
 │   ├── AgentCatalogPage.tsx
 │   └── AgentDetailPage.tsx
-├── settings/
-│   └── AgentHubSettingsPage.tsx
 ├── components/
 ├── feature.tsx
 ├── plugin.tsx
@@ -205,10 +200,10 @@ src/
 | --- | --- | --- |
 | 改页面布局、列表、详情或交互 | `src/AgentHubPage.tsx`、`src/components/*`、`agentHub.css` | `plugin.tsx`、SDK vendor、Bibit 私有页面 |
 | 自定义资源的可见范围或最低格式 | `provider/internal/provider/custom.go`、`dev/custom.ts`、两边对应的测试 | 放宽上传门槛（上传仍由 `apm validate` 按 v2 判定）、把路径放进 `params` |
-| 改设置字段或校验 | `AgentHubSettingsPage.tsx`、DTO、Store operation、Mock、Registry `credentialParameters`（仅当字段是凭据） | Bibit Settings Shell、宿主 Store、在页面里回显已保存的凭据 |
+| 改设置字段或校验 | `AgentHubSettingsPanel.tsx`、DTO、Store operation、Mock、Registry `credentialParameters`（仅当字段是凭据） | 宿主 Store、在页面里回显已保存的凭据 |
 | 新增后端能力 | 模块 DTO、带版本 operation、Store 服务、Mock、`debian/agenthub-feature-grants.json` 的 grant | 直接 `fetch`、Tauri command、未在 Registry `credentialParameters` 声明的凭据字段 |
 | 新增 Agent Hub 内部详情路由 | 页面组件和 `FeaturePageProps.navigation` | Bibit Router、全局 URL 前缀、主侧边栏源码 |
-| 新增主页面或设置贡献点 | 组件、`feature.tsx`、Manifest 三者同步 | 只改 Manifest 或只改 Feature Module |
+| 新增主页面或设置贡献点 | 组件、`feature.tsx`、Manifest 三者同步 | 只改 Manifest 或只改 Feature Module；也注意 `contributions.settings` 必须存在（可为空数组） |
 | 需要新 icon、navigation group 或非 Service capability | 先提交平台契约缺口 | 在 Manifest 写入 Schema 未允许的字符串 |
 | 需要新的模块 Service | 使用合法 `service:<kebab-id>`，提交 operation grant 与 Registry | 为每个 Service 新增 Tauri command 或直接执行 CLI |
 | React 或 SDK 类型冲突 | 核对目标版本矩阵和 vendor 完整性 | 临时升级 React、关闭 `strict`、修改 vendor 内源码 |
@@ -227,7 +222,7 @@ src/
   "manifestSchemaVersion": 1,
   "sdkApiVersion": 1,
   "id": "agent-hub",
-  "version": "0.3.4",
+  "version": "0.3.6",
   "owner": "agent-hub-team",
   "display": {
     "titleKey": "agent-hub:title",
@@ -247,19 +242,7 @@ src/
         "navigation": { "group": "library", "order": 100 }
       }
     ],
-    "settings": [
-      {
-        "id": "settings",
-        "path": "",
-        "surfaces": ["main"],
-        "navigation": {
-          "group": "integrations",
-          "order": 100,
-          "titleKey": "agent-hub:settings",
-          "fallbackTitle": "Agent Hub settings"
-        }
-      }
-    ],
+    "settings": [],
     "conversation": [],
     "locales": ["en", "zh-CN"]
   }
@@ -271,14 +254,14 @@ src/
 ```tsx
 import type { FeatureModuleV1 } from '@bibit/feature-sdk'
 import { AgentHubPage } from './AgentHubPage'
-import { AgentHubSettingsPage } from './AgentHubSettingsPage'
 import { agentHubLocales, withAgentHubI18n } from './agentHubI18n'
 
+// 当前只导出页面贡献点。`contributions.settings` 在 Manifest 里保留为空数组
+// （宿主 Schema 要求该键存在），Feature Module 则完全不带 `settings`。
 export const featureModule: FeatureModuleV1 = {
   sdkApiVersion: 1,
   locales: agentHubLocales,
   pages: { home: withAgentHubI18n(AgentHubPage) },
-  settings: { settings: withAgentHubI18n(AgentHubSettingsPage) },
 }
 ```
 
@@ -456,23 +439,21 @@ Local Preview 使用 `?lang=zh-CN` 打开中文界面，`dev/main.tsx` 右上角
 
 Local Preview 的 `dev/devHostViewport.css` 去掉 Dev Host 的 stage 内边距与页头，让预览画布从视口顶部开始、正好一个视口高，等价于宿主给插件的那个盒子——否则预览里的吸底分页会掉到可见区域之外，看不出真实效果。
 
-## 8. 设置页面开发
+## 8. 设置内容开发（页面内「设置」标签页）
 
-Bibit 自动提供 Settings Shell、“设置”页头、设置子菜单、选中状态、菜单滚动和内容滚动容器。插件只提供 Agent Hub 设置内容。
+当前插件**不声明 settings contribution**：`contributions.settings` 是空数组，Feature Module 里也没有 `settings`。这是刻意的产品决定——原先的设置页只有 APC 凭据一个真实字段，其余两个（`showExperimental`、`refreshMinutes`）没有任何消费方，因此设置内容改为 Agent Hub 页面一级标签中的第三个标签，与「我的 Power」「Power 市场」并列。
 
-设置 renderer 的根节点必须使用 `section`、`div` 等内容容器，不得使用 `main` 或 `role="main"`。根节点必须能够收缩到宿主内容区（至少设置 `width: 100%; min-width: 0; max-width: 100%`，或更小的业务最大宽度）。完整契约见目标 Bibit 仓库的 `docs/feature-sdk/settings-content-contract.md`。
+随之而来的可见变化：Bibit 设置子菜单里不再有「Agent Hub 设置」条目，`agentHubLocales` 也不再提供该菜单的 `titleKey`。宿主对空 settings 数组的处理已经过源码核对（`registry.ts` 的 `makeContributions('settings')`、`trustedPluginLoader` 的 `expectedElementTags`/`registerSettings`、SDK 的 `registerGroup` 在空 id 列表上都是 no-op）。若旧 manifest 仍被宿主缓存，重启 GUI 即收敛（安装脚本已包含）。
 
-插件设置页可以包含自己的分区标题，例如“Catalog preferences”，但不得复制以下宿主结构：
+页面内的「设置」标签页由 `src/components/AgentHubSettingsPanel.tsx` 渲染，约束与页面其他区块一致：
 
-- `HeaderPage`；
-- `SettingsMenu`；
-- 全局“设置”标题；
-- 宿主内容滚动容器；
-- 返回按钮或外层路由 Shell。
+- 根节点是 `section`，不得使用 `main` 或 `role="main"`（页面本身已经是一个 `main`）。
+- 不得自带滚动容器：`.agent-hub` 是页面唯一的滚动容器，面板不得声明 `overflow-y`、`height` 或 `max-height`（`src/agentHubLayout.test.ts` 有对应断言）。
+- 标签切换即挂载/卸载：设置读取随卸载取消（`AbortController`），保存也随卸载取消，切回目录标签时重新读取。
 
-设置值由 Store 服务持久化。插件不能把生产设置只保存在 React state、`localStorage` 或 Bibit 私有 Store 中。
+设置值由 Store 服务持久化，插件不能把生产设置只保存在 React state、`localStorage` 或 Bibit 私有 Store 中。
 
-当前 DTO：
+当前 DTO 保持不变：
 
 ```ts
 interface AgentHubSettingsV1 {
@@ -488,18 +469,22 @@ interface AgentHubSettingsUpdateV1 {
 }
 ```
 
-`hasApiKey` 是只读派生字段：Provider 只回传「是否已配置」，API Key 本身永不出现在结果里。`apiKey` 只在用户确实编辑过输入框时出现在 update 参数中——省略表示保留，空串表示清除，因此设置页用 `apiKeyDirty` 区分这两种语义；`apiKey` 属于宿主 `credentialParameters` 声明范围，必须同时在 Registry drop-in 里声明。
+`hasApiKey` 是只读派生字段：Provider 只回传「是否已配置」，API Key 本身永不出现在结果里。`apiKey` 只在用户确实编辑过输入框时出现在 update 参数中——省略表示保留，空串表示清除，因此面板用 `apiKeyDirty` 区分这两种语义；`apiKey` 属于宿主 `credentialParameters` 声明范围，必须同时在 Registry drop-in 里声明。
+
+`showExperimental` 与 `refreshMinutes` 仍属于 `settings.update.v1` 的闭集参数，但**没有任何消费方**，因此面板读取后原样回填、不再渲染控件；不要为了「对称」给它们加回无效果的开关。若将来确实要消费它们，先实现行为，再恢复控件。
 
 模块团队增加字段时必须同时更新：
 
 1. DTO 定义和运行时校验；
-2. 设置 UI；
+2. `AgentHubSettingsPanel.tsx`；
 3. `settings.get.v1` 与 `settings.update.v1` 后端实现；
-4. `dev/main.tsx` Mock；
+4. `dev/store.ts` Mock；
 5. 迁移和默认值规则；
-6. 真实服务保存后重新读取的验收。
+6. 真实服务保存后重新读取的验收（切换标签离开再回来）。
 
 如果字段变化不能向后兼容，应发布 `settings.get.v2` 和 `settings.update.v2`，并保留明确迁移窗口。
+
+如果将来重新引入 settings contribution（例如设置项多到需要独立页面），仍需遵守 Bibit 的 settings content 契约：根节点用 `section`/`div` 且能收缩到宿主内容区（`width: 100%; min-width: 0; max-width: 100%`），不复制 `HeaderPage`、`SettingsMenu`、全局「设置」标题、宿主内容滚动容器或返回按钮。完整契约见目标 Bibit 仓库的 `docs/feature-sdk/settings-content-contract.md`。
 
 ## 9. Host API 使用规则
 
@@ -880,7 +865,7 @@ apm validate <path> --type=<type> --json
 apm submit   <path> --type=<type> --message=<message>
 ```
 
-- APC 凭据来自设置页保存的 `apiKey`，经环境变量 `APC_API_KEY` 注入子进程（配置了 `--apc-root-url` 时额外注入 `APC_BASE_URL`）；未配置 Key 时直接 `unauthorized`，**不启动 apm**。
+- APC 凭据来自页面「设置」标签页保存的 `apiKey`，经环境变量 `APC_API_KEY` 注入子进程（配置了 `--apc-root-url` 时额外注入 `APC_BASE_URL`）；未配置 Key 时直接 `unauthorized`，**不启动 apm**。
 - 结果是 `{status:"exited", exitCode, stage:"validate"|"submit", reason?, stdout?}`：非零退出是正常结果，`validate` 失败不会执行 `submit`。`reason` 取 apm 失败日志的 `error` 属性（成功走 stdout、失败走 stderr 是 apm 自身约定），再清洗（Key 替换为 `***`、去 ANSI 与控制字符、压单行、截断 300 字节），前端只把它当文本显示；usage 块与日志前缀不会进入结果。
 - 上传门槛高于显示门槛：显示只需最低格式，**上传必须满足 Power 格式 v2**，由 `apm validate` 判定；apm 的 stderr 只用于提取那一行失败原因，usage 块、日志前缀与任何堆栈都不进入结果。
 
@@ -1044,16 +1029,16 @@ npm run build:plugin
 产物：
 
 ```text
-artifacts/agent-hub-0.3.4.bibit-plugin.tgz
+artifacts/agent-hub-0.3.6.bibit-plugin.tgz
 ```
 
 检查：
 
 ```bash
-tar -tzf artifacts/agent-hub-0.3.4.bibit-plugin.tgz
-tar -xOf artifacts/agent-hub-0.3.4.bibit-plugin.tgz plugin.json
-tar -xOf artifacts/agent-hub-0.3.4.bibit-plugin.tgz plugin.sig
-sha256sum artifacts/agent-hub-0.3.4.bibit-plugin.tgz
+tar -tzf artifacts/agent-hub-0.3.6.bibit-plugin.tgz
+tar -xOf artifacts/agent-hub-0.3.6.bibit-plugin.tgz plugin.json
+tar -xOf artifacts/agent-hub-0.3.6.bibit-plugin.tgz plugin.sig
+sha256sum artifacts/agent-hub-0.3.6.bibit-plugin.tgz
 ```
 
 归档必须包含：
@@ -1104,7 +1089,7 @@ Settings > Extensions > Trusted plugins
 选择：
 
 ```text
-artifacts/agent-hub-0.3.4.bibit-plugin.tgz
+artifacts/agent-hub-0.3.6.bibit-plugin.tgz
 ```
 
 Bibit 会验签、校验 hash、安装、激活并刷新 Feature Registry。确认主导航出现 Agent Hub，设置子菜单也出现 Agent Hub。
@@ -1130,7 +1115,7 @@ Agent Hub 插件 deb 应安装：
 
 ```bash
 sudo install -Dm0644 \
-  artifacts/agent-hub-0.3.4.bibit-plugin.tgz \
+  artifacts/agent-hub-0.3.6.bibit-plugin.tgz \
   /usr/lib/bibit/plugins/agent-hub.bibit-plugin.tgz
 sudo install -Dm0644 \
   deploy/agenthub-feature-grants.example.json \
@@ -1213,7 +1198,7 @@ dpkg-buildpackage -us -uc -b
 K3DEB1 的 Release 部署必须使用正式签名、且 `keyId` 已进入目标 Bibit 内置信任库的 bundle：
 
 ```bash
-export SIGNED_AGENT_HUB_BUNDLE=/absolute/path/agent-hub-0.3.4.bibit-plugin.tgz
+export SIGNED_AGENT_HUB_BUNDLE=/absolute/path/agent-hub-0.3.6.bibit-plugin.tgz
 test -f "$SIGNED_AGENT_HUB_BUNDLE"
 tar -xOf "$SIGNED_AGENT_HUB_BUNDLE" plugin.json
 tar -xOf "$SIGNED_AGENT_HUB_BUNDLE" plugin.sig
@@ -1307,12 +1292,11 @@ npm run build:plugin
 
 - 目标 Bibit 信任正式 `keyId`；
 - 系统目录只有预期 Agent Hub bundle；
-- Bibit 插件管理页显示 `agent-hub@0.3.4` 已激活；
+- Bibit 插件管理页显示 `agent-hub@0.3.6` 已激活；
 - 主导航出现 Agent Hub；
-- 设置子菜单出现 Agent Hub；
-- 选中设置页后全局“设置”页头和子菜单滚动不消失；
-- 插件没有重复渲染 Settings Shell；
-- 停用插件后 Agent Hub 两个入口消失，Bibit 其他页面仍可使用。
+- 设置子菜单**不再**出现 Agent Hub（插件已不声明 settings contribution）；
+- Agent Hub 页面一级标签为「我的 Power / Power 市场 / 设置」；
+- 停用插件后主导航入口消失，Bibit 其他页面仍可使用。
 
 ### 16.4 真实端到端数据链路
 
@@ -1341,9 +1325,9 @@ Store service version
 8. 切回英文，确认文案回到英文；
    - 对同一条测试 Power 分别用 V1（只有 `name`/`description`）与 V2（带 `name_zh`/`name_en`/`description_zh`）记录验收：V2 记录在中文下显示 `name_zh`/`description_zh`、英文下显示 `name_en`/`description`；V1 记录两种语言都回退到 `name`/`description`；两种情况下的安装、卸载与详情请求参数都仍是 canonical `name`。注意 apm `list --json` 与 APC 目录尚未输出展示字段，需用能返回这些字段的夹具或临时 Store 服务构造；
 9. 在默认窗口（1200×800）与最小窗口（1024×740）下打开 Power 市场：卡片等高、描述在无边框框内可上下滚动、分页控件常驻可见，向下滚动能到达第 20 张卡片；翻页或切换类型后列表回到顶部，没有横向滚动条；
-10. 打开 Agent Hub 设置，修改 `showExperimental` 和 `refreshMinutes` 并保存；
-11. 关闭并重新打开设置页，确认读取到保存值；
-12. 重启 Bibit 和 Store 服务，再次确认设置值；
+10. 切到页面的「设置」标签页：确认目录的 Type/Tags 筛选消失、面板只显示 APC API Key，且该切换没有产生新的 `powers.list.v1` 请求；
+11. 输入一个 APC Key 并保存，确认状态变为「已配置」，输入框被清空且页面任何位置都不回显该 Key；切回「我的 Power」再切回「设置」，确认重新读取后仍是「已配置」；
+12. 点「清除已保存的 Key」并保存，确认状态回到「未配置」；重启 Bibit 和 Store 服务，再次确认该状态；
 13. 保存 Store 服务按 `requestId` 关联的请求日志、Bibit 日志、页面截图和最终设置读取结果。
 
 入口可见、端口可达或 Dev Host Mock 成功都不算真实端到端接通。
@@ -1354,9 +1338,13 @@ Store service version
 
 检查 Manifest 的 `pages.home`、`navigation.group`、Feature Module 的 `pages.home`、插件激活状态和重复 Feature ID。不要直接修改 Bibit 侧边栏清单。
 
-### 设置页标题或菜单滚动消失
+### 设置标签页出现两个滚动条或高度异常
 
-检查插件是否复制了 `HeaderPage`、`SettingsMenu` 或外层滚动容器。设置 renderer 只提供内容，宿主负责 Settings Shell。
+`.agent-hub` 是页面唯一的滚动容器，`AgentHubSettingsPanel` 不得声明 `overflow-y`、`height`、`max-height`。`src/agentHubLayout.test.ts` 会捕获这类回归。
+
+### 升级后 Bibit 设置子菜单里仍有「Agent Hub 设置」
+
+插件 0.3.6 起不再声明 settings contribution。若宿主仍显示旧条目，说明它还在用缓存的旧 manifest：重启 Bibit（或按安装脚本重启 `bibit-gui`）后即消失。
 
 ### 页面显示 Store capability 不可用
 
@@ -1420,7 +1408,7 @@ CLI 模式检查 Registry 是否为 `version: 2`、`transport: stdio`、固定�
 - 删除是本地系统删除（`os.RemoveAll` 只作用于已校验的直接子项），资源目录是符号链接时只删链接，无法从 APC 侧下架或恢复；
 - 安装/卸载依赖 Agent 自身 `apm` CLI；无 `apm` 时详情与写入降级为可重试 `unavailable`，页面显示固定“操作不可用”文案；
 - 自动化测试使用 Vitest 覆盖 DTO、dev transport、客户端、组件与页面行为（`src/api/contracts.test.ts` 等与源文件同目录）；
-- 设置页复用目标 Bibit 同版本的 `@bibit/feature-ui`；市场页使用 `.agent-hub*` 命名空间内的独立 CSS；
+- 「设置」标签页的样式使用 `.agent-hub*` 命名空间内的独立 CSS，不依赖 `@bibit/feature-ui` 的 Settings Shell（插件已不声明 settings contribution）；
 - 中英文由插件自带词典（`src/agentHubI18n.tsx`）提供，跟随宿主 `language`，目前只有 `en` 与 `zh-CN` 两种；新增语言需要同时扩展 `agentHubChinese`/`agentHubLocales` 与 `bibit.feature.json` 的 `contributions.locales`；
 - 宿主 `language` 传入组件自 `bi-bit` 0.1.4 起；更早的宿主不传该值时页面固定为英文；
 - 插件属于公司可信内部代码，不是不可信代码沙箱；

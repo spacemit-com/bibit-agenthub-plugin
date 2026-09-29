@@ -87,13 +87,8 @@ const zh: Readonly<Record<string, string>> = {
   'Page': '第',
   'of {total}': '/ {total} 页',
 
-  // ---- settings page ----
-  'CATALOG PREFERENCES': '目录偏好',
-  'Agent Hub settings': 'Agent Hub 设置',
-  'Experimental Agents': '实验性 Agent',
-  'Include preview Agents in the catalog.': '在目录中包含预览版 Agent。',
-  'Catalog refresh': '目录刷新',
-  'Refresh interval in minutes.': '刷新间隔（分钟）。',
+  // ---- settings tab (in-page, next to My Powers / Power market) ----
+  'Settings': '设置',
   'Save settings': '保存设置',
   'Loading settings…': '正在加载设置…',
   'Store capability is unavailable.': 'Store 能力不可用。',
@@ -164,8 +159,8 @@ const zh: Readonly<Record<string, string>> = {
   'The custom resource provider crashed.': '自定义资源 Provider 已崩溃。',
   'The custom resource request exceeded a resource limit.': '自定义资源请求超出资源上限。',
   'The custom resource operation failed.': '自定义资源操作失败。',
-  'APC API Key is not configured; set it in Agent Hub settings.':
-    '未配置 APC API Key，请在 Agent Hub 设置中填写。',
+  'APC API Key is not configured; set it in the Settings tab.':
+    '未配置 APC API Key，请在「设置」标签页中填写。',
   'Skipped {type} "{name}": {expected} is missing.': '已跳过 {type} “{name}”：缺少 {expected}。',
   'Skipped {type} "{name}": its {expected} does not meet the minimum format.':
     '已跳过 {type} “{name}”：{expected} 不满足最低格式要求。',
@@ -191,12 +186,10 @@ export const agentHubLocales = {
   en: {
     title: 'Agent Hub',
     description: 'Browse and manage Agent packages',
-    settings: 'Agent Hub settings',
   },
   'zh-CN': {
     title: 'Agent Hub',
     description: '浏览和管理 Agent 包',
-    settings: 'Agent Hub 设置',
   },
 } as const
 

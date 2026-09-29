@@ -1,29 +1,37 @@
 import { useEffect, useRef, useState } from 'react'
-import { useFeatureCapability } from '@bibit/feature-sdk'
-import { useAgentHubI18n } from './agentHubI18n'
+import type { FeatureServiceApiV1 } from '@bibit/feature-sdk'
+import { useAgentHubI18n } from '../agentHubI18n'
 import {
   SETTINGS_GET_OPERATION_ID,
   SETTINGS_MAX_API_KEY_LENGTH,
-  SETTINGS_MAX_REFRESH_MINUTES,
-  SETTINGS_MIN_REFRESH_MINUTES,
   SETTINGS_UPDATE_OPERATION_ID,
   parseSettingsView,
   type AgentHubSettingsV1,
-} from './api/contracts'
-import './agentHub.css'
+} from '../api/contracts'
 
 /**
- * The settings contribution is content-only: the host owns the "Settings"
- * heading, the sub-menu and the scrolling shell, so this renders a plain
- * `section` that shrinks to the content area (never a `main`).
+ * The APC credential form, rendered as the Agent Hub page's Settings tab.
+ *
+ * It is a page section, not a settings contribution: the page owns the heading
+ * and the scrolling, so this renders a plain `section` and never a `main` or a
+ * second scroll container.
  *
  * The APC API key is write-only from this side: the service answers with
- * `hasApiKey` and never with the value, so the page can only report whether one
+ * `hasApiKey` and never with the value, so the panel can only report whether one
  * is configured and can only replace or clear it.
+ *
+ * `settings.update.v1` still carries `showExperimental` and `refreshMinutes`:
+ * they are part of the operation's closed DTO but nothing consumes them, so the
+ * panel reads them back unchanged instead of exposing controls that would do
+ * nothing. The provider is untouched.
  */
-export function AgentHubSettingsPage() {
+export interface AgentHubSettingsPanelProps {
+  /** The page's pinned store proxy, so a host re-render cannot restart the read. */
+  service: FeatureServiceApiV1<'store'> | undefined
+}
+
+export function AgentHubSettingsPanel({ service }: AgentHubSettingsPanelProps) {
   const t = useAgentHubI18n()
-  const store = useFeatureCapability('service:store')
   const [settings, setSettings] = useState<AgentHubSettingsV1 | null>(null)
   const [apiKeyInput, setApiKeyInput] = useState('')
   const [status, setStatus] = useState('Loading settings…')
@@ -32,14 +40,15 @@ export function AgentHubSettingsPage() {
   // sending an empty string clears it, so the two must stay distinguishable.
   const [apiKeyDirty, setApiKeyDirty] = useState(false)
   const savingRef = useRef(false)
+  const writeControllerRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
-    if (!store) {
+    if (!service) {
       setStatus('Store capability is unavailable.')
       return () => controller.abort()
     }
-    void store
+    void service
       .request<Record<string, unknown>>({
         serviceId: 'store',
         operationId: SETTINGS_GET_OPERATION_ID,
@@ -57,33 +66,44 @@ export function AgentHubSettingsPage() {
         if (!controller.signal.aborted) setStatus('Could not load Agent Hub settings.')
       })
     return () => controller.abort()
-  }, [store])
+  }, [service])
+
+  // A save that outlives the tab is still a save: the request is cancelled on
+  // unmount so the page never updates state for a panel that is gone.
+  useEffect(() => {
+    return () => writeControllerRef.current?.abort()
+  }, [])
 
   const save = async () => {
-    if (!store || !settings || savingRef.current) return
+    if (!service || !settings || savingRef.current) return
     savingRef.current = true
     setSaving(true)
     setStatus('Saving…')
+    const controller = new AbortController()
+    writeControllerRef.current = controller
     try {
       const payload: Record<string, unknown> = {
         showExperimental: settings.showExperimental,
         refreshMinutes: settings.refreshMinutes,
       }
       if (apiKeyDirty) payload.apiKey = apiKeyInput
-      const value = await store.request<Record<string, unknown>>({
+      const value = await service.request<Record<string, unknown>>({
         serviceId: 'store',
         operationId: SETTINGS_UPDATE_OPERATION_ID,
         params: payload,
+        signal: controller.signal,
       })
+      if (controller.signal.aborted) return
       setSettings(parseSettingsView(value, 'Invalid settings.update.v1 result:'))
       setApiKeyInput('')
       setApiKeyDirty(false)
       setStatus('Settings saved.')
     } catch {
-      setStatus('Could not save Agent Hub settings.')
+      if (!controller.signal.aborted) setStatus('Could not save Agent Hub settings.')
     } finally {
       savingRef.current = false
-      setSaving(false)
+      writeControllerRef.current = null
+      if (!controller.signal.aborted) setSaving(false)
     }
   }
 
@@ -95,45 +115,9 @@ export function AgentHubSettingsPage() {
   }
 
   return (
-    <section className="agent-hub-settings">
-      <header>
-        <p>{t('CATALOG PREFERENCES')}</p>
-        <h1>{t('Agent Hub settings')}</h1>
-      </header>
-      <label>
-        <span>
-          <strong>{t('Experimental Agents')}</strong>
-          <small>{t('Include preview Agents in the catalog.')}</small>
-        </span>
-        <input
-          type="checkbox"
-          checked={settings?.showExperimental ?? false}
-          disabled={settings === null}
-          onChange={(event) =>
-            setSettings((current) => (current ? { ...current, showExperimental: event.target.checked } : current))
-          }
-        />
-      </label>
-      <label>
-        <span>
-          <strong>{t('Catalog refresh')}</strong>
-          <small>{t('Refresh interval in minutes.')}</small>
-        </span>
-        <input
-          type="number"
-          min={SETTINGS_MIN_REFRESH_MINUTES}
-          max={SETTINGS_MAX_REFRESH_MINUTES}
-          value={settings?.refreshMinutes ?? SETTINGS_MIN_REFRESH_MINUTES}
-          disabled={settings === null}
-          onChange={(event) =>
-            setSettings((current) =>
-              current ? { ...current, refreshMinutes: Number(event.target.value) } : current
-            )
-          }
-        />
-      </label>
-      <div className="agent-hub-settings__credential">
-        <div className="agent-hub-settings__credential-head">
+    <section className="agent-hub-settings-panel">
+      <div className="agent-hub-settings-panel__credential">
+        <div className="agent-hub-settings-panel__credential-head">
           <strong>{t('APC API Key')}</strong>
           <span data-testid="api-key-state">
             {settings === null ? t('Loading settings…') : settings.hasApiKey ? t('Configured') : t('Not configured')}
@@ -152,7 +136,7 @@ export function AgentHubSettingsPage() {
             setApiKeyDirty(true)
           }}
         />
-        <div className="agent-hub-settings__credential-actions">
+        <div className="agent-hub-settings-panel__credential-actions">
           <small>{t('The API Key is never shown again once saved.')}</small>
           <button type="button" disabled={settings === null} onClick={clearKey}>
             {t('Clear saved key')}

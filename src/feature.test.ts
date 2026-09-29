@@ -6,10 +6,13 @@ import { featureModule } from './feature'
 import { pluginLocales } from './plugin'
 
 describe('featureModule', () => {
-  it('exports the declared home and settings renderers', () => {
+  it('exports the declared home renderer and no settings contribution', () => {
     expect(featureModule.sdkApiVersion).toBe(1)
     expect(featureModule.pages?.home).toBeTypeOf('function')
-    expect(featureModule.settings?.settings).toBeTypeOf('function')
+    // The APC credential moved into the page's own Settings tab, so the plugin
+    // registers nothing in Bibit's Settings shell.
+    expect(manifest.contributions.settings).toEqual([])
+    expect(featureModule.settings).toBeUndefined()
   })
 
   it('ships the menu locale resources for every declared locale', () => {
@@ -42,11 +45,9 @@ describe('featureModule', () => {
   })
 
   it('resolves every manifest locale key inside the agent-hub namespace', () => {
-    const keys = [
-      manifest.display.titleKey,
-      manifest.display.descriptionKey,
-      ...manifest.contributions.settings.map(({ navigation }) => navigation.titleKey),
-    ].filter((key): key is string => typeof key === 'string')
+    const keys = [manifest.display.titleKey, manifest.display.descriptionKey].filter(
+      (key): key is string => typeof key === 'string'
+    )
     expect(keys.length).toBeGreaterThan(0)
     for (const key of keys) {
       const [namespace, name] = key.split(':')

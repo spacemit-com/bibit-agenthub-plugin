@@ -10,6 +10,7 @@ import {
   INSTALLED_AGENTS,
   POWER_PAGE_SIZE,
   type ListPowersInput,
+  type PowerScope,
   type PowerType,
   type ReadyListPowersResult,
   type PowerSeries,
@@ -25,11 +26,10 @@ import {
 import { type MutationIntent } from './api/powerOperations'
 import { PowerCard } from './components/PowerCard'
 import { PowerDetailsDialog, type CustomActionState } from './components/PowerDetailsDialog'
-import { PowerFilters } from './components/PowerFilters'
+import { PowerFilters, type PowerTab } from './components/PowerFilters'
+import { AgentHubSettingsPanel } from './components/AgentHubSettingsPanel'
 import { PowerPagination } from './components/PowerPagination'
 import './agentHub.css'
-
-type PowerScope = 'installed' | 'market'
 
 type ViewState =
   | { status: 'loading' }
@@ -77,7 +77,7 @@ const CUSTOM_ERROR_MESSAGES: Record<FeatureServiceErrorV1['code'], string> = {
   cancelled: 'The custom resource request was cancelled.',
   offline: 'The custom resource service is offline.',
   timeout: 'The custom resource request timed out.',
-  unauthorized: 'APC API Key is not configured; set it in Agent Hub settings.',
+  unauthorized: 'APC API Key is not configured; set it in the Settings tab.',
   incompatible: 'The custom resource service is incompatible with this plugin.',
   unavailable: 'The custom resource service is unavailable.',
   provider_crashed: 'The custom resource provider crashed.',
@@ -190,6 +190,10 @@ export function AgentHubPage(_: FeaturePageProps) {
   const t = useAgentHubI18n()
 
   const [scope, setScope] = useState<PowerScope>('installed')
+  // The first-level tab: the two catalog scopes plus the in-page Settings panel.
+  // `scope` stays the data scope, so switching to Settings keeps the list state
+  // and no catalog request is issued for a panel that shows no Powers.
+  const [tab, setTab] = useState<PowerTab>('installed')
   const [agent, setAgent] = useState('bibit')
   const [type, setType] = useState<PowerType>('skill')
   const [tags, setTags] = useState<string[]>([])
@@ -257,6 +261,11 @@ export function AgentHubPage(_: FeaturePageProps) {
   }, [])
 
   useEffect(() => {
+    // The Settings tab renders the credential panel, not a catalog list: it must
+    // neither issue a `powers.list.v1` request nor leave the previous one running
+    // behind it, so the effect stops before touching `view`.
+    if (tab === 'settings') return
+
     const listController = new AbortController()
     const generation = ++generationRef.current
     setView({ status: 'loading' })
@@ -301,7 +310,7 @@ export function AgentHubPage(_: FeaturePageProps) {
       })
 
     return () => listController.abort()
-  }, [store, scope, agent, type, tags, page, retry])
+  }, [store, scope, tab, agent, type, tags, page, retry])
 
   // ---- the page owns its scroll: size it to the box the host actually hands over ----
   // A page contribution is mounted in a min-height based box (SidebarProvider /
@@ -324,8 +333,12 @@ export function AgentHubPage(_: FeaturePageProps) {
   const resetPageScroll = () => {
     if (pageScrollRef.current) pageScrollRef.current.scrollTop = 0
   }
-  const changeScope = (next: PowerScope) => {
+  const changeTab = (next: PowerTab) => {
     resetPageScroll()
+    setTab(next)
+    // The Settings tab is not a catalog scope: it keeps whatever the last list
+    // query was, so returning to a Powers tab resumes exactly where the user was.
+    if (next === 'settings') return
     setScope(next)
     setTags([])
     setPage(1)
@@ -393,13 +406,13 @@ export function AgentHubPage(_: FeaturePageProps) {
     if (series.source !== 'custom') inspectTarget(targetAgent, series)
   }
 
-  const closeDetails = () => {
+  const closeDetails = useCallback(() => {
     inspectControllerRef.current?.abort()
     inspectControllerRef.current = null
     // A custom write keeps running (the provider owns the subprocess), but the
     // page must not keep resolving the dialog it no longer shows.
     setDialog(null)
-  }
+  }, [])
 
   const changeDialogAgent = (next: string) => {
     setDialogAgent(next)
@@ -463,13 +476,19 @@ export function AgentHubPage(_: FeaturePageProps) {
    * unmount aborts whatever is in flight. A finished write always re-reads the
    * installed view: upload may have changed nothing locally, but the scan is the
    * only authority for what is on disk.
+   *
+   * `closeOnSuccess` is for a write that removes the resource: the dialog it
+   * describes has nothing left to act on, so the page returns to the list instead
+   * of keeping a modal open on a Power that no longer exists. A failed write
+   * always keeps the dialog so its reason stays readable.
    */
   const runCustomAction = useCallback(
     async (
       kind: CustomActionState['kind'],
       series: PowerSeries,
       targetAgent: string,
-      run: (signal: AbortSignal) => Promise<TranslatableText>
+      run: (signal: AbortSignal) => Promise<TranslatableText>,
+      options?: { closeOnSuccess?: boolean }
     ) => {
       if (!store) return
       customControllerRef.current?.abort()
@@ -479,8 +498,10 @@ export function AgentHubPage(_: FeaturePageProps) {
       setCustomNotice(key, undefined)
       setCustomAction({ key, state: { kind, phase: 'running' } })
       let notice: TranslatableText
+      let succeeded = false
       try {
         notice = await run(controller.signal)
+        succeeded = true
       } catch (reason: unknown) {
         if (controller.signal.aborted) return
         const code =
@@ -491,11 +512,19 @@ export function AgentHubPage(_: FeaturePageProps) {
       }
       if (controller.signal.aborted) return
       setCustomAction((current) => (current?.key === key ? { key, state: { kind, phase: 'reconciling' } } : current))
-      setCustomNotice(key, notice)
+      if (succeeded && options?.closeOnSuccess) {
+        // Leaving the page on a deleted resource's page number would show an empty
+        // list, so the successful removal also returns to the first page.
+        setPage(1)
+        setCustomNotice(key, undefined)
+        closeDetails()
+      } else {
+        setCustomNotice(key, notice)
+      }
       setCustomAction((current) => (current?.key === key ? null : current))
       setRetry((value) => value + 1)
     },
-    [store]
+    [store, closeDetails]
   )
 
   const uploadDialog = (message: string) => {
@@ -528,10 +557,19 @@ export function AgentHubPage(_: FeaturePageProps) {
 
   const deleteDialog = () => {
     if (!dialog || !store) return
-    void runCustomAction('delete', dialog, dialogAgent, async (signal) => {
-      await deleteCustomResource(store, { agent: dialogAgent, type: dialog.type, name: dialog.name }, signal)
-      return { text: 'Deleted {type} "{name}".', values: { type: dialog.type, name: dialog.name } }
-    })
+    const target = { type: dialog.type, name: dialog.name }
+    void runCustomAction(
+      'delete',
+      dialog,
+      dialogAgent,
+      async (signal) => {
+        await deleteCustomResource(store, { agent: dialogAgent, ...target }, signal)
+        // The page closes the dialog instead of showing this, so the text only
+        // documents the outcome of the write it just performed.
+        return { text: 'Deleted {type} "{name}".', values: target }
+      },
+      { closeOnSuccess: true }
+    )
   }
 
   const retryInspect = () => {
@@ -539,7 +577,8 @@ export function AgentHubPage(_: FeaturePageProps) {
   }
 
   const facets = view.status === 'ready' ? view.data.facets : { agents: [], tags: [] }
-  const agents = scope === 'installed' ? INSTALLED_AGENTS : []
+  // The Agent menu lives on the My Powers tab, so it lists Agents only there.
+  const agents = tab === 'installed' ? INSTALLED_AGENTS : []
   const totalPages =
     view.status === 'ready' ? Math.max(1, Math.ceil(view.data.total / POWER_PAGE_SIZE)) : 1
 
@@ -563,63 +602,69 @@ export function AgentHubPage(_: FeaturePageProps) {
       <ScrollThumb targetRef={pageScrollRef} />
       <header><div><p>{t('INTERNAL CATALOG')}</p><h1>Agent Hub</h1></div></header>
       <PowerFilters
-        scope={scope}
+        tab={tab}
         agents={agents}
         agent={agent}
         type={type}
         availableTags={facets.tags}
         selectedTags={tags}
-        onScopeChange={changeScope}
+        onTabChange={changeTab}
         onAgentChange={changeAgent}
         onTypeChange={changeType}
         onTagsChange={changeTags}
       />
-      {view.status === 'loading' && (
-        <p role="status" className="agent-hub__status">{t('Loading Powers…')}</p>
-      )}
-      {view.status === 'error' && (
-        <div role="alert" className="agent-hub__error">
-          <span>{t(view.message)}</span>
-          {view.diagnosticId && (
-            <span>{t('Diagnostic ID: {diagnosticId}', { diagnosticId: view.diagnosticId })}</span>
-          )}
-          {view.retryable && <button type="button" onClick={retryLoad}>{t('Retry')}</button>}
-        </div>
-      )}
-      {view.status === 'ready' && (
+      {tab === 'settings' ? (
+        <AgentHubSettingsPanel service={store} />
+      ) : (
         <>
-          {view.data.warnings.map((warning, index) => (
-            <p key={`${warning.code}-${warning.agent}-${index}`} className="agent-hub__status">
-              {t(warning.message, warning.values)}
-            </p>
-          ))}
-          {view.data.items.length === 0 ? (
-            <p className="agent-hub__status">{t('No Powers are available.')}</p>
-          ) : (
+          {view.status === 'loading' && (
+            <p role="status" className="agent-hub__status">{t('Loading Powers…')}</p>
+          )}
+          {view.status === 'error' && (
+            <div role="alert" className="agent-hub__error">
+              <span>{t(view.message)}</span>
+              {view.diagnosticId && (
+                <span>{t('Diagnostic ID: {diagnosticId}', { diagnosticId: view.diagnosticId })}</span>
+              )}
+              {view.retryable && <button type="button" onClick={retryLoad}>{t('Retry')}</button>}
+            </div>
+          )}
+          {view.status === 'ready' && (
             <>
-              <section className="agent-hub__grid" aria-label={t('Available Powers')}>
-                {view.data.items.map((series) => (
-                  <PowerCard
-                    key={`${series.type}-${series.name}`}
-                    series={series}
-                    selectedVersion={selectedVersionFor(series)}
-                    onVersionChange={(version) => changeVersion(series, version)}
-                    busy={isBusyFor(agent, series)}
-                    notice={
-                      scope === 'installed'
-                        ? installationSnapshot.notices.get(itemKey(agent, series.type, series.name))
-                        : undefined
-                    }
-                    onDetails={() => openDetails(series)}
+              {view.data.warnings.map((warning, index) => (
+                <p key={`${warning.code}-${warning.agent}-${index}`} className="agent-hub__status">
+                  {t(warning.message, warning.values)}
+                </p>
+              ))}
+              {view.data.items.length === 0 ? (
+                <p className="agent-hub__status">{t('No Powers are available.')}</p>
+              ) : (
+                <>
+                  <section className="agent-hub__grid" aria-label={t('Available Powers')}>
+                    {view.data.items.map((series) => (
+                      <PowerCard
+                        key={`${series.type}-${series.name}`}
+                        series={series}
+                        selectedVersion={selectedVersionFor(series)}
+                        onVersionChange={(version) => changeVersion(series, version)}
+                        busy={isBusyFor(agent, series)}
+                        notice={
+                          scope === 'installed'
+                            ? installationSnapshot.notices.get(itemKey(agent, series.type, series.name))
+                            : undefined
+                        }
+                        onDetails={() => openDetails(series)}
+                      />
+                    ))}
+                  </section>
+                  <PowerPagination
+                    page={view.data.page}
+                    totalPages={totalPages}
+                    canGoNext={view.data.nextPage !== undefined}
+                    onPageChange={changePage}
                   />
-                ))}
-              </section>
-              <PowerPagination
-                page={view.data.page}
-                totalPages={totalPages}
-                canGoNext={view.data.nextPage !== undefined}
-                onPageChange={changePage}
-              />
+                </>
+              )}
             </>
           )}
         </>

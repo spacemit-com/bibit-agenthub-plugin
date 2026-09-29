@@ -202,16 +202,19 @@ describe('Agent Hub layout contract', () => {
     ])
   })
 
-  it('keeps the settings root content-only and able to shrink', () => {
-    // The host owns the Settings shell; a fixed application width or a `main`
-    // wrapper would nest a second shell inside it.
-    const settings = rules('.agent-hub-settings')
-    expect(settings).not.toHaveLength(0)
-    const declaredOnce = (property: string) => settings.flatMap((block) => declared(block, property))
+  it('keeps the Settings tab a panel of the page, not a second scroll container', () => {
+    // The panel is rendered inside the page contribution, which already owns the
+    // heading and the only scroller. A height or overflow here would nest a second
+    // scroll container; the width rules keep it inside the page column.
+    const panel = rules('.agent-hub-settings-panel')
+    expect(panel).not.toHaveLength(0)
+    const declaredOnce = (property: string) => panel.flatMap((block) => declared(block, property))
+    expect(declaredOnce('overflow-y')).toEqual([])
+    expect(declaredOnce('height')).toEqual([])
+    expect(declaredOnce('max-height')).toEqual([])
     expect(declaredOnce('width')).toContain('100%')
     expect(declaredOnce('min-width')).toContain('0')
     expect(declaredOnce('max-width')).toContain('100%')
-    expect(declaredOnce('max-width')).not.toContain('720px')
   })
 
   it('keeps a custom Power card visibly distinct from a Hub-managed one', () => {

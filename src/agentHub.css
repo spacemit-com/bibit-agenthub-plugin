@@ -366,53 +366,56 @@
 .agent-hub .agent-hub-dialog__uninstall:hover:not(:disabled) { border-color: #dc2626; background: #ef4444; color: #fff; }
 .agent-hub-dialog button:disabled { cursor: not-allowed; opacity: .5; }
 
-/* ===== Settings page (retained, visually isolated) ===== */
-/* Content-only: the host owns the Settings shell, so the root only shrinks to
-   the content area and never declares a fixed application width. */
-.agent-hub-settings {
+/* ===== Settings tab (in-page panel) ===== */
+/* This is a section of the Agent Hub page, not a host Settings contribution:
+   the page already owns the heading and the only scroll container, so the panel
+   must not declare its own height, overflow or application width. */
+.agent-hub-settings-panel {
   display: block;
   width: 100%;
   min-width: 0;
   max-width: 100%;
-  padding: 32px;
-  color: #162033;
-  font: 14px/1.5 system-ui;
+  padding: 20px 22px;
+  border: 1px solid var(--hub-border);
+  border-radius: 14px;
+  background: var(--hub-surface);
+  box-shadow: 0 8px 24px rgb(28 39 64 / 5%);
+  color: var(--hub-text);
 }
-.agent-hub-settings header { margin-bottom: 24px; }
-.agent-hub-settings header p {
-  margin: 0;
-  color: #4264a7;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: .16em;
-}
-.agent-hub-settings h1 { margin: 4px 0 0; font-size: 30px; }
-.agent-hub-settings > label {
+.agent-hub-settings-panel__credential { display: grid; gap: 8px; }
+.agent-hub-settings-panel__credential-head {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
-  gap: 24px;
-  padding: 18px 0;
-  border-bottom: 1px solid #d6deec;
+  gap: 16px;
 }
-.agent-hub-settings label span { display: grid; }
-.agent-hub-settings label small { color: #65718a; }
-.agent-hub-settings input[type='checkbox'] { width: 18px; height: 18px; accent-color: #4264a7; }
-.agent-hub-settings input[type='number'] {
-  width: 90px;
-  padding: 8px;
-  border: 1px solid #9caccc;
+.agent-hub-settings-panel__credential-head strong { font-size: 15px; }
+.agent-hub-settings-panel__credential-head span { color: #65718a; }
+.agent-hub-settings-panel__credential small { color: #65718a; }
+.agent-hub-settings-panel__credential input[type='password'] {
+  width: min(100%, 420px);
+  padding: 9px 12px;
+  border: 1px solid #c9d0dc;
   border-radius: 8px;
+  background: #fff;
+  color: var(--hub-text);
+  font: inherit;
 }
-.agent-hub-settings footer {
+.agent-hub-settings-panel__credential-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding-top: 24px;
+}
+.agent-hub-settings-panel footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 18px;
   color: #65718a;
 }
-.agent-hub-settings footer button {
+.agent-hub-settings-panel footer button {
   border-color: #4264a7;
   background: #4264a7;
   color: white;
