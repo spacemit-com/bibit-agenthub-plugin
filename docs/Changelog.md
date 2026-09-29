@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-09-29 — 卸载二次确认，确认后回到 Hub 列表（0.3.7）
+
+分类：需求改进
+
+用户需求（原文）：
+
+> 我的power中卡片点击卸载后像自定义卡片删除一样有二次确认，确认卸载后也直接返回hub页面，而不是停留在卡片。
+
+改动：
+
+- `src/api/operationMessages.ts`：把结论文案的证据抽成共享的内部判定 `mutationOutcome`，新增导出 `isRemovalConfirmed(intent, execution, actual)`，与 `operationMessage` 共用同一套事实（避免文案与关闭决策漂移）。
+- `src/api/installationStore.ts`：`InstallationSnapshot` 新增 `confirmedRemovals`；每次 `reconcile` 时按 `isRemovalConfirmed` 记录，`execute` 开始与 `invalidateAgent` 时清除该键的旧结论。
+- `src/components/PowerDetailsDialog.tsx`：`confirmingUninstall` 本地状态；卸载改为两段式（展开确认 → `Confirm uninstall`），复用自定义删除确认的 `role="alertdialog"` 与类名；`series`/`agent` 变化时复位弹窗内的临时状态。
+- `src/AgentHubPage.tsx`：写操作结束的 effect 在 `confirmedRemovals` 命中当前弹窗目标时 `closeDetails()`；`closeDetails` 提前声明并进入依赖。
+- `src/agentHubI18n.tsx`：新增 `Uninstall this Power?` / `Removes {type} "{name}" for {agent}.` / `Confirm uninstall` 三个键。
+- 测试：`operationMessages.test.ts`（新增 6 例，含「与结论文案一致」的锁定）、`installationStore.test.ts`（新增 4 例）、`PowerDetailsDialog.test.tsx`（新增 4 例并改写 1 例）、`AgentHubPage.test.tsx`（改写 1 例、新增 3 例）。
+- 版本：`package.json`、`package-lock.json`、`bibit.feature.json`、`providerVersion` 统一提升到 `0.3.7`。
+
+门禁：`npm test` 475/475（25 个文件）、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin`、`make -C provider test vet build`、`--self-test` exit 0。反向验证 7 项，其中 1 项首次未生效（"切换 Power 不复位确认态"用例原本因为 footer 整体消失而通过，断言不到复位逻辑），已把该用例改为新目标**仍有 footer** 的场景后确认失败。详见 `docs/verification/2026-09-29-uninstall-confirm.md`。
+
 ## 2026-09-29 — 删除后回到 Hub 列表；APC 凭据并入页面「设置」标签页（0.3.6）
 
 分类：问题修复 + 需求改进

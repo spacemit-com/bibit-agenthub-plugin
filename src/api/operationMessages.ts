@@ -33,6 +33,54 @@ function matchesTarget(intent: MutationIntent, actual: readonly APMPowerRecord[]
 }
 
 /**
+ * The shared verdict behind `operationMessage` and `isRemovalConfirmed`: the
+ * observed exit code plus the post-reconcile records, reduced to the one fact
+ * both callers need. Computing it once keeps the wording and the page's
+ * close-the-dialog decision from drifting apart.
+ */
+type MutationOutcome =
+  | { kind: 'indeterminate' }
+  | { kind: 'matched' }
+  | { kind: 'stillPresent'; version: string }
+  | { kind: 'mismatch' }
+
+function mutationOutcome(
+  intent: MutationIntent,
+  execution: Execution,
+  actual: readonly APMPowerRecord[] | undefined
+): MutationOutcome {
+  if (execution.status === 'error' || actual === undefined) return { kind: 'indeterminate' }
+  if (matchesTarget(intent, actual)) return { kind: 'matched' }
+  const version = installedVersion(actual, intent.input)
+  return version !== undefined ? { kind: 'stillPresent', version } : { kind: 'mismatch' }
+}
+
+/**
+ * Whether the mutation can be treated as "the target is confirmed gone", which is
+ * what lets the page close the dialog of a Power that no longer exists.
+ *
+ * A successful uninstall obviously qualifies. So does a non-zero exit whose
+ * reconcile already shows the target missing: apm reported an error, but the fact
+ * the user asked for is true, and keeping the dialog open would only hide the
+ * reinstall entry point. Every other case — still installed, an error code, a
+ * reconcile that could not run — stays indeterminate so the dialog keeps showing
+ * its reason. Install never qualifies: the Power remains on disk.
+ */
+export function isRemovalConfirmed(
+  intent: MutationIntent,
+  execution: Execution,
+  actual: readonly APMPowerRecord[] | undefined
+): boolean {
+  if (intent.kind !== 'uninstall') return false
+  // A platform error means the reconcile never ran, so nothing is known.
+  if (execution.status === 'error') return false
+  // For an uninstall, 'matched' already means "the reconciled list has no record
+  // for this target" — with either exit code. 'stillPresent' and 'indeterminate'
+  // both leave the dialog open with its reason.
+  return mutationOutcome(intent, execution, actual).kind === 'matched'
+}
+
+/**
  * Builds a safe, user-facing message for one mutation from known evidence: the
  * intent, the observed subprocess exit or platform error code, and the
  * post-reconcile install records (undefined when the confirmation read failed).
@@ -73,11 +121,10 @@ export function operationMessage(
       : { text: 'The command failed and the current installed state could not be confirmed.' }
   }
 
-  const matches = matchesTarget(intent, actual)
-  const version = installedVersion(actual, intent.input)
+  const outcome = mutationOutcome(intent, execution, actual)
 
   if (exitCode === 0) {
-    if (matches) {
+    if (outcome.kind === 'matched') {
       return intent.kind === 'install'
         ? { text: 'Installation complete.' }
         : { text: 'Uninstall complete.' }
@@ -85,19 +132,19 @@ export function operationMessage(
     return { text: 'The command finished, but the installed state does not match the expectation.' }
   }
 
-  if (matches) {
+  if (outcome.kind === 'matched') {
     return intent.kind === 'install'
       ? {
           text: 'The command reported an error; version {version} is confirmed installed.',
-          values: { version: version ?? '' },
+          values: { version: installedVersion(actual, intent.input) ?? '' },
         }
       : { text: 'The command reported an error; nothing is installed.' }
   }
 
-  if (version !== undefined) {
+  if (outcome.kind === 'stillPresent') {
     return {
       text: 'The command failed; version {version} is still installed.',
-      values: { version },
+      values: { version: outcome.version },
     }
   }
   return { text: 'The command failed; nothing is installed.' }

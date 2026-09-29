@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   operationMessage,
+  isRemovalConfirmed,
   type Execution,
 } from './operationMessages'
 import type { TranslatableText } from '../agentHubI18n'
@@ -133,6 +134,69 @@ describe('operationMessage', () => {
         expect(message).not.toContain('stderr')
         expect(message).not.toContain('SECRET')
       }
+    }
+  })
+})
+
+describe('isRemovalConfirmed', () => {
+  it('confirms an uninstall whose reconcile already lacks the target', () => {
+    expect(isRemovalConfirmed(uninstall, { status: 'exited', exitCode: 0 }, [])).toBe(true)
+    // Records for other Powers do not affect this target's verdict.
+    expect(
+      isRemovalConfirmed(uninstall, { status: 'exited', exitCode: 0 }, [
+        { ...record('v1.0.0'), name: 'other-skill' },
+      ])
+    ).toBe(true)
+  })
+
+  it('confirms an uninstall that reported an error but is already gone', () => {
+    // apm errored, yet the reconciled list proves the Power is uninstalled. The
+    // dialog must not stay open on a Power that no longer exists.
+    expect(isRemovalConfirmed(uninstall, { status: 'exited', exitCode: 1 }, [])).toBe(true)
+  })
+
+  it('does not confirm while the Power is still installed', () => {
+    expect(isRemovalConfirmed(uninstall, { status: 'exited', exitCode: 1 }, [record('v1.0.0')])).toBe(
+      false
+    )
+    // A successful exit whose reconcile still shows the record is a mismatch the
+    // user has to see, not a removal.
+    expect(isRemovalConfirmed(uninstall, { status: 'exited', exitCode: 0 }, [record('v1.0.0')])).toBe(
+      false
+    )
+  })
+
+  it('does not confirm when the reconcile never ran', () => {
+    for (const execution of [
+      { status: 'error', code: 'timeout' },
+      { status: 'error', code: 'unavailable' },
+      { status: 'error', code: 'cancelled' },
+    ] satisfies Execution[]) {
+      expect(isRemovalConfirmed(uninstall, execution, undefined)).toBe(false)
+      expect(isRemovalConfirmed(uninstall, execution, [])).toBe(false)
+    }
+    expect(isRemovalConfirmed(uninstall, { status: 'exited', exitCode: 0 }, undefined)).toBe(false)
+  })
+
+  it('never confirms an install, which leaves the Power on disk', () => {
+    for (const actual of [undefined, [], [record('v2.0.0')]]) {
+      expect(isRemovalConfirmed(install, { status: 'exited', exitCode: 0 }, actual)).toBe(false)
+    }
+  })
+
+  it('agrees with the message it ships alongside', () => {
+    // The close decision and the copy come from the same evidence; lock the pairs
+    // that matter so a future edit cannot desynchronize them.
+    const cases: [Execution, APMPowerRecord[] | undefined][] = [
+      [{ status: 'exited', exitCode: 0 }, []],
+      [{ status: 'exited', exitCode: 1 }, []],
+      [{ status: 'exited', exitCode: 1 }, [record('v1.0.0')]],
+      [{ status: 'error', code: 'unavailable' }, undefined],
+    ]
+    for (const [execution, actual] of cases) {
+      const message = text(operationMessage(uninstall, execution, actual))
+      const gone = message === 'Uninstall complete.' || message === 'The command reported an error; nothing is installed.'
+      expect(isRemovalConfirmed(uninstall, execution, actual)).toBe(gone)
     }
   })
 })

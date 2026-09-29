@@ -302,7 +302,7 @@ describe('PowerDetailsDialog', () => {
     expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull()
   })
 
-  it('calls install and uninstall handlers', async () => {
+  it('calls install directly and uninstall only after the confirmation', async () => {
     const user = userEvent.setup()
     const onInstall = vi.fn()
     const onUninstall = vi.fn()
@@ -315,8 +315,9 @@ describe('PowerDetailsDialog', () => {
       />
     )
 
+    // Installing is not destructive, so it stays a single click.
     await user.click(screen.getByRole('button', { name: 'Install' }))
-    expect(onInstall).toHaveBeenCalled()
+    expect(onInstall).toHaveBeenCalledTimes(1)
 
     rerender(
       <PowerDetailsDialog
@@ -326,8 +327,117 @@ describe('PowerDetailsDialog', () => {
         installation={{ status: 'ready', records: [record('v1.0.0')] }}
       />
     )
+
+    // Uninstalling is: the first click only opens the confirmation.
     await user.click(screen.getByRole('button', { name: 'Uninstall' }))
-    expect(onUninstall).toHaveBeenCalled()
+    expect(onUninstall).not.toHaveBeenCalled()
+    expect(screen.getByText('Uninstall this Power?')).toBeTruthy()
+
+    await user.click(screen.getByRole('button', { name: 'Confirm uninstall' }))
+    expect(onUninstall).toHaveBeenCalledTimes(1)
+  })
+
+  it('names the exact target in the uninstall confirmation', async () => {
+    const user = userEvent.setup()
+    render(
+      <PowerDetailsDialog
+        {...props}
+        installation={{ status: 'ready', records: [record('v1.0.0')] }}
+      />
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Uninstall' }))
+
+    // The confirmation pins agent/type/name and uses the canonical name, which is
+    // what the request actually carries.
+    expect(
+      screen.getByText('Removes skill "code-review" for bibit.')
+    ).toBeTruthy()
+    expect(document.querySelector('.agent-hub-dialog__confirm')?.getAttribute('role')).toBe('alertdialog')
+  })
+
+  it('cancels the uninstall confirmation without calling the handler', async () => {
+    const user = userEvent.setup()
+    const onUninstall = vi.fn()
+    render(
+      <PowerDetailsDialog
+        {...props}
+        onUninstall={onUninstall}
+        installation={{ status: 'ready', records: [record('v1.0.0')] }}
+      />
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Uninstall' }))
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(onUninstall).not.toHaveBeenCalled()
+    expect(screen.queryByText('Uninstall this Power?')).toBeNull()
+    // Back to the plain action, still available.
+    expect(screen.getByRole('button', { name: 'Uninstall' })).toBeTruthy()
+  })
+
+  it('locks the uninstall confirmation while a mutation is busy', async () => {
+    const user = userEvent.setup()
+    const onUninstall = vi.fn()
+    const { rerender } = render(
+      <PowerDetailsDialog
+        {...props}
+        onUninstall={onUninstall}
+        installation={{ status: 'ready', records: [record('v1.0.0')] }}
+      />
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Uninstall' }))
+    const confirm = screen.getByRole('button', { name: 'Confirm uninstall' }) as HTMLButtonElement
+    expect(confirm.disabled).toBe(false)
+
+    // A write in flight disables the footer actions, so a second submit is
+    // impossible from the UI.
+    rerender(
+      <PowerDetailsDialog
+        {...props}
+        onUninstall={onUninstall}
+        installation={{ status: 'ready', records: [record('v1.0.0')] }}
+        active={{ intent: { kind: 'uninstall', input: { agent: 'bibit', type: 'skill', name: 'code-review' } }, phase: 'running' }}
+      />
+    )
+
+    expect((screen.getByRole('button', { name: 'Confirm uninstall' }) as HTMLButtonElement).disabled).toBe(true)
+    await user.click(screen.getByRole('button', { name: 'Confirm uninstall' }))
+    expect(onUninstall).not.toHaveBeenCalled()
+  })
+
+  it('drops primed in-dialog state when the dialog switches Power', async () => {
+    const user = userEvent.setup()
+    const uninstalled = () => ({
+      ...record('v1.0.0'),
+      name: 'other-skill',
+    })
+    const { rerender } = render(
+      <PowerDetailsDialog
+        {...props}
+        installation={{ status: 'ready', records: [record('v1.0.0')] }}
+      />
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Uninstall' }))
+    expect(screen.getByText('Uninstall this Power?')).toBeTruthy()
+
+    // The page reuses the same dialog instance for the next Power. Installing on
+    // the new target still shows the footer, so the assertion is about the primed
+    // confirmation rather than about the footer disappearing.
+    rerender(
+      <PowerDetailsDialog
+        {...props}
+        series={{ ...series, name: 'other-skill' }}
+        installation={{ status: 'ready', records: [uninstalled()] }}
+      />
+    )
+
+    expect(screen.queryByText('Uninstall this Power?')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Confirm uninstall' })).toBeNull()
+    // The new Power's own action is present and still unarmed.
+    expect(screen.getByRole('button', { name: 'Uninstall' })).toBeTruthy()
   })
 })
 

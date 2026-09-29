@@ -9,7 +9,7 @@ import {
   type MutationIntent,
   type PowerTarget,
 } from './powerOperations'
-import { operationMessage, type Execution } from './operationMessages'
+import { operationMessage, isRemovalConfirmed, type Execution } from './operationMessages'
 
 export type InstallationState =
   | { status: 'unknown' | 'checking' }
@@ -24,6 +24,12 @@ export type InstallationSnapshot = {
   fullLists: ReadonlyMap<string, readonly APMPowerRecord[]>
   active?: ActiveMutation
   notices: ReadonlyMap<string, TranslatableText>
+  /**
+   * Item keys whose last mutation was a confirmed removal. The page reads this to
+   * close the details dialog of a Power that is no longer installed, instead of
+   * staying on it. Cleared for a key when that key's next mutation starts.
+   */
+  confirmedRemovals: ReadonlySet<string>
 }
 
 export interface InstallationStore {
@@ -53,6 +59,7 @@ interface Internals {
   fullSeqs: Map<string, number>
   active?: ActiveMutation
   notices: Map<string, TranslatableText>
+  confirmedRemovals: Set<string>
   listeners: Set<() => void>
   locked: boolean
   snapshot?: InstallationSnapshot
@@ -146,6 +153,7 @@ function createInstallationStore(service: FeatureServiceApiV1<'store'>): Install
     itemSeqs: new Map(),
     fullSeqs: new Map(),
     notices: new Map(),
+    confirmedRemovals: new Set(),
     listeners: new Set(),
     locked: false,
   }
@@ -161,6 +169,7 @@ function createInstallationStore(service: FeatureServiceApiV1<'store'>): Install
       fullLists: new Map(internals.fullLists),
       ...(internals.active !== undefined ? { active: internals.active } : {}),
       notices: new Map(internals.notices),
+      confirmedRemovals: new Set(internals.confirmedRemovals),
     }
   }
 
@@ -272,6 +281,12 @@ function createInstallationStore(service: FeatureServiceApiV1<'store'>): Install
       }
     }
     internals.notices.set(key, operationMessage(intent, execution, actual))
+    // The page closes the dialog of a Power that is confirmed gone. The verdict
+    // comes from the same evidence that produced the message, so the copy and the
+    // close decision can never disagree.
+    if (isRemovalConfirmed(intent, execution, actual)) {
+      internals.confirmedRemovals.add(key)
+    }
     internals.active = undefined
     publish()
   }
@@ -286,6 +301,9 @@ function createInstallationStore(service: FeatureServiceApiV1<'store'>): Install
     const agent = target.agent
     const key = itemKey(target)
     try {
+      // A fresh mutation supersedes the previous verdict for this Power: until it
+      // reconciles, nothing is known about whether it is gone.
+      internals.confirmedRemovals.delete(key)
       invalidateAgent(agent)
       let execution: Execution = { status: 'error', code: 'unknown' }
       let shortCircuit: TranslatableText | undefined

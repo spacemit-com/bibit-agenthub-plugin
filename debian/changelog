@@ -1,3 +1,19 @@
+bibit-agenthub-plugin (0.3.7) resolute-porting; urgency=medium
+
+  * Confirm an uninstall before running it, and return to the Hub list once it
+    is confirmed gone. Uninstalling is destructive, so the dialog footer now
+    arms an in-dialog confirmation naming agent/type/name, exactly like the
+    custom-resource delete; Cancel backs out without a request. After the write
+    reconciles, the page closes the dialog when the Power is confirmed removed
+    -- including the case where apm reported a non-zero exit but the reconciled
+    list already shows the Power gone, since the state the user asked for is
+    true and staying on the dialog would hide the reinstall entry point. A failed
+    uninstall, a still-installed record, or a reconcile that could not run all
+    keep the dialog open with its reason. Installing is unchanged: it still
+    submits on one click and keeps its dialog.
+
+ -- liangjunzhao <junzhao.liang@spacemit.com>  Mon, 29 Sep 2026 13:00:00 +0800
+
 bibit-agenthub-plugin (0.3.6) resolute-porting; urgency=medium
 
   * Return to the Hub list after deleting a hand-installed resource. The dialog

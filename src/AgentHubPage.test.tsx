@@ -965,7 +965,7 @@ describe('AgentHubPage', () => {
       })
     })
 
-    it('uninstalls from the installed details dialog', async () => {
+    it('uninstalls after the in-dialog confirmation, then returns to the list', async () => {
       const user = userEvent.setup()
       let installed: unknown[] = [codeReviewRecord]
       let uninstallCall: StoreRequest | undefined
@@ -988,10 +988,100 @@ describe('AgentHubPage', () => {
       const dialog = within(document.querySelector('dialog') as HTMLElement)
       await dialog.findByText('Installed v1.0.0')
 
+      // The first click only arms the confirmation.
       await user.click(dialog.getByRole('button', { name: 'Uninstall' }))
+      expect(uninstallCall).toBeUndefined()
+      expect(dialog.getByText('Uninstall this Power?')).toBeTruthy()
+
+      await user.click(dialog.getByRole('button', { name: 'Confirm uninstall' }))
 
       await waitFor(() => expect(uninstallCall?.operationId).toBe('powers.uninstall.v1'))
       expect(uninstallCall?.params).toEqual({ agent: 'bibit', type: 'skill', name: 'code-review' })
+      // The Power is gone, so the dialog must not stay open on it: the page returns
+      // to the refreshed list instead.
+      await waitFor(() => expect(document.querySelector('dialog')).toBeNull())
+      expect(await screen.findByText('No Powers are available.')).toBeTruthy()
+    })
+
+    it('keeps the dialog with its reason when an uninstall fails', async () => {
+      const user = userEvent.setup()
+      // The command fails and the reconcile still lists the Power: nothing was
+      // removed, so the dialog has to stay and explain itself.
+      const { hostApi } = makeStoreHost((input) => {
+        if (input.operationId === 'powers.list.v1') return installedData(codeReviewList)
+        if (input.operationId === 'powers.inspect.v1') return { listJson: codeReviewList }
+        if (input.operationId === 'powers.uninstall.v1') return { status: 'exited', exitCode: 1 }
+        throw new Error('unexpected op ' + input.operationId)
+      })
+      renderPage(hostApi)
+      await screen.findByRole('heading', { name: 'code-review' })
+
+      await user.click(screen.getByRole('heading', { name: 'code-review' }))
+      const dialog = within(document.querySelector('dialog') as HTMLElement)
+      await dialog.findByText('Installed v1.0.0')
+      await user.click(dialog.getByRole('button', { name: 'Uninstall' }))
+      await user.click(dialog.getByRole('button', { name: 'Confirm uninstall' }))
+
+      expect(await dialog.findByText('The command failed; version v1.0.0 is still installed.')).toBeTruthy()
+      expect(document.querySelector('dialog')).toBeTruthy()
+      expect(screen.queryByText('No Powers are available.')).toBeNull()
+    })
+
+    it('does not uninstall when the confirmation is cancelled', async () => {
+      const user = userEvent.setup()
+      let uninstallCalls = 0
+      const { hostApi } = makeStoreHost((input) => {
+        if (input.operationId === 'powers.list.v1') return installedData(codeReviewList)
+        if (input.operationId === 'powers.inspect.v1') return { listJson: codeReviewList }
+        if (input.operationId === 'powers.uninstall.v1') {
+          uninstallCalls += 1
+          return { status: 'exited', exitCode: 0 }
+        }
+        throw new Error('unexpected op ' + input.operationId)
+      })
+      renderPage(hostApi)
+      await screen.findByRole('heading', { name: 'code-review' })
+
+      await user.click(screen.getByRole('heading', { name: 'code-review' }))
+      const dialog = within(document.querySelector('dialog') as HTMLElement)
+      await dialog.findByText('Installed v1.0.0')
+      await user.click(dialog.getByRole('button', { name: 'Uninstall' }))
+      await user.click(dialog.getByRole('button', { name: 'Cancel' }))
+
+      expect(uninstallCalls).toBe(0)
+      expect(document.querySelector('dialog')).toBeTruthy()
+      expect(dialog.getByRole('button', { name: 'Uninstall' })).toBeTruthy()
+    })
+
+    it('keeps the dialog open after a successful install', async () => {
+      const user = userEvent.setup()
+      // The reconcile has to observe the new record, otherwise the notice is the
+      // "state does not match" mismatch rather than a success.
+      let installed: unknown[] = []
+      const { hostApi } = makeStoreHost((input) => {
+        const params = wireParamsOf(input)
+        if (input.operationId === 'powers.list.v1') {
+          return params.scope === 'market' ? marketData() : installedData(JSON.stringify(installed))
+        }
+        if (input.operationId === 'powers.inspect.v1') return { listJson: JSON.stringify(installed) }
+        if (input.operationId === 'powers.install.v1') {
+          installed = [{ ...codeReviewRecord, name: 'market-translate' }]
+          return { status: 'exited', exitCode: 0 }
+        }
+        throw new Error('unexpected op ' + input.operationId)
+      })
+      renderPage(hostApi)
+      await user.click(screen.getByRole('button', { name: 'Power market' }))
+      await screen.findByRole('heading', { name: 'market-translate' })
+
+      await user.click(screen.getByRole('heading', { name: 'market-translate' }))
+      const dialog = within(document.querySelector('dialog') as HTMLElement)
+      await dialog.findByRole('button', { name: 'Install' })
+      await user.click(dialog.getByRole('button', { name: 'Install' }))
+
+      // Installing leaves the Power on disk, so its dialog stays useful.
+      expect(await dialog.findByText('Installation complete.')).toBeTruthy()
+      expect(document.querySelector('dialog')).toBeTruthy()
     })
 
     it('opens a read-only dialog from installed cards and a writable dialog from market cards', async () => {

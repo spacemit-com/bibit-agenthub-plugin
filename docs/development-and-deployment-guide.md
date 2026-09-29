@@ -6,7 +6,7 @@
 
 | 项目 | 当前版本 |
 | --- | --- |
-| Agent Hub 插件 | `0.3.6` |
+| Agent Hub 插件 | `0.3.7` |
 | `manifestSchemaVersion` | `1` |
 | `sdkApiVersion` | `1` |
 | `@bibit/feature-contracts` | `0.3.0` |
@@ -19,7 +19,7 @@
 
 当前插件只提供一个贡献点：`pages.home`，显示在 Bibit 主导航的 Agent Hub 页面。它不包含语言设置项：页面中英文文案跟随 Bibit 系统语言（宿主传入 `language`），菜单、导航与描述键通过 `pluginLocales` 交给宿主解析。详细规则见 7.1。
 
-当前 Demo 已实现 APC Power 展示与安装原型：通过 `powers.list.v1` 提供“我的 Power / Power 市场”两种数据范围、Agent / 类型 / tags 分层筛选、系列级卡片、版本选择与每页 20 张卡片的分页，并配套 Local Preview；通过 `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` 提供详情查看与单版本安装/卸载闭环。`powers.custom.list.v1` 在“我的 Power”里额外并入手动安装到各 Agent 目录下的自定义资源（卡片带 `Custom` 标记，版本位置换成静态标签，不满足最低格式的目录以 warning 提示），`powers.upload.v1` / `powers.delete.v1` 提供卡片弹窗内的 APC 上传与本地删除；上传所需的 APC API Key 在页面内的「设置」标签页维护。页面一级标签为「我的 Power / Power 市场 / 设置」，设置标签只显示 APC API Key 的配置状态、输入框与「清除已保存的 Key」。删除成功后弹窗关闭、回到列表；删除失败时弹窗保留并显示原因。Power 下载、提交审核、搜索等能力尚未实现，这些属于 Agent Hub 模块团队后续定制范围。
+当前 Demo 已实现 APC Power 展示与安装原型：通过 `powers.list.v1` 提供“我的 Power / Power 市场”两种数据范围、Agent / 类型 / tags 分层筛选、系列级卡片、版本选择与每页 20 张卡片的分页，并配套 Local Preview；通过 `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` 提供详情查看与单版本安装/卸载闭环。`powers.custom.list.v1` 在“我的 Power”里额外并入手动安装到各 Agent 目录下的自定义资源（卡片带 `Custom` 标记，版本位置换成静态标签，不满足最低格式的目录以 warning 提示），`powers.upload.v1` / `powers.delete.v1` 提供卡片弹窗内的 APC 上传与本地删除；上传所需的 APC API Key 在页面内的「设置」标签页维护。页面一级标签为「我的 Power / Power 市场 / 设置」，设置标签只显示 APC API Key 的配置状态、输入框与「清除已保存的 Key」。删除与卸载都需要弹窗内的二次确认；确认成功后弹窗关闭、回到列表，失败时弹窗保留并显示原因，安装成功后弹窗保持打开。Power 下载、提交审核、搜索等能力尚未实现，这些属于 Agent Hub 模块团队后续定制范围。
 
 当前插件使用平台随目标 Bibit 一并发布的 `@bibit/feature-ui@0.3.0`，复用 `FeatureSettingsPage`、`Button`、状态组件和图标，并通过 Bibit 主题 token 适配明暗主题。该包必须与 React 及其余 SDK 一起锁定升级；不得直接导入 Bibit 私有 UI 源码。
 
@@ -222,7 +222,7 @@ src/
   "manifestSchemaVersion": 1,
   "sdkApiVersion": 1,
   "id": "agent-hub",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "owner": "agent-hub-team",
   "display": {
     "titleKey": "agent-hub:title",
@@ -811,6 +811,8 @@ wire 结果闭集：
 - 前端对写结果只区分 `exited` 与 `unavailable`，非零 `exitCode` 返回为正常结果，由 `operationMessage` 映射为固定文案（如“安装失败”/“卸载失败”），不透传 CLI stderr 或物理路径；
 - 共享安装状态以 `JSON.stringify([agent,type,name])` 为条目键，跨详情弹窗与列表卡片复用同一份 state；全局写锁确保同一时刻只有一个变更在途，重复点击被阻止；
 - 卸载的中断语义：发起后即进入 running 并阻止重复提交；若页面卸载或详情关闭，请求被取消但写命令可能已完成，重开页面靠刷新 installed 恢复真实状态。
+- 卸载是**两段式**：第一次点击只在弹窗底部展开确认（写明 `agent`/`type`/`name`，`role="alertdialog"`），「取消」不发请求；确认后才提交。安装保持一键。
+- 卸载成功后弹窗**自动关闭**回到列表（列表已重新读取，卡片消失）：判定依据是 `installationStore` 快照里的 `confirmedRemovals`，它与结论文案由同一份证据（意图、退出码、对账后的清单）算出，因此"说什么"和"关不关"不会漂移。`isRemovalConfirmed` 为真的情形有两种：对账后目标已不在清单里（无论退出码是 0 还是非零——后者说明 apm 报错但事实已达成）。其余情形（仍安装着、平台错误、对账未完成）都保持弹窗打开，因为那里是失败原因的唯一落点。安装永远不满足该判定，弹窗保留。
 
 ### 10.6 自定义资源（扫描、上传、删除）
 
@@ -1030,16 +1032,16 @@ npm run build:plugin
 产物：
 
 ```text
-artifacts/agent-hub-0.3.6.bibit-plugin.tgz
+artifacts/agent-hub-0.3.7.bibit-plugin.tgz
 ```
 
 检查：
 
 ```bash
-tar -tzf artifacts/agent-hub-0.3.6.bibit-plugin.tgz
-tar -xOf artifacts/agent-hub-0.3.6.bibit-plugin.tgz plugin.json
-tar -xOf artifacts/agent-hub-0.3.6.bibit-plugin.tgz plugin.sig
-sha256sum artifacts/agent-hub-0.3.6.bibit-plugin.tgz
+tar -tzf artifacts/agent-hub-0.3.7.bibit-plugin.tgz
+tar -xOf artifacts/agent-hub-0.3.7.bibit-plugin.tgz plugin.json
+tar -xOf artifacts/agent-hub-0.3.7.bibit-plugin.tgz plugin.sig
+sha256sum artifacts/agent-hub-0.3.7.bibit-plugin.tgz
 ```
 
 归档必须包含：
@@ -1090,7 +1092,7 @@ Settings > Extensions > Trusted plugins
 选择：
 
 ```text
-artifacts/agent-hub-0.3.6.bibit-plugin.tgz
+artifacts/agent-hub-0.3.7.bibit-plugin.tgz
 ```
 
 Bibit 会验签、校验 hash、安装、激活并刷新 Feature Registry。确认主导航出现 Agent Hub，设置子菜单也出现 Agent Hub。
@@ -1116,7 +1118,7 @@ Agent Hub 插件 deb 应安装：
 
 ```bash
 sudo install -Dm0644 \
-  artifacts/agent-hub-0.3.6.bibit-plugin.tgz \
+  artifacts/agent-hub-0.3.7.bibit-plugin.tgz \
   /usr/lib/bibit/plugins/agent-hub.bibit-plugin.tgz
 sudo install -Dm0644 \
   deploy/agenthub-feature-grants.example.json \
@@ -1199,7 +1201,7 @@ dpkg-buildpackage -us -uc -b
 K3DEB1 的 Release 部署必须使用正式签名、且 `keyId` 已进入目标 Bibit 内置信任库的 bundle：
 
 ```bash
-export SIGNED_AGENT_HUB_BUNDLE=/absolute/path/agent-hub-0.3.6.bibit-plugin.tgz
+export SIGNED_AGENT_HUB_BUNDLE=/absolute/path/agent-hub-0.3.7.bibit-plugin.tgz
 test -f "$SIGNED_AGENT_HUB_BUNDLE"
 tar -xOf "$SIGNED_AGENT_HUB_BUNDLE" plugin.json
 tar -xOf "$SIGNED_AGENT_HUB_BUNDLE" plugin.sig
@@ -1293,7 +1295,7 @@ npm run build:plugin
 
 - 目标 Bibit 信任正式 `keyId`；
 - 系统目录只有预期 Agent Hub bundle；
-- Bibit 插件管理页显示 `agent-hub@0.3.6` 已激活；
+- Bibit 插件管理页显示 `agent-hub@0.3.7` 已激活；
 - 主导航出现 Agent Hub；
 - 设置子菜单**不再**出现 Agent Hub（插件已不声明 settings contribution）；
 - Agent Hub 页面一级标签为「我的 Power / Power 市场 / 设置」；
@@ -1329,7 +1331,10 @@ Store service version
 10. 切到页面的「设置」标签页：确认目录的 Type/Tags 筛选消失、面板只显示 APC API Key，且该切换没有产生新的 `powers.list.v1` 请求；
 11. 输入一个 APC Key 并保存，确认状态变为「已配置」，输入框被清空且页面任何位置都不回显该 Key；切回「我的 Power」再切回「设置」，确认重新读取后仍是「已配置」；
 12. 点「清除已保存的 Key」并保存，确认状态回到「未配置」；重启 Bibit 和 Store 服务，再次确认该状态；
-13. 保存 Store 服务按 `requestId` 关联的请求日志、Bibit 日志、页面截图和最终设置读取结果。
+13. 在「我的 Power」打开一个**已安装**的 Power 详情：点「卸载」只展开确认（此时 Store 未收到 `powers.uninstall.v1`），点「取消」不产生请求；再点「卸载」→「确认卸载」，确认请求参数为 `{agent,type,name}`，且**卸载成功后弹窗关闭、回到列表、卡片消失**；
+14. 制造一次卸载失败（例如让 `apm uninstall` 返回非零、且目标仍在清单里）：确认弹窗**保持打开**并显示失败文案（仍安装着某个版本时显示 `The command failed; version … is still installed.`）；
+15. 安装一条 Power：确认安装**不需要**二次确认、成功后弹窗**保持打开**并显示 `Installation complete.`；
+16. 保存 Store 服务按 `requestId` 关联的请求日志、Bibit 日志、页面截图和最终设置读取结果。
 
 入口可见、端口可达或 Dev Host Mock 成功都不算真实端到端接通。
 

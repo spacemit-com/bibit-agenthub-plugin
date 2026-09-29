@@ -230,6 +230,72 @@ describe('execute', () => {
     const call = calls.find((c) => c.operationId === 'powers.uninstall.v1')
     expect(call?.params).toEqual({ agent: 'bibit', type: 'skill', name: 'demo' })
     expect(store.getSnapshot().notices.get(demoKey)).toEqual({ text: 'Uninstall complete.' })
+    // A confirmed removal is what lets the page close the details dialog.
+    expect(store.getSnapshot().confirmedRemovals.has(demoKey)).toBe(true)
+  })
+
+  it('does not mark an install as a confirmed removal', async () => {
+    const { service } = makeService((op) => {
+      if (op === 'powers.inspect.v1') return { listJson: '[]' }
+      if (op === 'powers.install.v1') return { status: 'exited', exitCode: 0 }
+      if (op === 'powers.list.v1') return listResponse([record('demo', 'v1.0.0')])
+      throw new Error(`unexpected op ${op}`)
+    })
+    const store = getInstallationStore(service)
+
+    await store.execute(installIntent, signal())
+
+    expect(store.getSnapshot().confirmedRemovals.has(demoKey)).toBe(false)
+  })
+
+  it('does not mark a failed uninstall that left the Power installed', async () => {
+    const { service } = makeService((op) => {
+      if (op === 'powers.uninstall.v1') return { status: 'exited', exitCode: 1 }
+      if (op === 'powers.list.v1') return listResponse([record('demo', 'v1.0.0')])
+      throw new Error(`unexpected op ${op}`)
+    })
+    const store = getInstallationStore(service)
+
+    await store.execute(uninstallIntent, signal())
+
+    const snapshot = store.getSnapshot()
+    expect(snapshot.notices.get(demoKey)).toEqual({
+      text: 'The command failed; version {version} is still installed.',
+      values: { version: 'v1.0.0' },
+    })
+    expect(snapshot.confirmedRemovals.has(demoKey)).toBe(false)
+  })
+
+  it('clears a confirmed removal when the next mutation for that Power starts', async () => {
+    let uninstalled = false
+    let staleVerdictSeen = false
+    const { service } = makeService((op) => {
+      if (op === 'powers.uninstall.v1') {
+        uninstalled = true
+        return { status: 'exited', exitCode: 0 }
+      }
+      if (op === 'powers.install.v1') {
+        // Sampled mid-write: the stale verdict must already be gone, so the page
+        // cannot close a dialog on a result that no longer describes reality.
+        staleVerdictSeen = store.getSnapshot().confirmedRemovals.has(demoKey)
+        uninstalled = false
+        return { status: 'exited', exitCode: 0 }
+      }
+      if (op === 'powers.inspect.v1') return { listJson: '[]' }
+      if (op === 'powers.list.v1') {
+        return listResponse(uninstalled ? [] : [record('demo', 'v1.0.0')])
+      }
+      throw new Error(`unexpected op ${op}`)
+    })
+    const store = getInstallationStore(service)
+
+    await store.execute(uninstallIntent, signal())
+    expect(store.getSnapshot().confirmedRemovals.has(demoKey)).toBe(true)
+
+    await store.execute(installIntent, signal())
+
+    expect(staleVerdictSeen).toBe(false)
+    expect(store.getSnapshot().confirmedRemovals.has(demoKey)).toBe(false)
   })
 
   it('short-circuits install when the target version is already installed', async () => {

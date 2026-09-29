@@ -74,6 +74,18 @@ export function PowerDetailsDialog({
   // next resource the user opens.
   const [customForm, setCustomForm] = useState<'none' | 'upload' | 'delete'>('none')
   const [publishMessage, setPublishMessage] = useState('')
+  // Uninstall is destructive, so it is a two-step action like the custom delete.
+  // Leaving the dialog drops the confirmation, so reopening a Power never starts
+  // on a primed destructive button.
+  const [confirmingUninstall, setConfirmingUninstall] = useState(false)
+
+  // The dialog is reused across Powers without a remount (the page swaps `series`),
+  // so transient action state has to be reset when the target changes.
+  useEffect(() => {
+    setCustomForm('none')
+    setPublishMessage('')
+    setConfirmingUninstall(false)
+  }, [series.type, series.name, agent])
 
   useEffect(() => {
     restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
@@ -126,6 +138,12 @@ export function PowerDetailsDialog({
     if (customBusy || !onDelete) return
     onDelete()
     setCustomForm('none')
+  }
+
+  const confirmUninstall = () => {
+    if (!writeEnabled || !onUninstall) return
+    onUninstall()
+    setConfirmingUninstall(false)
   }
 
   return (
@@ -350,10 +368,45 @@ export function PowerDetailsDialog({
               {t('Install')}
             </button>
           )}
-          {showUninstall && (
-            <button type="button" className="agent-hub-dialog__uninstall" disabled={!writeEnabled} onClick={onUninstall}>
+          {showUninstall && !confirmingUninstall && (
+            <button
+              type="button"
+              className="agent-hub-dialog__uninstall"
+              disabled={!writeEnabled}
+              onClick={() => setConfirmingUninstall(true)}
+            >
               {t('Uninstall')}
             </button>
+          )}
+          {showUninstall && confirmingUninstall && (
+            <div className="agent-hub-dialog__confirm" role="alertdialog" aria-label={t('Uninstall this Power?')}>
+              <p>{t('Uninstall this Power?')}</p>
+              <p className="agent-hub-dialog__hint">
+                {t('Removes {type} "{name}" for {agent}.', {
+                  type: series.type,
+                  name: series.name,
+                  agent,
+                })}
+              </p>
+              <div className="agent-hub-dialog__custom-actions">
+                <button
+                  type="button"
+                  className="agent-hub-dialog__uninstall"
+                  disabled={!writeEnabled}
+                  onClick={confirmUninstall}
+                >
+                  {t('Confirm uninstall')}
+                </button>
+                <button
+                  type="button"
+                  className="agent-hub-dialog__install"
+                  disabled={busy}
+                  onClick={() => setConfirmingUninstall(false)}
+                >
+                  {t('Cancel')}
+                </button>
+              </div>
+            </div>
           )}
         </footer>
       )}

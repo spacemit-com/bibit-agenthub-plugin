@@ -138,6 +138,9 @@ const zh: Readonly<Record<string, string>> = {
   'Required for the APC submission.': 'APC 提交必填。',
   'Upload requires Power format v2.': '上传要求资源满足 Power 格式 v2。',
   'Cancel': '取消',
+  'Uninstall this Power?': '卸载该 Power？',
+  'Removes {type} "{name}" for {agent}.': '将卸载 {agent} 的 {type} “{name}”。',
+  'Confirm uninstall': '确认卸载',
   'Confirm delete': '确认删除',
   'Delete this resource?': '删除该资源？',
   'Removes the local {type} "{name}" for {agent}. This cannot be undone.':

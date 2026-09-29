@@ -150,6 +150,7 @@ const EMPTY_SNAPSHOT: InstallationSnapshot = {
   items: new Map(),
   fullLists: new Map(),
   notices: new Map(),
+  confirmedRemovals: new Set(),
 }
 
 const noopSubscribe = () => () => {}
@@ -223,6 +224,16 @@ export function AgentHubPage(_: FeaturePageProps) {
     installationStore ? installationStore.getSnapshot : noopSnapshot
   )
 
+  // Declared before the mutation effect below, which closes the dialog when an
+  // uninstall is confirmed gone.
+  const closeDetails = useCallback(() => {
+    inspectControllerRef.current?.abort()
+    inspectControllerRef.current = null
+    // A custom write keeps running (the provider owns the subprocess), but the
+    // page must not keep resolving the dialog it no longer shows.
+    setDialog(null)
+  }, [])
+
   // ---- store-driven view refresh after a mutation completes ----
   const wasActiveRef = useRef(false)
   useEffect(() => {
@@ -230,9 +241,22 @@ export function AgentHubPage(_: FeaturePageProps) {
     if (wasActiveRef.current && !isActive) {
       setPage(1)
       setRetry((value) => value + 1)
+      // An uninstall that is confirmed gone closes its dialog: staying on a Power
+      // that is no longer installed hides the reinstall entry point. A failure
+      // keeps the dialog, which is where its reason is shown.
+      if (dialog !== null && installationSnapshot.confirmedRemovals.has(itemKey(dialogAgent, dialog.type, dialog.name))) {
+        closeDetails()
+      }
     }
     wasActiveRef.current = isActive
-  }, [installationSnapshot.active, installationSnapshot.revision])
+  }, [
+    installationSnapshot.active,
+    installationSnapshot.revision,
+    installationSnapshot.confirmedRemovals,
+    dialog,
+    dialogAgent,
+    closeDetails,
+  ])
 
   // ---- window focus refreshes the read view ----
   // Focus must not restart a load that is already running: bumping `retry` aborts the
@@ -405,14 +429,6 @@ export function AgentHubPage(_: FeaturePageProps) {
     // its own facts instead of the installation lifecycle.
     if (series.source !== 'custom') inspectTarget(targetAgent, series)
   }
-
-  const closeDetails = useCallback(() => {
-    inspectControllerRef.current?.abort()
-    inspectControllerRef.current = null
-    // A custom write keeps running (the provider owns the subprocess), but the
-    // page must not keep resolving the dialog it no longer shows.
-    setDialog(null)
-  }, [])
 
   const changeDialogAgent = (next: string) => {
     setDialogAgent(next)
