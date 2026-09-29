@@ -28,7 +28,7 @@
 
 页头另有**「创建资源」入口**：点击后经 `host:actions` 的 `conversation.compose` 打开一个新会话，默认 Agent 不变，输入框里预填一段点名 `using-apm` 的草稿，**不发送**。用户补充需求后自己发送，由 bibit 内置的 `using-apm` skill 完成资源创建。该入口的降级规则见 §17「创建资源」入口变灰，或点击后提示不支持」一节。
 
-当前插件**不依赖** `@bibit/feature-ui`：市场页与设置页用 `.agent-hub*` 命名空间内的自持 CSS 和原生控件，只通过 Bibit 主题 token 适配明暗主题。若某个贡献点需要 `FeatureSettingsPage` / `Button` / 状态组件等平台 UI，必须与 React 及其余 SDK 一起锁定升级该包；不得直接导入 Bibit 私有 UI 源码。
+当前插件**不依赖** `@bibit/feature-ui`：页面用 `.agent-hub*` 命名空间内的自持 CSS 和原生控件，只通过 Bibit 主题 token 适配明暗主题。若某个贡献点以后需要 `FeatureSettingsPage` / `Button` / 状态组件等平台 UI，必须与 React 及其余 SDK 一起锁定升级该包，并在 vendor 里同步引入；不得直接导入 Bibit 私有 UI 源码。
 
 ## 2. 总体职责边界
 
