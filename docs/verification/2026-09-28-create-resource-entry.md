@@ -113,6 +113,17 @@ git diff --check
 | `git diff --check` | 无输出 |
 | `conversation.compose` 命中数 | 1（真的换上了 0.4.0） |
 
+合并后（2026-09-29）在 `bianbu-26.04` 上复测：
+
+| 检查 | 结果 |
+| --- | --- |
+| `npm test`（Node 24.16） | 501/501 通过（27 个文件） |
+| `npm test`（系统 Node 18.19） | 498/501；3 项失败全部是 `dev/sources.test.ts` 的 `readMarket` 用例，与 0.3.2 起记录的既有失败逐条一致，与本次改动无关 |
+| `npm run typecheck` / `npm run build:dev` / `npm run build:plugin` | exit 0；产物 `artifacts/agent-hub-0.3.10.bibit-plugin.tgz`，sha256 `22eaeebab991cae842999629ddbd0b5775cd5a5910a085c8d5e5bd4fc17e2ebb` |
+| 产物内容核对 | `featureManifest.version = 0.3.10`、`requiredHostCapabilities = ["service:store","host:actions"]`、`contributions.settings = []`、`locales = ["en","zh-CN"]`；`dist/plugin.js` 含 1 处 `conversation.compose`、0 处 `@tauri-apps`；`plugin.sig.keyId = agent-hub-development` |
+| `make -C provider test` | `ok`（`internal/provider`、`cmd/provider-probe`） |
+| `git diff --check` | 无输出 |
+
 ### 回滚验证（新增断言不是空转）
 
 逐条临时撤掉实现，对应用例必须失败：
