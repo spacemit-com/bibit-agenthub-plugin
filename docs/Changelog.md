@@ -1,5 +1,39 @@
 # Changelog
 
+## 2026-09-29 — Hub 页新增手动刷新按钮（0.3.11）
+
+分类：新增功能
+
+用户需求：
+
+在 Hub 页面中添加一个刷新按钮，用来手动刷新当前页面的内容。不包括在设置标签页中出现。该按钮的位置要合理，不挤占现有元素。可以和目前的「创建资源」并排，刷新在左，创建在右，文本使用符号而非文字。
+
+解决方案或完成结果：
+
+- 位置：页头右侧的 `.agent-hub__create` 列里新增一行 `.agent-hub__actions`（`display: flex`），DOM 顺序为**刷新 → 创建**，因此刷新在左、创建在右；「创建资源」的不可用说明段落仍留在该列下方，`aria-describedby` 指向关系不变，标题与动作行仍由 `space-between` 分隔，没有挤占既有元素。
+- 符号而非文字：按钮可见内容只有 `<span aria-hidden="true">↻</span>`，可访问名称与悬停提示由 `aria-label` / `title` 提供，文案键 `Refresh`（中文「刷新」）进 `src/agentHubI18n.tsx`。这是仓库既有的符号用法（分页 `‹`/`›`、筛选 `⌄`/`✓`），不引入图片或 SVG。
+- 不在设置标签页出现：按钮以 `tab !== 'settings'` 条件渲染。设置标签页读的是 `settings.get.v1`，页面在该标签页既不发起 `powers.list.v1` 也不保留 `view`，刷新目录对它没有意义；该标签页因此完全不渲染这个入口。
+- 刷新语义：复用页面既有的 `retryLoad`（`setRetry(v => v + 1)`），**保持当前 scope / agent / type / tags / 页码 / snapshot**，只重取当前页；不调用 `resetPageScroll()`，所以不跳页、不重置滚动位置。market 第 1 页本身是全量重读；目录变化仍走既有 `reset_required` 分支回落第 1 页。
+- 不打断在途读取：`disabled={view.status === 'loading'}`。bump `retry` 会 abort 在途的 `powers.list.v1` 再重发，这正是「窗口获焦不得打断 market 读取」那条约束规避的自取消（见 0.3.2）；禁用而非「点了再取消」把这条规则固化在按钮上。错误态下按钮可用，与错误提示里的 `Retry` 等价、可共存。
+- 尺寸对齐：`.agent-hub__actions` 的**两个入口共用一个高度令牌** `--hub-action-height: 41px`（`.agent-hub .agent-hub__actions > button { min-height }` + `.agent-hub .agent-hub__refresh { width/height }`）。这不是凭计算拍的：WebKitGTK 2.52 用离屏探针实测，原生按钮的高度由平台控件字体决定（本机回退字体下 39px，而非 `14px/1.5 + 9px padding + 1px 边框` 预测的 41px），只让图标 `align-self: stretch` 也无效（grid 项的 `aspect-ratio` 在那里按内容宽度解，图标反而被压成 21.34×39）。钉住同一个令牌后两个入口在任何窗口都是 41×41 / 145.53×41 且顶边对齐，且「创建资源」在不加刷新按钮时尺寸完全不变。底色/边框/圆角沿用页面基础按钮规则，`:disabled` 与悬停态对齐既有分页按钮；CSS 全部收口在 `.agent-hub*` 命名空间内。
+- 无 DTO / operation / Provider 改动：不触碰 `src/api/contracts.ts` 与 `dev/main.tsx`，`bibit.feature.json` 只升版本号，capability 不变。
+
+相关文件：
+
+- `src/AgentHubPage.tsx`：页头新增 `.agent-hub__actions` 行与纯图标刷新按钮，复用 `retryLoad`
+- `src/agentHubI18n.tsx`：中文词典新增 `'Refresh': '刷新'`
+- `src/agentHub.css`：`--hub-action-height` 令牌、`.agent-hub__actions` / `.agent-hub__refresh` 与共用的 `min-height` 规则
+- `src/agentHubLayout.test.ts`：新增「刷新图标与创建入口同高」的文本级 CSS 契约
+- `src/AgentHubPage.test.tsx`：新增 3 条用例（重取当前查询、设置标签页不出现、在途读取时禁用）
+- `docs/verification/2026-09-29-refresh-button.md`（新增）、`docs/verification/probe-refresh-button.py`（新增离屏 WebKit 探针）
+- `package.json`、`package-lock.json`、`bibit.feature.json`、`debian/changelog`、`docs/development-and-deployment-guide.md`
+
+验证结果或限制：
+
+`npm test` 505/505（27 个文件；0.3.10 基线 501，本次 +4：3 条页面用例 + 1 条 CSS 契约；唯一失败的 `dev/sources.test.ts` 3 条 `readMarket` 用例为基线问题，`git stash` 后同样失败）、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin`（`artifacts/agent-hub-0.3.11.bibit-plugin.tgz`，sha256 `99d33605…`）与 `git diff --check` 均通过。离屏 WebKitGTK 探针 `probe-refresh-button.py --only shipped` 在 1920→400px 十个窗口上全部通过（两个入口同高、图标在左且为正方形、无刷新按钮时创建入口尺寸不变、页头不溢出、页面不横向滚动）。六处变异验证确认新断言不是空转：去掉 `disabled` / 去掉 `tab !== 'settings'` / `onClick` 置空 / 图标换成文字标签 / 刷新选择器退回裸类名 / 去掉共用的 `min-height`，各有 1 项用例失败。
+
+限制：`dev/sources.test.ts` 的 3 条 `readMarket` 用例在本机（Node 18.19.1 / vitest 3.2.4）**基线即失败**，与本次改动无关：jsdom 环境把全局 `URL` 换成不继承 `node:url` `URL` 的实现，传给 `http.get(url, options, cb)` 后 Node 不认它是 URL，于是把 options 对象当 listener，详见 verification 文档。实机 GUI 未验证：`↻`（U+21BB）属 Arrows 区，本机 `fc-match ':charset=21bb'` 命中 DejaVu Sans，探针也量到 19.3px 的字形宽度；板端若缺字，退路是替换为内联 SVG，不影响其余改动。
+
 ## 2026-09-29 — Hub 页新增「创建资源」入口，借 using-apm 新建 Power（0.3.10）
 
 分类：新增功能

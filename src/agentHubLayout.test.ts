@@ -339,4 +339,25 @@ describe('Agent Hub layout contract', () => {
     // An extreme version must stay inside the slot instead of drawing over the description.
     expect(staticVersion.flatMap((block) => declared(block, 'overflow'))).toContain('hidden')
   })
+
+  it('keeps the header refresh icon and the create entry on one height', () => {
+    // WebKit sizes the create entry from its own control font (39px on WebKitGTK 2.52
+    // with a fallback family, not the 41px the 14px/1.5 padding arithmetic predicts), so
+    // the two entries are pinned to one token instead of each following its content.
+    const token = rules('.agent-hub').flatMap((block) => declared(block, '--hub-action-height'))
+    expect(token).toHaveLength(1)
+    const createEntry = rules('.agent-hub .agent-hub__actions > button')
+    expect(createEntry.flatMap((block) => declared(block, 'min-height'))).toEqual([
+      'var(--hub-action-height)',
+    ])
+    const refresh = rules('.agent-hub .agent-hub__refresh')
+    expect(refresh.flatMap((block) => declared(block, 'width'))).toEqual(['var(--hub-action-height)'])
+    expect(refresh.flatMap((block) => declared(block, 'height'))).toEqual(['var(--hub-action-height)'])
+    // The icon's own rules need the page prefix too: a bare `.agent-hub__refresh` loses
+    // to the base button rule below (`0,2,0`), which would drop `display: grid` and leave
+    // the glyph squeezed into a text-width box.
+    expect(rules('.agent-hub__refresh')).toEqual([])
+    expect(rules('.agent-hub .agent-hub__refresh:disabled')).toHaveLength(1)
+    expect(rules('.agent-hub__actions').flatMap((block) => declared(block, 'display'))).toContain('flex')
+  })
 })

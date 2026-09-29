@@ -38,6 +38,7 @@ const zh: Readonly<Record<string, string>> = {
   'INTERNAL CATALOG': '内部目录',
   'Loading Powers…': '正在加载 Power…',
   'Retry': '重试',
+  'Refresh': '刷新',
   'No Powers are available.': '没有可用的 Power。',
   'Available Powers': '可用的 Power',
   'Store capability is not available.': 'Store 能力不可用。',

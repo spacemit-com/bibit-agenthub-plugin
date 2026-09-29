@@ -615,6 +615,88 @@ describe('AgentHubPage', () => {
     expect(screen.queryByText('Power catalog request was cancelled.')).toBeNull()
   })
 
+  it('refreshes the current catalog query from the header icon button', async () => {
+    const user = userEvent.setup()
+    const { hostApi, calls } = makeStoreHost()
+    renderPage(hostApi)
+    await screen.findByRole('heading', { name: 'code-review' })
+
+    const header = document.querySelector('.agent-hub header') as HTMLElement
+    const refresh = within(header).getByRole('button', { name: 'Refresh' })
+    // Symbol copy, not a label: the visible content stays an icon.
+    expect(refresh.textContent).toBe('↻')
+    // Refresh sits to the left of the create entry, in the same header row.
+    expect(within(header).getAllByRole('button').map((button) => button.textContent)).toEqual([
+      '↻',
+      'Create a resource',
+    ])
+
+    const listCalls = () => calls.filter((call) => call.operationId === 'powers.list.v1')
+    expect(listCalls()).toHaveLength(1)
+
+    await user.click(refresh)
+
+    // The click re-reads the same query: same wire params, one extra request, and
+    // the page neither jumps back to page 1 nor drops the selected filters.
+    await waitFor(() => expect(listCalls()).toHaveLength(2))
+    expect(wireParamsOf(listCalls()[1])).toEqual(wireParamsOf(listCalls()[0]))
+    await screen.findByRole('heading', { name: 'code-review' })
+    expect(pageNumber()).toBe('1')
+  })
+
+  it('hides the header refresh entry on the Settings tab', async () => {
+    const user = userEvent.setup()
+    const { hostApi } = makeStoreHost((input) =>
+      input.operationId === 'settings.get.v1' ? settingsData() : installedData(codeReviewList)
+    )
+    renderPage(hostApi)
+    await screen.findByRole('heading', { name: 'code-review' })
+    expect(screen.getByRole('button', { name: 'Refresh' })).toBeTruthy()
+
+    await user.click(screen.getByRole('button', { name: 'Settings' }))
+    await screen.findByTestId('api-key-state')
+
+    // The leaf panel renders no catalog, so it must not offer a button that would
+    // re-read a list it does not show. Returning to a catalog tab brings it back.
+    expect(screen.queryByRole('button', { name: 'Refresh' })).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'My Powers' }))
+    expect(await screen.findByRole('heading', { name: 'code-review' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Refresh' })).toBeTruthy()
+  })
+
+  it('disables the header refresh entry while a catalog read is in flight', async () => {
+    const user = userEvent.setup()
+    let marketRequests = 0
+    let release: (() => void) | undefined
+    const { hostApi } = makeStoreHost(async (input) => {
+      if (wireParamsOf(input).scope === 'market') {
+        marketRequests += 1
+        await new Promise<void>((resolve) => {
+          release = resolve
+        })
+        return await marketData()
+      }
+      return installedData(codeReviewList)
+    })
+    renderPage(hostApi)
+    await screen.findByRole('heading', { name: 'code-review' })
+
+    await user.click(screen.getByRole('button', { name: 'Power market' }))
+    await waitFor(() => expect(marketRequests).toBe(1))
+
+    // Refreshing mid-read would abort and re-issue it, which is the spurious
+    // cancellation the window-focus refresh already avoids by checking the status.
+    const refresh = screen.getByRole('button', { name: 'Refresh' }) as HTMLButtonElement
+    expect(refresh.disabled).toBe(true)
+    await user.click(refresh)
+    expect(marketRequests).toBe(1)
+
+    release!()
+    await screen.findByRole('heading', { name: 'market-translate' })
+    await waitFor(() => expect(refresh.disabled).toBe(false))
+  })
+
   it('maps an invalid wire response to the incompatible fallback', async () => {
     const { hostApi } = makeStoreHost(() => ({ status: 'reset_required', reason: 'snapshot_changed' }))
     renderPage(hostApi)

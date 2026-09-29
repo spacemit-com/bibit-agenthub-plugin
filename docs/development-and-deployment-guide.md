@@ -28,6 +28,8 @@
 
 页头另有**「创建资源」入口**：点击后经 `host:actions` 的 `conversation.compose` 打开一个新会话，默认 Agent 不变，输入框里预填一段点名 `using-apm` 的草稿，**不发送**。用户补充需求后自己发送，由 bibit 内置的 `using-apm` skill 完成资源创建。该入口的降级规则见 §17「创建资源」入口变灰，或点击后提示不支持」一节。
 
+该入口左侧还有一个**纯图标手动刷新入口**（`↻`，`aria-label`/`title` 为 `Refresh`/`刷新`）：只重取当前标签页的列表数据，保持当前筛选与页码，不跳页也不重置滚动；**「设置」标签页不渲染它**（该标签页读的是 `settings.get.v1`，刷新目录对它没有意义）。列表读取进行中时按钮 `disabled`——刷新会 abort 在途请求再重发，这与「窗口获焦不得打断在途读取」是同一条约束（§7.2）。
+
 当前插件**不依赖** `@bibit/feature-ui`：页面用 `.agent-hub*` 命名空间内的自持 CSS 和原生控件，只通过 Bibit 主题 token 适配明暗主题。若某个贡献点以后需要 `FeatureSettingsPage` / `Button` / 状态组件等平台 UI，必须与 React 及其余 SDK 一起锁定升级该包，并在 vendor 里同步引入；不得直接导入 Bibit 私有 UI 源码。
 
 ## 2. 总体职责边界
@@ -1477,6 +1479,7 @@ CLI 模式检查 Registry 是否为 `version: 2`、`transport: stdio`、固定�
 - 页头「创建资源」入口经 `conversation.compose` 打开新会话并预置草稿，但**实机 happy path 尚未验证**：该动作只在 bibit 主线 `0e3d7b4` 之后存在，已发布的 `bi-bit` 都还没有，因此当前板上点击只会得到「当前宿主不支持发起会话」。降级路径（能力缺失即禁用、`UNSUPPORTED` 提示、可重试 `FAILED` 只提示不自动重试）已由单测锁定；
 - 预置草稿只点名 `using-apm`，不把该技能作为临时 chip 挂到输入框：`using-apm` 是 `presets.skills` 里对所有专家固定启用的技能，且设备未装该技能时带 `skills` 会让整次调用以 `INVALID_INPUT` 失败；
 - 当前插件实现 APC Power 展示原型（筛选、系列卡、版本选择、每页 20 的分页、warning 与 Retry）、详情弹窗与单版本安装/卸载，以及自定义资源的扫描/上传/删除，和三个设置字段（实验 Agent、刷新间隔、APC API Key）；
+- 页头刷新入口只重取当前标签页的当前查询（筛选与页码不变）；`retry` 计数一 bump 就会 abort 在途的 `powers.list.v1` 再重发，因此列表加载中该按钮 `disabled`，**不会**成为第二个「把 market 读取掐掉」的入口；
 - Power 下载、提交审核、下架、恢复以及搜索尚未实现；
 - `powers.list.v1` / `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` / `powers.custom.list.v1` / `powers.upload.v1` / `powers.delete.v1` DTO 已做闭集运行时校验；`settings.get.v1` / `settings.update.v1` 由 store 服务处理（dev 为内存 echo，Provider 侧为 `settings.json` 持久化，Key 只回传 `hasApiKey`）；
 - 自定义资源只覆盖 skill / plugin / agent：MCP 没有可扫描目录，codex 与 claude-code 的 Plugin 由各自 CLI 管理，两者都不在本期范围；

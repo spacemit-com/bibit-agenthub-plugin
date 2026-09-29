@@ -36,6 +36,12 @@
      custom card shows instead must fill the very same box, or the two cards put
      their title and description on different lines. */
   --hub-version-height: 31px;
+  /* The header's two action entries are pinned to one height instead of each
+     following its own content: a native button sizes itself from the platform's
+     control font (WebKitGTK 2.52 measured 39px with a fallback family, not the 41px
+     the 14px/1.5 padding arithmetic predicts), so the icon and the create entry
+     would otherwise disagree by a couple of pixels and by more on another platform. */
+  --hub-action-height: 41px;
   box-sizing: border-box;
   /* The host mounts page contributions inside `SidebarProvider` / `SidebarInset`, which
      are `min-h-svh` (min-height only): a percentage height stays indefinite there, so the
@@ -98,6 +104,33 @@
   letter-spacing: normal;
   text-align: right;
 }
+
+/* The header actions share one row, the refresh icon to the left of the create
+   entry. The note under them stays a block of the column, so it still spans the
+   full width and keeps its right alignment. */
+.agent-hub__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* The row's two entries share one height: the create entry keeps its own padding and
+   font, the refresh icon becomes a square of that same height. Pinning both to a
+   token is what survives WebKit sizing native buttons from its own control font;
+   `align-self: stretch` alone does not, because a grid item's aspect ratio resolves
+   from the content width there rather than from the row height. The glyph is the
+   visible content; `aria-label` carries the meaning for assistive tech. */
+.agent-hub .agent-hub__actions > button { min-height: var(--hub-action-height); }
+.agent-hub .agent-hub__refresh {
+  display: grid;
+  width: var(--hub-action-height);
+  height: var(--hub-action-height);
+  place-items: center;
+  padding: 0;
+  font-size: 20px;
+  line-height: 1;
+}
+.agent-hub .agent-hub__refresh:hover:not(:disabled) { background: #eef2f7; }
+.agent-hub .agent-hub__refresh:disabled { cursor: not-allowed; opacity: .42; }
 
 /* Base button surface: :where() zeroes the specificity of the :not() exclusion,
    so the scope-tab reset (border: 0) and every power-filters button override win. */

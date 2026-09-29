@@ -1,3 +1,25 @@
+bibit-agenthub-plugin (0.3.11) resolute-porting; urgency=medium
+
+  * Add a manual-refresh entry to the Agent Hub page header: an icon-only
+    button (the `↻` glyph, named `Refresh` / `刷新`) sitting to the left of the
+    "Create a resource" entry in the same row. It re-reads the catalog for the
+    current tab and repeats the current query — same scope, agent, type, tags
+    and page — so the user can pull in changes without leaving the page.
+  * The entry never appears on the Settings tab. That tab reads its own
+    `settings.get.v1` document and renders no catalog, so a button that
+    re-reads a list it does not show would only be dead weight. The refresh
+    entry stays out of the settings surface entirely.
+  * Keep the in-flight read safe: while a `powers.list.v1` request is running
+    the button is disabled instead of aborting and re-issuing it. Bumping the
+    retry counter aborts whatever is in flight, which is the same spurious
+    cancellation the window-focus refresh already avoids on the market scope.
+  * The store protocol, the operation set and the Provider are untouched: the
+    button reuses the page's existing retry path, so no new DTO or operation is
+    introduced.
+
+ -- liangjunzhao <junzhao.liang@spacemit.com>  Tue, 29 Sep 2026 22:40:00 +0800
+
+
 bibit-agenthub-plugin (0.3.10) resolute-porting; urgency=medium
 
   * Landed on top of 0.3.3-0.3.9 rather than beside them: this branch was cut

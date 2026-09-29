@@ -672,14 +672,34 @@ export function AgentHubPage(_: FeaturePageProps) {
       <header>
         <div><p>{t('INTERNAL CATALOG')}</p><h1>Agent Hub</h1></div>
         <div className="agent-hub__create">
-          <button
-            type="button"
-            disabled={!actions || composing}
-            aria-describedby={actions ? undefined : 'agent-hub-create-unavailable'}
-            onClick={createResource}
-          >
-            {t('Create a resource')}
-          </button>
+          {/* The two header actions share one row, refresh on the left. The refresh
+              entry is a catalog action: the Settings tab reads its own settings
+              document and shows no list, so the button is not rendered there. */}
+          <div className="agent-hub__actions">
+            {tab !== 'settings' && (
+              <button
+                type="button"
+                className="agent-hub__refresh"
+                aria-label={t('Refresh')}
+                title={t('Refresh')}
+                // Disabled rather than ignoring the click: bumping `retry` aborts the
+                // request in flight and re-issues it, which is exactly the spurious
+                // cancellation the window-focus refresh above avoids.
+                disabled={view.status === 'loading'}
+                onClick={retryLoad}
+              >
+                <span aria-hidden="true">↻</span>
+              </button>
+            )}
+            <button
+              type="button"
+              disabled={!actions || composing}
+              aria-describedby={actions ? undefined : 'agent-hub-create-unavailable'}
+              onClick={createResource}
+            >
+              {t('Create a resource')}
+            </button>
+          </div>
           {!actions && (
             <p id="agent-hub-create-unavailable" className="agent-hub__create-note">
               {t(ACTIONS_UNAVAILABLE_TEXT)}
