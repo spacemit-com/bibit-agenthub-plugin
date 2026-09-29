@@ -1,3 +1,22 @@
+bibit-agenthub-plugin (0.3.8) resolute-porting; urgency=medium
+
+  * Read block scalar frontmatter and stop warning about Powers the APM
+    manifest already manages. Two real Skills on the board (k3-media-pipeline,
+    vpu-benchmark) write their description as a folded block scalar
+    (`description: >-`), whose value lives on the following indented lines. The
+    custom-resource scanner only understood inline scalars, so it read an empty
+    description and rejected both directories as invalid-authority-file, which
+    the page then reported as "does not meet the minimum format". The scanner now
+    parses `|` and `>` headers (with their chomping/indentation indicators), folds
+    `>` into space-joined lines with a newline per paragraph, keeps `|` literal,
+    and lets sibling keys after the block survive; the Dev Host scanner mirrors
+    it so both agree on what is listed. Separately, a skip is no longer reported
+    as a warning when the APM manifest already manages that (type,name): the card
+    for such a Power is fed by the manifest, so re-scanning its directory only
+    ever produced noise about a Power that is listed correctly.
+
+ -- liangjunzhao <junzhao.liang@spacemit.com>  Tue, 29 Sep 2026 14:55:00 +0800
+
 bibit-agenthub-plugin (0.3.7) resolute-porting; urgency=medium
 
   * Confirm an uninstall before running it, and return to the Hub list once it

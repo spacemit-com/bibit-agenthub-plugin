@@ -442,6 +442,90 @@ func TestParseYAMLSubsetHandlesUnsupportedStructures(t *testing.T) {
 	}
 }
 
+func TestParseYAMLSubsetReadsBlockScalars(t *testing.T) {
+	// The frontmatter shape that made real Skills fail the minimum-format gate:
+	// a folded `description` whose value lives on the following lines. The key
+	// must be projected, and the keys after the block must survive.
+	folded := parseYAMLSubset(strings.Join([]string{
+		"name: k3-media-pipeline",
+		"version: \"v1.0.0\"",
+		"description: >-",
+		"  在 K3 板卡上使用 GStreamer 或 FFmpeg 查看媒体信息，执行视频播放、",
+		"  硬件编解码、多路硬件解码。",
+		"  仅用于处理指定视频。",
+		"compatibility: >-",
+		"  Requires Linux on SpacemiT K3 and Python 3.11+.",
+		"metadata:",
+		"  version: \"1.0.0\"",
+		"  target: \"spacemit-k3\"",
+	}, "\n"))
+	if folded["description"] != "在 K3 板卡上使用 GStreamer 或 FFmpeg 查看媒体信息，执行视频播放、 硬件编解码、多路硬件解码。 仅用于处理指定视频。" {
+		t.Fatalf("folded description = %q", folded["description"])
+	}
+	if folded["metadata.target"] != "spacemit-k3" {
+		t.Fatalf("keys after a folded block must survive: %q", folded["metadata.target"])
+	}
+
+	literal := parseYAMLSubset(strings.Join([]string{
+		"name: literal",
+		"description: |",
+		"  first line",
+		"  second line",
+		"after: kept",
+	}, "\n"))
+	if literal["description"] != "first line\nsecond line" {
+		t.Fatalf("literal description = %q", literal["description"])
+	}
+	if literal["after"] != "kept" {
+		t.Fatalf("keys after a literal block must survive: %q", literal["after"])
+	}
+
+	// A folded block with a paragraph break keeps a newline between paragraphs;
+	// an empty block projects nothing (the minimum-format gate then rejects it).
+	paragraphs := parseYAMLSubset("name: p\ndescription: >\n  one\n  two\n\n  three\nafter: kept\n")
+	if paragraphs["description"] != "one two\nthree" {
+		t.Fatalf("paragraph description = %q", paragraphs["description"])
+	}
+	empty := parseYAMLSubset("name: e\ndescription: >-\n\nother: value\n")
+	if _, ok := empty["description"]; ok {
+		t.Fatalf("an empty block must not be projected: %q", empty["description"])
+	}
+	if empty["other"] != "value" {
+		t.Fatalf("keys after an empty block must survive: %q", empty["other"])
+	}
+}
+
+func TestScanCustomSkillAcceptsBlockScalarDescription(t *testing.T) {
+	home := t.TempDir()
+	// Board shape: both of these Skills were skipped as invalid-authority-file
+	// only because their description is a folded block scalar.
+	writeResourceFile(t, home, ".bianbu-agent/skills/k3-media-pipeline/SKILL.md",
+		"---\nname: k3-media-pipeline\nversion: \"v1.0.0\"\ndescription: >-\n  在 K3 板卡上使用 GStreamer 或 FFmpeg 查看媒体信息，\n  执行视频播放、硬件编解码。\nmetadata:\n  version: \"1.0.0\"\n---\n\n# K3 Media Pipeline\n")
+	writeResourceFile(t, home, ".bianbu-agent/skills/vpu-benchmark/SKILL.md",
+		"---\nname: vpu-benchmark\nversion: \"v0.13.12\"\ndescription: |\n  测试 SpacemiT K3 VPU 硬件视频编解码器的基准性能。\n  用户询问 VPU 性能时使用。\ncompatibility: >-\n  Requires Linux on SpacemiT K3.\n---\n\n# VPU Benchmark\n")
+
+	document := scanCustom(t, home, "bibit")
+	if len(document.Skipped) != 0 {
+		t.Fatalf("block scalars must not be skipped: %+v", document.Skipped)
+	}
+	if len(document.Items) != 2 {
+		t.Fatalf("unexpected items: %+v", document.Items)
+	}
+	byName := map[string]customResourceJSON{}
+	for _, item := range document.Items {
+		byName[item.Name] = item
+	}
+	if got := byName["k3-media-pipeline"].Description; got != "在 K3 板卡上使用 GStreamer 或 FFmpeg 查看媒体信息， 执行视频播放、硬件编解码。" {
+		t.Fatalf("folded description = %q", got)
+	}
+	if got := byName["k3-media-pipeline"].Version; got != "v1.0.0" {
+		t.Fatalf("version = %q", got)
+	}
+	if got := byName["vpu-benchmark"].Description; got != "测试 SpacemiT K3 VPU 硬件视频编解码器的基准性能。\n用户询问 VPU 性能时使用。" {
+		t.Fatalf("literal description = %q", got)
+	}
+}
+
 func TestNormalizeAuthorityVersion(t *testing.T) {
 	cases := map[string]string{
 		"":            "",

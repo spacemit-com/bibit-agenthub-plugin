@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-09-29 — 支持块标量 frontmatter，并停止对 APM 已管理资源报跳过（0.3.8）
+
+分类：问题修复
+
+用户反馈（原文）：
+
+> 板上的bibit agent root的skill k3-media-pipeline vpu-benchmark为什么不符合hub的skill最低格式要求
+
+定位：这两个 Skill 本身合规（`apm list --installed --agent=bibit --json` 有完整记录，真实 YAML 解析器也能读出完整 `description`），是扫描器的 YAML 子集解析器不认块标量。`description: >-` 的值在后续缩进行上，旧实现只记 `blockScalarIndent` 就跳过，键从未写入 `fields`，于是 `fields["description"]` 为空、被最低格式门槛判为 `invalid-authority-file`。板端 `powers.custom.list.v1` 已复现（两条 `invalid-authority-file`），受控 fixture 也确认只有 `>-`/`|` 写法被拒。第二个问题：这两个 Skill 由 APM 清单管理、卡片本来就正常显示，但跳过警告是无条件拼接的，于是用户看到的是「已列出的 Power 说不满足最低格式」的误报。
+
+改动：
+
+- `provider/internal/provider/custom.go`：`parseYAMLSubset` 改为按行索引推进，遇到块标量头（`|`/`>`，含 `+`/`-`/数字修饰符）时消费后续缩进块；`>` 折叠为空格分隔、空行分段，`|` 保留换行，块后同级键不受影响；空块不投影（仍走最低门槛拒绝）。新增 `countLeadingSpaces` / `blockScalarIndicator` / `readBlockScalar` / `blockScalarValue`，删除只记缩进的旧逻辑。
+- `dev/custom.ts`：同一套算法的 TS 镜像（`readBlockScalar` / `renderBlockScalar`），保证 Dev Host 与真实 CLI 对「哪些目录被列出」的判断一致。
+- `src/api/apm.ts`：导出 `powerSeriesKey(type,name)`，作为系列身份的唯一构造点。
+- `src/api/powerCatalogClient.ts`：installed 分支用 `refreshAgent` 得到的记录构造 managed 集合，`customSkippedWarnings` 过滤掉已被 APM 清单管理的 `(type,name)`——与合并时丢弃同键自定义项用的是同一身份。
+- 测试：`provider/internal/provider/custom_test.go`（新增 `TestParseYAMLSubsetReadsBlockScalars`、`TestScanCustomSkillAcceptsBlockScalarDescription`）、`dev/custom.test.ts`、`src/api/powerCatalogClient.test.ts` 各新增 1 例。
+- 文档：`docs/development-and-deployment-guide.md` §10.6.1/10.6.2 与 `docs/cli-provider-development-and-deployment.md` §3.5 补充块标量与 managed 过滤规则。
+- 版本：`package.json`、`package-lock.json`、`bibit.feature.json`、`providerVersion`、`debian/changelog` 统一提升到 `0.3.8`。
+
+验证：`npm test` 474/477（3 项 `dev/sources.test.ts` 的 `readMarket` 失败为本机 Node 18.19 既有问题，stash 后同样失败）、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin`、`make -C provider test vet build` 与 `--self-test` 全部通过；riscv64 交叉构建的 Provider 在板上跑真实 home：`skipped` 为空、两条 Skill 的 `description` 与 APM 清单逐字一致。4 项反向验证（分别还原 `custom.go`、`dev/custom.ts`、`powerCatalogClient.ts`+`apm.ts`）确认新用例会失败。详见 `docs/verification/2026-09-29-block-scalar-scan.md`。
+
 ## 2026-09-29 — 卸载二次确认，确认后回到 Hub 列表（0.3.7）
 
 分类：需求改进

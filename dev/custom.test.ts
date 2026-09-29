@@ -113,6 +113,35 @@ describe('readCustom', () => {
     })
   })
 
+  it('reads a folded or literal block scalar description', () => {
+    withHome((home) => {
+      // Real board skills use `description: >-`, whose value lives on the
+      // indented lines below. Reading it as an empty description skipped them.
+      writeFile(
+        home,
+        '.bianbu-agent/skills/k3-media-pipeline/SKILL.md',
+        '---\nname: k3-media-pipeline\nversion: "v1.0.0"\ndescription: >-\n  在 K3 板卡上查看媒体信息，\n  执行视频播放与硬件编解码。\nmetadata:\n  target: spacemit-k3\n---\n'
+      )
+      writeFile(
+        home,
+        '.bianbu-agent/skills/vpu-benchmark/SKILL.md',
+        '---\nname: vpu-benchmark\nversion: v0.13.12\ndescription: |\n  测试 VPU 基准性能。\n  用户询问 VPU 性能时使用。\n---\n'
+      )
+      const document = scan(home, 'bibit')
+      expect(document.skipped).toEqual([])
+      const byName = new Map(document.items.map((item) => [item.name, item]))
+      expect(document.items.map((item) => item.name)).toEqual(['k3-media-pipeline', 'vpu-benchmark'])
+      expect(byName.get('k3-media-pipeline')).toMatchObject({
+        version: 'v1.0.0',
+        description: '在 K3 板卡上查看媒体信息， 执行视频播放与硬件编解码。',
+      })
+      expect(byName.get('vpu-benchmark')).toMatchObject({
+        version: 'v0.13.12',
+        description: '测试 VPU 基准性能。\n用户询问 VPU 性能时使用。',
+      })
+    })
+  })
+
   it('ignores directories the Agent cannot load', () => {
     withHome((home) => {
       writeFile(home, '.codex/plugins/codex-plugin/apc-plugin.json', JSON.stringify({ name: 'codex-plugin' }))

@@ -15,6 +15,7 @@ import { parseApcCatalog } from './apc'
 import {
   buildMergedInstalledPowersResult,
   buildPowersResult,
+  powerSeriesKey,
   type PowerRecord,
 } from './apm'
 import { listCustomResources } from './customResources'
@@ -79,17 +80,30 @@ async function loadCustomResources(
   }
 }
 
-/** Turns the scanner's skip list into warnings the page can render. */
-function customSkippedWarnings(agent: string, skipped: readonly CustomResourceSkipped[]): PowerWarning[] {
-  return skipped.map((entry) => ({
-    code: 'custom-resource-skipped',
-    agent,
-    message:
-      entry.reason === 'missing-authority-file'
-        ? 'Skipped {type} "{name}": {expected} is missing.'
-        : 'Skipped {type} "{name}": its {expected} does not meet the minimum format.',
-    values: { type: entry.type, name: entry.name, expected: entry.expected },
-  }))
+/**
+ * Turns the scanner's skip list into warnings the page can render. A directory
+ * whose `(type,name)` the APM manifest already manages is dropped: that Power's
+ * card is fed by the manifest, so the local directory is not a "skipped custom
+ * resource" the user needs to hear about. Warning about it would be pure noise —
+ * a Hub-managed Power is routinely installed into the very directory the scanner
+ * walks, and the scanner's job is only to find what the manifest does not have.
+ */
+function customSkippedWarnings(
+  agent: string,
+  skipped: readonly CustomResourceSkipped[],
+  managed: ReadonlySet<string>
+): PowerWarning[] {
+  return skipped
+    .filter((entry) => !managed.has(powerSeriesKey(entry.type, entry.name)))
+    .map((entry) => ({
+      code: 'custom-resource-skipped',
+      agent,
+      message:
+        entry.reason === 'missing-authority-file'
+          ? 'Skipped {type} "{name}": {expected} is missing.'
+          : 'Skipped {type} "{name}": its {expected} does not meet the minimum format.',
+      values: { type: entry.type, name: entry.name, expected: entry.expected },
+    }))
 }
 
 function slotFor(service: FeatureServiceApiV1<'store'>, key: string): CacheSlot {
@@ -151,8 +165,12 @@ export async function listPowers(
       getInstallationStore(service).refreshAgent(agent, signal),
       loadCustomResources(service, agent, signal),
     ])
+    // The manifest is the authority for the Powers it manages; the scanner only
+    // contributes what is left. Both the entries and the skipped directories are
+    // split against that same set, so a managed Power never produces a warning.
+    const managed = new Set(records.map((record) => powerSeriesKey(record.type, record.name)))
     const result = buildMergedInstalledPowersResult(query, records, custom.items)
-    const warnings = [...custom.warnings, ...customSkippedWarnings(agent, custom.skipped)]
+    const warnings = [...custom.warnings, ...customSkippedWarnings(agent, custom.skipped, managed)]
     if (result.status === 'ready' && warnings.length > 0) {
       return parseListPowersResult({
         ...result,

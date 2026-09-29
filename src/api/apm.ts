@@ -145,6 +145,15 @@ function sortedUnique(values: readonly string[]): string[] {
   return [...new Set(values)].sort()
 }
 
+/**
+ * The identity of one Power series: a type plus a name, independent of version.
+ * It is the key both the series map and the managed/custom split use, so a
+ * scanner result and an APM manifest entry must build it the same way.
+ */
+export function powerSeriesKey(type: string, name: string): string {
+  return `${type}\u0000${name}`
+}
+
 function parseVersionParts(version: string): [number, number, number] {
   const match = VERSION_PATTERN.exec(version)
   if (!match) throw new Error(`Invalid version: ${version}`)
@@ -354,11 +363,11 @@ export function buildMergedInstalledPowersResult(
     })
   }
 
-  const managed = new Set(normalized.map((record) => `${record.type}\u0000${record.name}`))
+  const managed = new Set(normalized.map((record) => powerSeriesKey(record.type, record.name)))
   for (const record of customRecords) {
-    const seriesKey = `${record.type}\u0000${record.name}`
+    const seriesKey = powerSeriesKey(record.type, record.name)
     if (managed.has(seriesKey)) continue
-    if (normalized.some((existing) => `${existing.type}\u0000${existing.name}` === seriesKey)) continue
+    if (normalized.some((existing) => powerSeriesKey(existing.type, existing.name) === seriesKey)) continue
     managed.add(seriesKey)
     normalized.push({
       type: record.type,

@@ -134,17 +134,14 @@ type ParsedAuthority = {
 function parseYamlSubset(contents: string): Map<string, string> {
   const fields = new Map<string, string>()
   const stack: Array<{ indent: number; key: string }> = []
-  let blockScalarIndent = -1
   let ignoreIndent = -1
-  for (const raw of contents.replace(/\r\n/g, '\n').split('\n')) {
-    const line = raw.replace(/[ \t]+$/, '')
+  const lines = contents.replace(/\r\n/g, '\n').split('\n')
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index].replace(/[ \t]+$/, '')
     if (line.trim() === '' || line.trimStart().startsWith('#')) continue
-    let indent = 0
-    while (indent < line.length && line[indent] === ' ') indent++
+    const indent = countLeadingSpaces(line)
     if (line[indent] === '\t') continue
     const trimmed = line.slice(indent)
-    if (blockScalarIndent >= 0 && indent > blockScalarIndent) continue
-    blockScalarIndent = -1
     if (ignoreIndent >= 0) {
       if (indent > ignoreIndent) continue
       ignoreIndent = -1
@@ -164,12 +161,18 @@ function parseYamlSubset(contents: string): Map<string, string> {
     const rawValue = trimmed.slice(separator + 1).trim()
     while (stack.length > 0 && stack[stack.length - 1].indent >= indent) stack.pop()
     const path = stack.length > 0 ? `${stack[stack.length - 1].key}.${key}` : key
-    if (rawValue === '') {
-      stack.push({ indent, key: path })
+    // A block scalar keeps its value on the following lines, mirroring the Go
+    // provider's reader so the Dev Host and a real CLI agree on what is listed.
+    const block = blockScalarIndicator(rawValue)
+    if (block !== null) {
+      const consumed = readBlockScalar(lines, index + 1, indent)
+      const value = renderBlockScalar(consumed.block, block)
+      if (value !== '') fields.set(path, value)
+      index = consumed.last
       continue
     }
-    if (/^[|>][+-]?\d*$/.test(rawValue)) {
-      blockScalarIndent = indent
+    if (rawValue === '') {
+      stack.push({ indent, key: path })
       continue
     }
     if (rawValue.startsWith('{') || rawValue.startsWith('[')) continue
@@ -177,6 +180,64 @@ function parseYamlSubset(contents: string): Map<string, string> {
     if (value !== '') fields.set(path, value)
   }
   return fields
+}
+
+function countLeadingSpaces(line: string): number {
+  let indent = 0
+  while (indent < line.length && line[indent] === ' ') indent += 1
+  return indent
+}
+
+/** `|`/`>` plus optional chomping and indentation indicators, or null. */
+function blockScalarIndicator(value: string): 'literal' | 'folded' | null {
+  if (value === '' || (value[0] !== '|' && value[0] !== '>')) return null
+  if (!/^[|>][+-]?\d*$/.test(value)) return null
+  return value[0] === '|' ? 'literal' : 'folded'
+}
+
+/**
+ * Consumes the indented lines that belong to a block scalar starting at `start`.
+ * The block's own indentation is whatever its first non-blank content line uses,
+ * matching YAML's indentation detection; the first line indented less than the
+ * header ends it.
+ */
+function readBlockScalar(lines: string[], start: number, headerIndent: number): { block: string[]; last: number } {
+  const block: string[] = []
+  let contentIndent = -1
+  let last = start - 1
+  for (let index = start; index < lines.length; index += 1) {
+    const line = lines[index].replace(/[ \t]+$/, '')
+    if (line.trim() === '') {
+      block.push('')
+      continue
+    }
+    const indent = countLeadingSpaces(line)
+    if (indent <= headerIndent || line[indent] === '\t') break
+    if (contentIndent < 0) contentIndent = indent
+    block.push(line.slice(Math.min(contentIndent, indent)))
+    last = index
+  }
+  while (block.length > 0 && block[block.length - 1] === '') block.pop()
+  return { block, last }
+}
+
+/** `|` keeps line breaks; `>` folds them into spaces and `\n` between paragraphs. */
+function renderBlockScalar(lines: string[], style: 'literal' | 'folded'): string {
+  if (style === 'literal') return lines.join('\n').trim()
+  const paragraphs: string[] = []
+  let current: string[] = []
+  for (const line of lines) {
+    if (line.trim() === '') {
+      if (current.length > 0) {
+        paragraphs.push(current.join(' '))
+        current = []
+      }
+      continue
+    }
+    current.push(line.trim())
+  }
+  if (current.length > 0) paragraphs.push(current.join(' '))
+  return paragraphs.join('\n').trim()
 }
 
 function mappingSeparator(line: string): number {

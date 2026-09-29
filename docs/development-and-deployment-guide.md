@@ -6,7 +6,7 @@
 
 | 项目 | 当前版本 |
 | --- | --- |
-| Agent Hub 插件 | `0.3.7` |
+| Agent Hub 插件 | `0.3.8` |
 | `manifestSchemaVersion` | `1` |
 | `sdkApiVersion` | `1` |
 | `@bibit/feature-contracts` | `0.3.0` |
@@ -222,7 +222,7 @@ src/
   "manifestSchemaVersion": 1,
   "sdkApiVersion": 1,
   "id": "agent-hub",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "owner": "agent-hub-team",
   "display": {
     "titleKey": "agent-hub:title",
@@ -836,8 +836,9 @@ Provider 通过 `powers.custom.list.v1` 扫描固定目录，**不调用 apm、�
 - **身份取目录名**，必须满足 APM 规范命名；以 `.` 开头的目录忽略，不是目录（含指向目录的符号链接以外的项）忽略。这些情况**不产生 warning**。身份与展示名是两件事，见下一条。
 - 权威文件：skill = `SKILL.md`；plugin = `apc-plugin.json` / `plugin.yaml` / `.claude-plugin/plugin.json` / `.codex-plugin/plugin.json`；agent = `agent.yaml`。
 - **显示门槛（低于上传门槛）**：skill 只要 frontmatter 是 YAML 映射且 `name`、`description` 非空；plugin 清单只要有非空 `name`；agent 只要有非空 `agent.name`。**不要求**满足 Power 资源 schema（`schema_version`、展示字段、长度限制等一律不检查），v1 与 v2 都按同一最低要求处理。
+- **frontmatter 支持块标量**：`description: >-` / `|-` 这类把值放在后续缩进行的写法会被正常读出——`>` 折叠行内换行、空行分段落，`|` 保留换行；`+` / `-` / 数字缩进指示符同样接受。板端真实 Skill（`k3-media-pipeline`、`vpu-benchmark`）都用了 `>-`，因此这是显示门槛必须覆盖的写法。
 - **卡片标题**用展示名而不是目录名：扫描器把权威文件里声明的 `name` 投影到 `name_en`（仅在资源自己没有 `name_en` 时），前端仍按 `name_zh → name_en → name` 回退。因此 v1 资源显示作者声明的名字，而不是它恰好所在的目录；中文宿主仍优先 `name_zh`，英文宿主不看中文。目录名始终只是**身份**（APM 调用名），用于去重、上传与删除的目标解析，从不作为标题。
-- 低于门槛 / frontmatter 不是映射 / 非法 UTF-8 / 超过 64 KiB → 计入 `skipped`（最多 20 条），reason 为 `invalid-authority-file`；看起来是候选但缺权威文件（如 plugin 目录只有 `skills/`）→ `missing-authority-file`，`expected` 给出该类型主权威文件名。前端把每条 `skipped` 渲染为页面 warning，**不阻断列表**。
+- 低于门槛 / frontmatter 不是映射 / 非法 UTF-8 / 超过 64 KiB → 计入 `skipped`（最多 20 条），reason 为 `invalid-authority-file`；看起来是候选但缺权威文件（如 plugin 目录只有 `skills/`）→ `missing-authority-file`，`expected` 给出该类型主权威文件名。前端把每条 `skipped` 渲染为页面 warning，**不阻断列表**；但**已被 APM 清单管理的 `(type,name)` 不渲染 warning**——那张卡片由清单供数，扫描器只是重新走了一遍同一个目录，报"最低格式不达标"是误报。
 - `version` 只接受规范 `v<x>.<y>.<z>`（缺 `v` 前缀时补齐）；其它写法或缺失一律置空串，卡片显示占位符，不猜测版本。
 - 扫描失败（含 Provider 不支持该 operation）降级为一条 `custom-resources-unavailable` warning，installed 列表仍正常显示——旧版 CLI 因此天然兼容。
 - MCP 不在扫描范围：APM 不为 MCP 维护目录。codex / claude-code 的 Plugin 由各自 CLI 管理，也不扫描。
@@ -1032,16 +1033,16 @@ npm run build:plugin
 产物：
 
 ```text
-artifacts/agent-hub-0.3.7.bibit-plugin.tgz
+artifacts/agent-hub-0.3.8.bibit-plugin.tgz
 ```
 
 检查：
 
 ```bash
-tar -tzf artifacts/agent-hub-0.3.7.bibit-plugin.tgz
-tar -xOf artifacts/agent-hub-0.3.7.bibit-plugin.tgz plugin.json
-tar -xOf artifacts/agent-hub-0.3.7.bibit-plugin.tgz plugin.sig
-sha256sum artifacts/agent-hub-0.3.7.bibit-plugin.tgz
+tar -tzf artifacts/agent-hub-0.3.8.bibit-plugin.tgz
+tar -xOf artifacts/agent-hub-0.3.8.bibit-plugin.tgz plugin.json
+tar -xOf artifacts/agent-hub-0.3.8.bibit-plugin.tgz plugin.sig
+sha256sum artifacts/agent-hub-0.3.8.bibit-plugin.tgz
 ```
 
 归档必须包含：
@@ -1092,7 +1093,7 @@ Settings > Extensions > Trusted plugins
 选择：
 
 ```text
-artifacts/agent-hub-0.3.7.bibit-plugin.tgz
+artifacts/agent-hub-0.3.8.bibit-plugin.tgz
 ```
 
 Bibit 会验签、校验 hash、安装、激活并刷新 Feature Registry。确认主导航出现 Agent Hub，设置子菜单也出现 Agent Hub。
@@ -1118,7 +1119,7 @@ Agent Hub 插件 deb 应安装：
 
 ```bash
 sudo install -Dm0644 \
-  artifacts/agent-hub-0.3.7.bibit-plugin.tgz \
+  artifacts/agent-hub-0.3.8.bibit-plugin.tgz \
   /usr/lib/bibit/plugins/agent-hub.bibit-plugin.tgz
 sudo install -Dm0644 \
   deploy/agenthub-feature-grants.example.json \
@@ -1201,7 +1202,7 @@ dpkg-buildpackage -us -uc -b
 K3DEB1 的 Release 部署必须使用正式签名、且 `keyId` 已进入目标 Bibit 内置信任库的 bundle：
 
 ```bash
-export SIGNED_AGENT_HUB_BUNDLE=/absolute/path/agent-hub-0.3.7.bibit-plugin.tgz
+export SIGNED_AGENT_HUB_BUNDLE=/absolute/path/agent-hub-0.3.8.bibit-plugin.tgz
 test -f "$SIGNED_AGENT_HUB_BUNDLE"
 tar -xOf "$SIGNED_AGENT_HUB_BUNDLE" plugin.json
 tar -xOf "$SIGNED_AGENT_HUB_BUNDLE" plugin.sig
@@ -1295,7 +1296,7 @@ npm run build:plugin
 
 - 目标 Bibit 信任正式 `keyId`；
 - 系统目录只有预期 Agent Hub bundle；
-- Bibit 插件管理页显示 `agent-hub@0.3.7` 已激活；
+- Bibit 插件管理页显示 `agent-hub@0.3.8` 已激活；
 - 主导航出现 Agent Hub；
 - 设置子菜单**不再**出现 Agent Hub（插件已不声明 settings contribution）；
 - Agent Hub 页面一级标签为「我的 Power / Power 市场 / 设置」；

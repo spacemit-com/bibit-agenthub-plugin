@@ -479,10 +479,12 @@ func splitLines(contents string) []string {
 
 // parseYAMLSubset reads the small, unambiguous subset of YAML that resource
 // definitions use for their scalars: `key: value` pairs nested by indentation,
-// quoted or bare. It never fails — anything it does not recognize (lists, block
-// scalars, flow collections, anchors, multi-line strings, tab indentation) is
-// skipped — because the callers only require the presence of a few known keys
-// and must tolerate the free-form content the formats allow elsewhere.
+// quoted or bare, plus the two block scalar forms (`|` and `>`) that authors use
+// for multi-line prose such as a long `description`. It never fails — anything
+// it does not recognize (lists, flow collections, anchors, non-scalar values,
+// tab indentation) is skipped — because the callers only require the presence of
+// a few known keys and must tolerate the free-form content the formats allow
+// elsewhere.
 func parseYAMLSubset(contents string) map[string]string {
 	fields := map[string]string{}
 	type frame struct {
@@ -490,29 +492,22 @@ func parseYAMLSubset(contents string) map[string]string {
 		key    string
 	}
 	var stack []frame
-	blockScalarIndent := -1
 	ignoreIndent := -1
+	lines := splitLines(contents)
 
-	for _, raw := range splitLines(contents) {
-		line := strings.TrimRight(raw, " \t")
+	for index := 0; index < len(lines); index++ {
+		line := strings.TrimRight(lines[index], " \t")
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
 		if strings.HasPrefix(strings.TrimSpace(line), "#") {
 			continue
 		}
-		indent := 0
-		for indent < len(line) && line[indent] == ' ' {
-			indent++
-		}
+		indent := countLeadingSpaces(line)
 		if indent < len(line) && line[indent] == '\t' {
 			continue
 		}
 		trimmed := line[indent:]
-		if blockScalarIndent >= 0 && indent > blockScalarIndent {
-			continue
-		}
-		blockScalarIndent = -1
 		if ignoreIndent >= 0 {
 			if indent > ignoreIndent {
 				continue
@@ -546,12 +541,19 @@ func parseYAMLSubset(contents string) map[string]string {
 			path = stack[len(stack)-1].key + "." + key
 		}
 
-		if value == "" {
-			stack = append(stack, frame{indent: indent, key: path})
+		// A block scalar keeps the value on the lines that follow, so the header
+		// line alone carries no scalar and the block must be consumed here.
+		if literal, folded, ok := blockScalarIndicator(value); ok {
+			block, consumed := readBlockScalar(lines, index+1, indent)
+			if len(block) > 0 {
+				fields[path] = blockScalarValue(block, literal, folded)
+			}
+			index = consumed
 			continue
 		}
-		if isBlockScalarIndicator(value) {
-			blockScalarIndent = indent
+
+		if value == "" {
+			stack = append(stack, frame{indent: indent, key: path})
 			continue
 		}
 		if value[0] == '{' || value[0] == '[' {
@@ -566,6 +568,94 @@ func parseYAMLSubset(contents string) map[string]string {
 		fields[path] = value
 	}
 	return fields
+}
+
+// countLeadingSpaces is the indentation width of one line.
+func countLeadingSpaces(line string) int {
+	indent := 0
+	for indent < len(line) && line[indent] == ' ' {
+		indent++
+	}
+	return indent
+}
+
+// blockScalarIndicator reports whether a scalar position holds a block scalar
+// header (`|`, `>`, `|-`, `>-`, `|2`, …) and, when it does, whether the block is
+// literal or folded.
+func blockScalarIndicator(value string) (literal bool, folded bool, ok bool) {
+	if value == "" || (value[0] != '|' && value[0] != '>') {
+		return false, false, false
+	}
+	for i := 1; i < len(value); i++ {
+		if value[i] != '+' && value[i] != '-' && (value[i] < '0' || value[i] > '9') {
+			return false, false, false
+		}
+	}
+	return value[0] == '|', value[0] == '>', true
+}
+
+// readBlockScalar consumes the indented lines that belong to a block scalar
+// starting at `start`. It returns the block's content lines and the last line
+// index it consumed. The block's own indentation is whatever the first
+// non-blank content line uses, matching YAML's indentation detection; a line
+// that is blank or indented at least that far belongs to the block, and the
+// first line indented less than the header ends it. Blank lines are preserved so
+// a paragraph break inside a folded scalar survives.
+func readBlockScalar(lines []string, start, headerIndent int) ([]string, int) {
+	var block []string
+	contentIndent := -1
+	last := start - 1
+	for index := start; index < len(lines); index++ {
+		line := strings.TrimRight(lines[index], " \t")
+		if strings.TrimSpace(line) == "" {
+			// A trailing blank run before a sibling key belongs to the block,
+			// but it is recorded as a separator once content has started.
+			block = append(block, "")
+			continue
+		}
+		indent := countLeadingSpaces(line)
+		if indent <= headerIndent || (line[indent] == '\t') {
+			break
+		}
+		if contentIndent < 0 {
+			contentIndent = indent
+		}
+		block = append(block, line[min(contentIndent, indent):])
+		last = index
+	}
+	for len(block) > 0 && block[len(block)-1] == "" {
+		block = block[:len(block)-1]
+	}
+	return block, last
+}
+
+// blockScalarValue joins the lines of a block scalar the way its header asks:
+// `|` keeps the line breaks, `>` folds them into spaces, and a blank line ends a
+// folded paragraph. Leading and trailing whitespace is stripped so the result
+// compares like any other parsed scalar.
+func blockScalarValue(lines []string, literal, folded bool) string {
+	if literal {
+		return strings.TrimSpace(strings.Join(lines, "\n"))
+	}
+	if !folded {
+		return ""
+	}
+	var paragraphs []string
+	var current []string
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			if len(current) > 0 {
+				paragraphs = append(paragraphs, strings.Join(current, " "))
+				current = nil
+			}
+			continue
+		}
+		current = append(current, strings.TrimSpace(line))
+	}
+	if len(current) > 0 {
+		paragraphs = append(paragraphs, strings.Join(current, " "))
+	}
+	return strings.TrimSpace(strings.Join(paragraphs, "\n"))
 }
 
 // mappingSeparator finds the ':' that separates a mapping key from its value: it
@@ -594,21 +684,6 @@ func mappingSeparator(line string) int {
 		}
 	}
 	return -1
-}
-
-func isBlockScalarIndicator(value string) bool {
-	if value == "" {
-		return false
-	}
-	if value[0] != '|' && value[0] != '>' {
-		return false
-	}
-	for i := 1; i < len(value); i++ {
-		if value[i] != '+' && value[i] != '-' && (value[i] < '0' || value[i] > '9') {
-			return false
-		}
-	}
-	return true
 }
 
 // stripInlineComment removes a trailing ` # comment` from a scalar. A `#` only

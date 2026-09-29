@@ -375,6 +375,28 @@ describe('listPowers custom merge', () => {
     expect(result.warnings[1].message).toBe('Skipped {type} "{name}": {expected} is missing.')
   })
 
+  it('drops skip warnings for a directory the APM manifest already manages', async () => {
+    // A Hub-managed Power is installed into the same directory the scanner
+    // walks, so a scanner quirk that rejects its authority file must not produce
+    // a warning about a card the manifest already feeds correctly.
+    const { service } = installedWith(
+      JSON.stringify([hubRecord]),
+      JSON.stringify({
+        items: [],
+        skipped: [
+          { type: 'skill', name: 'hub-skill', expected: 'SKILL.md', reason: 'invalid-authority-file' },
+          { type: 'skill', name: 'partial', expected: 'SKILL.md', reason: 'invalid-authority-file' },
+        ],
+      })
+    )
+    const result = await listPowers(service, installedInput, signal())
+    expect(result.status).toBe('ready')
+    if (result.status !== 'ready') return
+    expect(result.items.map((series) => series.name)).toEqual(['hub-skill'])
+    expect(result.warnings).toHaveLength(1)
+    expect(result.warnings[0].values).toEqual({ type: 'skill', name: 'partial', expected: 'SKILL.md' })
+  })
+
   it('degrades a failed scan to one warning instead of failing the installed view', async () => {
     const { service } = makeService((_index, input) => {
       if (input.operationId === 'powers.custom.list.v1') {

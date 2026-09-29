@@ -39,7 +39,7 @@ Provider 从 stdin 读取 UTF-8 NDJSON，stdout 只输出完整单行 JSON-RPC 2
 支持传输的 Provider 返回：
 
 ```json
-{"jsonrpc":"2.0","id":"session:initialize","result":{"protocolVersion":1,"providerVersion":"0.3.7","capabilities":{"invoke":true},"operations":["powers.list.v1","powers.inspect.v1","powers.install.v1","powers.uninstall.v1","powers.custom.list.v1","powers.upload.v1","powers.delete.v1","settings.get.v1","settings.update.v1"]}}
+{"jsonrpc":"2.0","id":"session:initialize","result":{"protocolVersion":1,"providerVersion":"0.3.8","capabilities":{"invoke":true},"operations":["powers.list.v1","powers.inspect.v1","powers.install.v1","powers.uninstall.v1","powers.custom.list.v1","powers.upload.v1","powers.delete.v1","settings.get.v1","settings.update.v1"]}}
 ```
 
 初始化前拒绝 `bibit.invoke`。Provider 只声明 `invoke`，不声明 v2 的 `jobs`/`cancellation`/`maxConcurrentJobs`。`bibit.shutdown` 通知结束会话，`bibit.cancel`（v2 保留字）在 v1 会话中被忽略。
@@ -156,13 +156,14 @@ apm uninstall demo --agent=bibit --type=skill
 判定规则：
 
 - **跳过还是纳入**以「能否解析出最低要求」为准，不要求满足 Power 资源 schema（`schema_version`、展示字段、长度上限等都不检查）；上传才由 `apm validate` 按 v2 严格要求。
+- frontmatter 的标量解析支持**块标量**：`description: >-` / `|` 把值放在后续缩进行，`>` 折叠成一个空格分隔的长字符串（空行变成换行）、`|` 保留换行，`+`/`-`/数字缩进指示符都接受。板端多个真实 Skill 用了这种写法，必须能读出 `description`，否则会被误判为 `invalid-authority-file`。
 - 目录名不合规范、以 `.` 开头、不是目录（或指向目录的符号链接）→ 完全不出现在结果里（不报 warning）。
 - 看起来是候选但缺权威文件（如 Plugin 目录只有 `skills/`）→ `skipped` 项，`reason: "missing-authority-file"`，`expected` 是该类型的主权威文件名。
 - 权威文件存在但低于最低要求、前半段不是 YAML 映射、非法 UTF-8 或超过 64 KiB → `skipped`，`reason: "invalid-authority-file"`。
 - `version` 只接受 `v<major>.<minor>.<patch>`（不带 `v` 前缀时补上）；其它写法或缺失一律置 `""`，前端显示占位符，绝不猜测版本。
 - 类型目录可以是符号链接（会跟随）；单个资源目录也可以是符号链接（会跟随读取）。
 - 上限：每类型目录 200 项、总条目 1000、单文件 64 KiB、`skipped` 最多 20 条。
-- 同 `(type,name)` 同时存在于 APM 清单时，**前端**以 APM 清单为准（Provider 不读取清单，也不做去重）。
+- 同 `(type,name)` 同时存在于 APM 清单时，**前端**以 APM 清单为准（Provider 不读取清单，也不做去重），其 `skipped` 条目也不再渲染 warning。
 
 ### 3.6 powers.upload.v1
 
