@@ -75,7 +75,17 @@ func TestInitializeV1ResultShape(t *testing.T) {
 	if !result.Capabilities.Invoke {
 		t.Fatal("capabilities.invoke must be true")
 	}
-	want := []string{"powers.list.v1", "powers.inspect.v1", "powers.install.v1", "powers.uninstall.v1"}
+	want := []string{
+		"powers.list.v1",
+		"powers.inspect.v1",
+		"powers.install.v1",
+		"powers.uninstall.v1",
+		"powers.custom.list.v1",
+		"powers.upload.v1",
+		"powers.delete.v1",
+		"settings.get.v1",
+		"settings.update.v1",
+	}
 	if len(result.Operations) != len(want) {
 		t.Fatalf("operations = %v, want %v", result.Operations, want)
 	}
@@ -525,6 +535,19 @@ func TestOperationInputValidation(t *testing.T) {
 		{"non-canonical name", "powers.inspect.v1", `{"agent":"bibit","type":"skill","name":"Demo"}`},
 		{"option injection name", "powers.inspect.v1", `{"agent":"bibit","type":"skill","name":"--help"}`},
 		{"missing agent", "powers.inspect.v1", `{"type":"skill","name":"demo"}`},
+		{"custom list missing agent", "powers.custom.list.v1", `{}`},
+		{"custom list unknown agent", "powers.custom.list.v1", `{"agent":"gpt"}`},
+		{"custom list extra key", "powers.custom.list.v1", `{"agent":"bibit","scope":"installed"}`},
+		{"upload missing message", "powers.upload.v1", `{"agent":"bibit","type":"skill","name":"demo"}`},
+		{"upload blank message", "powers.upload.v1", `{"agent":"bibit","type":"skill","name":"demo","message":"   "}`},
+		{"upload multiline message", "powers.upload.v1", `{"agent":"bibit","type":"skill","name":"demo","message":"a\nb"}`},
+		{"upload escape name", "powers.upload.v1", `{"agent":"bibit","type":"skill","name":"../escape","message":"ok"}`},
+		{"delete carries version", "powers.delete.v1", `{"agent":"bibit","type":"skill","name":"demo","version":"v1.0.0"}`},
+		{"delete escape name", "powers.delete.v1", `{"agent":"bibit","type":"skill","name":".."}`},
+		{"settings get with payload", "settings.get.v1", `{"scope":"installed"}`},
+		{"settings update bad minutes", "settings.update.v1", `{"showExperimental":false,"refreshMinutes":1}`},
+		{"settings update unknown field", "settings.update.v1", `{"refreshMinutes":15,"theme":"dark"}`},
+		{"settings update bad key type", "settings.update.v1", `{"refreshMinutes":15,"apiKey":5}`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -540,6 +563,78 @@ func TestOperationInputValidation(t *testing.T) {
 				t.Fatalf("expected -32602 for %q, got: %s", tc.name, lines[1])
 			}
 		})
+	}
+}
+
+func TestCustomResourceInvokeDispatch(t *testing.T) {
+	seen := map[string]OperationRequest{}
+	invoke := func(_ context.Context, req OperationRequest) (any, error) {
+		seen[req.OperationID] = req
+		switch req.OperationID {
+		case operationPowersCustomList:
+			return CustomListResult{Scope: "custom", Status: "data", ItemsJSON: `{"items":[],"skipped":[]}`}, nil
+		case operationPowersUpload:
+			return UploadResult{Status: "exited", ExitCode: 0, Stage: "submit", Stdout: "submission_id: sub_1"}, nil
+		case operationPowersDelete:
+			return DeleteResult{Status: "deleted"}, nil
+		case operationSettingsGet:
+			return SettingsView{RefreshMinutes: 15, HasAPIKey: true}, nil
+		case operationSettingsUpdate:
+			return SettingsView{ShowExperimental: true, RefreshMinutes: 45}, nil
+		default:
+			return nil, newProviderError("incompatible")
+		}
+	}
+	input := initRequest +
+		`{"jsonrpc":"2.0","id":"custom","method":"bibit.invoke","params":{"serviceId":"store","operationId":"powers.custom.list.v1","params":{"agent":"codex"},"timeoutMs":30000}}` + "\n" +
+		`{"jsonrpc":"2.0","id":"upload","method":"bibit.invoke","params":{"serviceId":"store","operationId":"powers.upload.v1","params":{"agent":"bibit","type":"skill","name":"demo","message":"publish it"},"timeoutMs":120000}}` + "\n" +
+		`{"jsonrpc":"2.0","id":"delete","method":"bibit.invoke","params":{"serviceId":"store","operationId":"powers.delete.v1","params":{"agent":"bibit","type":"skill","name":"demo"},"timeoutMs":120000}}` + "\n" +
+		`{"jsonrpc":"2.0","id":"settings-get","method":"bibit.invoke","params":{"serviceId":"store","operationId":"settings.get.v1","params":{},"timeoutMs":30000}}` + "\n" +
+		`{"jsonrpc":"2.0","id":"settings-update","method":"bibit.invoke","params":{"serviceId":"store","operationId":"settings.update.v1","params":{"showExperimental":true,"refreshMinutes":45,"apiKey":"k"},"timeoutMs":30000}}` + "\n"
+	out, err := runInput(input, invoke)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) != 6 {
+		t.Fatalf("expected 6 responses, got %d", len(lines))
+	}
+	for _, line := range lines[1:] {
+		if response := parseResponse(t, line); response.Error != nil {
+			t.Fatalf("expected success: %s", line)
+		}
+	}
+	if list := seen[operationPowersCustomList]; list.CustomList == nil || list.CustomList.Agent != "codex" {
+		t.Fatalf("custom list request not decoded: %+v", list)
+	}
+	if upload := seen[operationPowersUpload]; upload.Upload == nil || upload.Upload.Name != "demo" ||
+		upload.Upload.Message != "publish it" || upload.Upload.Type != "skill" {
+		t.Fatalf("upload request not decoded: %+v", upload)
+	}
+	if del := seen[operationPowersDelete]; del.Target == nil || del.Target.Name != "demo" {
+		t.Fatalf("delete request not decoded: %+v", del)
+	}
+	if update := seen[operationSettingsUpdate]; update.Settings == nil || update.Settings.APIKey == nil ||
+		*update.Settings.APIKey != "k" || update.Settings.RefreshMinutes != 45 {
+		t.Fatalf("settings update not decoded: %+v", update)
+	}
+}
+
+func TestUndeclaredOperationRejected(t *testing.T) {
+	invoke := func(context.Context, OperationRequest) (any, error) {
+		t.Fatal("an undeclared operation must not reach the invoker")
+		return nil, nil
+	}
+	input := initRequest +
+		`{"jsonrpc":"2.0","id":"req","method":"bibit.invoke","params":{"serviceId":"store","operationId":"powers.custom.remove.v1","params":{"agent":"bibit"},"timeoutMs":30000}}` + "\n"
+	out, err := runInput(input, invoke)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	response := parseResponse(t, lines[1])
+	if response.Error == nil || response.Error.Code != -32601 {
+		t.Fatalf("expected -32601: %s", lines[1])
 	}
 }
 

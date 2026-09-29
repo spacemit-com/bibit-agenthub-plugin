@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { defineConfig, type Plugin } from 'vite'
 import { handleStoreRequest, StoreError } from './dev/store'
 import { inspectSource, mutateSource, readInstalled, readMarket } from './dev/sources'
+import { deleteSource, readCustom, uploadSource } from './dev/custom'
 
 const MAX_BODY_BYTES = 1024 * 1024
 
@@ -72,7 +73,15 @@ function devStorePlugin(): Plugin {
           requestId = body.requestId
           const result = await handleStoreRequest(
             { operationId: body.operationId, params: body.params },
-            { readInstalled, readMarket, inspect: inspectSource, mutate: mutateSource },
+            {
+              readInstalled,
+              readMarket,
+              inspect: inspectSource,
+              mutate: mutateSource,
+              readCustom: (agent) => Promise.resolve(readCustom(agent)),
+              upload: uploadSource,
+              removeCustom: async (target) => deleteSource(target),
+            },
             controller.signal
           )
           sendJson(response, { protocolVersion: 1, requestId, ok: true, result })

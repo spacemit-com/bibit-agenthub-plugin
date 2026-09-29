@@ -19,6 +19,7 @@ func SelfTest() error {
 	}{
 		{"happy path", selfTestHappyPath},
 		{"power operations", selfTestOperations},
+		{"custom resources", selfTestCustomResources},
 		{"v2-only negotiation", selfTestV2Only},
 		{"invoke error mapping", selfTestInvokeError},
 		{"malformed input", selfTestMalformed},
@@ -146,7 +147,7 @@ func selfTestOperations() error {
 	if err := json.Unmarshal(initResp.Result, &initResult); err != nil {
 		return err
 	}
-	wantOps := []string{"powers.list.v1", "powers.inspect.v1", "powers.install.v1", "powers.uninstall.v1"}
+	wantOps := declaredOperations
 	if len(initResult.Operations) != len(wantOps) {
 		return fmt.Errorf("initialize operations = %v", initResult.Operations)
 	}
@@ -193,6 +194,89 @@ func selfTestOperations() error {
 		for _, forbidden := range []string{"stdout", "stderr", "output", "message"} {
 			if _, ok := result[forbidden]; ok {
 				return fmt.Errorf("mutation result leaked field %q", forbidden)
+			}
+		}
+	}
+	return nil
+}
+
+// selfTestCustomResources drives the three custom-resource operations plus both
+// settings operations through the server with an in-memory fixture, and asserts
+// their closed result shapes and that no path or credential is leaked.
+func selfTestCustomResources() error {
+	fixture := func(_ context.Context, req OperationRequest) (any, error) {
+		switch req.OperationID {
+		case operationPowersCustomList:
+			if req.CustomList == nil || req.CustomList.Agent != "bibit" {
+				return nil, newProviderError("incompatible")
+			}
+			return CustomListResult{Scope: "custom", Status: "data", ItemsJSON: "{\"items\":[],\"skipped\":[]}"}, nil
+		case operationPowersUpload:
+			if req.Upload == nil || req.Upload.Name != "demo" || req.Upload.Message != "publish demo" {
+				return nil, newProviderError("incompatible")
+			}
+			return UploadResult{Status: "exited", ExitCode: 0, Stage: "submit", Stdout: "submission_id: sub_demo"}, nil
+		case operationPowersDelete:
+			if req.Target == nil || req.Target.Name != "demo" {
+				return nil, newProviderError("incompatible")
+			}
+			return DeleteResult{Status: "deleted"}, nil
+		case operationSettingsGet:
+			return SettingsView{ShowExperimental: false, RefreshMinutes: 15, HasAPIKey: true}, nil
+		case operationSettingsUpdate:
+			if req.Settings == nil || req.Settings.RefreshMinutes != 30 {
+				return nil, newProviderError("incompatible")
+			}
+			return SettingsView{ShowExperimental: true, RefreshMinutes: 30, HasAPIKey: false}, nil
+		default:
+			return nil, newProviderError("incompatible")
+		}
+	}
+	input := "{\"jsonrpc\":\"2.0\",\"id\":\"self-init\",\"method\":\"bibit.initialize\",\"params\":{\"protocolName\":\"bibit-provider\",\"serviceId\":\"store\",\"supportedProtocolVersions\":[1]}}\n" +
+		"{\"jsonrpc\":\"2.0\",\"id\":\"self-custom\",\"method\":\"bibit.invoke\",\"params\":{\"serviceId\":\"store\",\"operationId\":\"powers.custom.list.v1\",\"params\":{\"agent\":\"bibit\"},\"timeoutMs\":30000}}\n" +
+		"{\"jsonrpc\":\"2.0\",\"id\":\"self-upload\",\"method\":\"bibit.invoke\",\"params\":{\"serviceId\":\"store\",\"operationId\":\"powers.upload.v1\",\"params\":{\"agent\":\"bibit\",\"type\":\"skill\",\"name\":\"demo\",\"message\":\"publish demo\"},\"timeoutMs\":120000}}\n" +
+		"{\"jsonrpc\":\"2.0\",\"id\":\"self-delete\",\"method\":\"bibit.invoke\",\"params\":{\"serviceId\":\"store\",\"operationId\":\"powers.delete.v1\",\"params\":{\"agent\":\"bibit\",\"type\":\"skill\",\"name\":\"demo\"},\"timeoutMs\":120000}}\n" +
+		"{\"jsonrpc\":\"2.0\",\"id\":\"self-settings-get\",\"method\":\"bibit.invoke\",\"params\":{\"serviceId\":\"store\",\"operationId\":\"settings.get.v1\",\"params\":{},\"timeoutMs\":30000}}\n" +
+		"{\"jsonrpc\":\"2.0\",\"id\":\"self-settings-update\",\"method\":\"bibit.invoke\",\"params\":{\"serviceId\":\"store\",\"operationId\":\"settings.update.v1\",\"params\":{\"showExperimental\":true,\"refreshMinutes\":30},\"timeoutMs\":30000}}\n"
+	var out bytes.Buffer
+	if err := Serve(context.Background(), strings.NewReader(input), &out, fixture); err != nil {
+		return err
+	}
+	lines := splitResponseLines(out.String())
+	if len(lines) != 6 {
+		return fmt.Errorf("expected 6 responses, got %d", len(lines))
+	}
+	shapes := []struct {
+		index     int
+		required  []string
+		forbidden []string
+	}{
+		{1, []string{"scope", "status", "itemsJson"}, []string{"items", "paths", "path"}},
+		{2, []string{"status", "exitCode", "stage"}, []string{"stderr", "apiKey", "path"}},
+		{3, []string{"status"}, []string{"path", "stdout", "stderr"}},
+		{4, []string{"showExperimental", "refreshMinutes", "hasApiKey"}, []string{"apiKey"}},
+		{5, []string{"showExperimental", "refreshMinutes", "hasApiKey"}, []string{"apiKey"}},
+	}
+	for _, shape := range shapes {
+		resp, err := parseSelfTestResponse(lines[shape.index])
+		if err != nil {
+			return err
+		}
+		if resp.Error != nil {
+			return fmt.Errorf("invoke %d failed: %+v", shape.index, resp.Error)
+		}
+		var result map[string]json.RawMessage
+		if err := json.Unmarshal(resp.Result, &result); err != nil {
+			return err
+		}
+		for _, key := range shape.required {
+			if _, ok := result[key]; !ok {
+				return fmt.Errorf("invoke %d result is missing %q: %s", shape.index, key, resp.Result)
+			}
+		}
+		for _, key := range shape.forbidden {
+			if _, ok := result[key]; ok {
+				return fmt.Errorf("invoke %d result leaked field %q", shape.index, key)
 			}
 		}
 	}

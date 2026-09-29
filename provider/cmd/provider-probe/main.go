@@ -38,6 +38,7 @@ type probeReport struct {
 	Status          string `json:"status,omitempty"`
 	ExitCode        *int   `json:"exitCode,omitempty"`
 	Snapshot        string `json:"snapshot,omitempty"`
+	HasAPIKey       bool   `json:"hasApiKey,omitempty"`
 	RPCBytes        int    `json:"rpcBytes"`
 	RawBytes        int    `json:"rawBytes"`
 	RemainingBytes  int    `json:"remainingBytes"`
@@ -66,8 +67,8 @@ func parseFlags(args []string) (probeFlags, error) {
 	fs := flag.NewFlagSet("provider-probe", flag.ContinueOnError)
 	var flags probeFlags
 	fs.StringVar(&flags.executable, "executable", "", "provider executable path (required)")
-	fs.StringVar(&flags.operation, "operation", "", "operation id: powers.inspect.v1|powers.install.v1|powers.uninstall.v1 (empty = list)")
-	fs.StringVar(&flags.scope, "scope", "market", "list wire scope: market|installed")
+	fs.StringVar(&flags.operation, "operation", "", "operation id: powers.inspect.v1|powers.install.v1|powers.uninstall.v1|settings.get.v1 (empty = list)")
+	fs.StringVar(&flags.scope, "scope", "market", "list wire scope: market|installed|custom")
 	fs.StringVar(&flags.agent, "agent", "bibit", "target agent id")
 	fs.StringVar(&flags.knownSnapshot, "known-snapshot", "", "market known snapshot")
 	fs.StringVar(&flags.name, "name", "", "power name (inspect/install/uninstall)")
@@ -91,8 +92,8 @@ func parseFlags(args []string) (probeFlags, error) {
 func validateFlags(flags probeFlags) error {
 	switch flags.operation {
 	case "":
-		if flags.scope != "market" && flags.scope != "installed" {
-			return fmt.Errorf("--scope must be market or installed, got %q", flags.scope)
+		if flags.scope != "market" && flags.scope != "installed" && flags.scope != "custom" {
+			return fmt.Errorf("--scope must be market, installed or custom, got %q", flags.scope)
 		}
 		return nil
 	case "powers.inspect.v1":
@@ -110,8 +111,10 @@ func validateFlags(flags probeFlags) error {
 			return errors.New("--name and --type are required for powers.uninstall.v1")
 		}
 		return nil
+	case "settings.get.v1":
+		return nil
 	default:
-		return fmt.Errorf("--operation must be powers.inspect.v1, powers.install.v1 or powers.uninstall.v1, got %q", flags.operation)
+		return fmt.Errorf("--operation must be powers.inspect.v1, powers.install.v1, powers.uninstall.v1 or settings.get.v1, got %q", flags.operation)
 	}
 }
 
@@ -196,6 +199,9 @@ func runProbe(flags probeFlags) (probeReport, error) {
 // probe run. An empty --operation keeps the original read-only list behavior;
 // write operations only run when explicitly requested.
 func buildInvoke(flags probeFlags) (operationID, wireInput string, timeoutMs int) {
+	if flags.operation == "" && flags.scope == "custom" {
+		return "powers.custom.list.v1", buildWireInput(flags), 30000
+	}
 	switch flags.operation {
 	case "powers.inspect.v1":
 		return flags.operation, fmt.Sprintf("{\"agent\":%q,\"type\":%q,\"name\":%q}", flags.agent, flags.powerType, flags.name), 30000
@@ -203,6 +209,8 @@ func buildInvoke(flags probeFlags) (operationID, wireInput string, timeoutMs int
 		return flags.operation, fmt.Sprintf("{\"agent\":%q,\"type\":%q,\"name\":%q,\"version\":%q}", flags.agent, flags.powerType, flags.name, flags.version), 120000
 	case "powers.uninstall.v1":
 		return flags.operation, fmt.Sprintf("{\"agent\":%q,\"type\":%q,\"name\":%q}", flags.agent, flags.powerType, flags.name), 120000
+	case "settings.get.v1":
+		return flags.operation, `{}`, 30000
 	default:
 		return "powers.list.v1", buildWireInput(flags), 30000
 	}
@@ -211,6 +219,11 @@ func buildInvoke(flags probeFlags) (operationID, wireInput string, timeoutMs int
 func buildWireInput(flags probeFlags) string {
 	if flags.scope == "installed" {
 		return fmt.Sprintf("{\"scope\":\"installed\",\"agent\":%q}", flags.agent)
+	}
+	if flags.scope == "custom" {
+		// Custom resources are a separate operation, not a list scope; the probe
+		// maps the scope flag onto it so one tool covers both reads.
+		return fmt.Sprintf("{\"agent\":%q}", flags.agent)
 	}
 	if flags.knownSnapshot != "" {
 		return fmt.Sprintf("{\"scope\":\"market\",\"knownSnapshot\":%q}", flags.knownSnapshot)
@@ -334,6 +347,33 @@ func fillInvokeReport(line []byte, id string, operationID string, report *probeR
 		report.Status = result.Status
 		code := result.ExitCode
 		report.ExitCode = &code
+	case "powers.custom.list.v1":
+		var result struct {
+			Scope     string `json:"scope"`
+			Status    string `json:"status"`
+			ItemsJSON string `json:"itemsJson"`
+		}
+		if err := json.Unmarshal(response.Result, &result); err != nil {
+			return errors.New("invalid custom list result")
+		}
+		if result.Scope != "custom" {
+			return errors.New("result scope mismatch")
+		}
+		report.Status = result.Status
+		report.RawBytes = len(result.ItemsJSON)
+	case "settings.get.v1":
+		var result struct {
+			ShowExperimental bool `json:"showExperimental"`
+			RefreshMinutes   int  `json:"refreshMinutes"`
+			HasAPIKey        bool `json:"hasApiKey"`
+		}
+		if err := json.Unmarshal(response.Result, &result); err != nil {
+			return errors.New("invalid settings result")
+		}
+		report.Status = "data"
+		if result.HasAPIKey {
+			report.HasAPIKey = true
+		}
 	default:
 		return fmt.Errorf("unexpected operation %q", operationID)
 	}

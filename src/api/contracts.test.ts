@@ -114,6 +114,73 @@ describe('parseListPowersResult', () => {
     expectResultError(bad)
   })
 
+  it('carries the v2 display fields through, per series and per version', () => {
+    const parsed = parseListPowersResult({
+      ...readyFixture(),
+      items: [
+        {
+          type: 'skill',
+          name: 'demo',
+          name_zh: '演示技能',
+          name_en: 'Demo Skill',
+          versions: [
+            { version: 'v2.0.0', description: 'new', tags: [], description_zh: '新版本' },
+            { version: 'v1.0.0', description: 'old', tags: [] },
+          ],
+        },
+      ],
+    })
+
+    expect(parsed.status).toBe('ready')
+    if (parsed.status !== 'ready') return
+    expect(parsed.items[0].name_zh).toBe('演示技能')
+    expect(parsed.items[0].name_en).toBe('Demo Skill')
+    expect(parsed.items[0].versions[0].description_zh).toBe('新版本')
+    // A version without the field stays absent instead of rendering an empty string.
+    expect('description_zh' in parsed.items[0].versions[1]).toBe(false)
+  })
+
+  it('keeps a V1 series without display fields valid and absent', () => {
+    const parsed = parseListPowersResult(readyFixture())
+
+    expect(parsed.status).toBe('ready')
+    if (parsed.status !== 'ready') return
+    expect('name_zh' in parsed.items[0]).toBe(false)
+    expect('name_en' in parsed.items[0]).toBe(false)
+    expect('description_zh' in parsed.items[0].versions[0]).toBe(false)
+  })
+
+  it('rejects non-string and blank display fields', () => {
+    const seriesWith = (patch: Record<string, unknown>) => ({
+      ...readyFixture(),
+      items: [
+        {
+          type: 'skill',
+          name: 'demo',
+          versions: [{ version: 'v1.0.0', description: 'a', tags: [] }],
+          ...patch,
+        },
+      ],
+    })
+    expect(expectResultError(seriesWith({ name_zh: 1 }))).toContain('name_zh must be a string')
+    expect(expectResultError(seriesWith({ name_en: null }))).toContain('name_en must be a string')
+    expect(expectResultError(seriesWith({ name_zh: '   ' }))).toContain(
+      'name_zh must be non-empty when present'
+    )
+
+    const bad: unknown = {
+      ...readyFixture(),
+      items: [
+        {
+          type: 'skill',
+          name: 'demo',
+          versions: [{ version: 'v1.0.0', description: 'a', tags: [], description_zh: '  ' }],
+        },
+      ],
+    }
+    expect(expectResultError(bad)).toContain('description_zh must be non-empty when present')
+  })
+
   it('rejects an empty versions list', () => {
     const bad: unknown = {
       ...readyFixture(),
@@ -251,6 +318,81 @@ describe('parseListPowersResult', () => {
     const message = expectResultError({ ...readyFixture(), extra: 'SENSITIVE_MARKER' })
     expect(message).not.toContain('SENSITIVE_MARKER')
     expect(message).not.toContain('extra')
+  })
+
+  it('accepts the custom-resource warning codes and their placeholder values', () => {
+    const withWarnings = {
+      ...readyFixture(),
+      warnings: [
+        { code: 'custom-resources-unavailable', agent: 'bibit', message: 'Custom resources …' },
+        {
+          code: 'custom-resource-skipped',
+          agent: 'bibit',
+          message: 'Skipped {type} "{name}": {expected} is missing.',
+          values: { type: 'skill', name: 'partial', expected: 'SKILL.md' },
+        },
+      ],
+    }
+    expect(parseListPowersResult(withWarnings)).toEqual(withWarnings)
+  })
+
+  it('rejects a warning outside the closed code set or with a non-string value', () => {
+    expectResultError({
+      ...readyFixture(),
+      warnings: [{ code: 'whatever', agent: 'bibit', message: 'x' }],
+    })
+    expectResultError({
+      ...readyFixture(),
+      warnings: [{ code: 'custom-resource-skipped', agent: 'bibit', message: 'x', values: { name: 5 } }],
+    })
+    expectResultError({
+      ...readyFixture(),
+      warnings: [{ code: 'custom-resource-skipped', agent: 'bibit', message: 'x', extra: 1 }],
+    })
+  })
+
+  it('accepts a custom series with exactly one version, empty version allowed', () => {
+    const custom = {
+      ...readyFixture(),
+      items: [
+        { type: 'skill', name: 'hand-written', source: 'custom', versions: [{ version: '', description: 'd', tags: [] }] },
+      ],
+      total: 1,
+    }
+    expect(parseListPowersResult(custom)).toEqual(custom)
+
+    const versioned = {
+      ...readyFixture(),
+      items: [
+        { type: 'skill', name: 'hand-written', source: 'custom', versions: [{ version: 'v1.2.3', description: 'd', tags: [] }] },
+      ],
+      total: 1,
+    }
+    expect(parseListPowersResult(versioned)).toEqual(versioned)
+  })
+
+  it('rejects a custom series that breaks the single-version or tag rules', () => {
+    const series = (overrides: Record<string, unknown>) => ({
+      ...readyFixture(),
+      items: [{ type: 'skill', name: 'hand-written', source: 'custom', ...overrides }],
+      total: 1,
+    })
+    // Two versions: a custom resource is one directory, so this cannot happen.
+    // The order is descending, so only the single-version rule can reject it.
+    expectResultError(
+      series({
+        versions: [
+          { version: 'v2.0.0', description: 'b', tags: [] },
+          { version: 'v1.0.0', description: 'a', tags: [] },
+        ],
+      })
+    )
+    // A non-canonical version is still rejected.
+    expectResultError(series({ versions: [{ version: '1.0.0', description: 'a', tags: [] }] }))
+    // Custom resources carry no tags (there is nowhere to declare them).
+    expectResultError(series({ versions: [{ version: '', description: 'a', tags: ['x'] }] }))
+    // The source is a closed set.
+    expectResultError(series({ source: 'hub', versions: [{ version: '', description: 'a', tags: [] }] }))
   })
 })
 

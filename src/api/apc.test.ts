@@ -98,4 +98,53 @@ describe('parseApcCatalog', () => {
   ])('rejects an invalid catalog item %#', (bad, pattern) => {
     expect(() => parseApcCatalog({ skills: { items: [bad] } })).toThrow(pattern)
   })
+
+  it('carries the v2 display fields when the catalog emits them', () => {
+    const parsed = parseApcCatalog({
+      skills: {
+        items: [
+          {
+            name: 'code-review-helper',
+            version: 'v1.0.0',
+            description: '代码审查助手',
+            tags: [],
+            schema_version: 2,
+            name_zh: '代码审查助手',
+            name_en: 'Code Review Helper',
+            description_zh: '提供代码审查能力',
+          },
+        ],
+      },
+    })
+
+    expect(parsed[0]).toEqual({
+      type: 'skill',
+      name: 'code-review-helper',
+      version: 'v1.0.0',
+      description: '代码审查助手',
+      tags: [],
+      name_zh: '代码审查助手',
+      name_en: 'Code Review Helper',
+      description_zh: '提供代码审查能力',
+    })
+  })
+
+  it('treats missing and blank display fields as absent for V1 catalogs', () => {
+    const parsed = parseApcCatalog({
+      skills: { items: [{ name: 'a', version: 'v1.0.0', name_zh: '  ', description_zh: '' }] },
+    })
+
+    expect(parsed[0]).toEqual({ type: 'skill', name: 'a', version: 'v1.0.0', description: '', tags: [] })
+    expect('name_zh' in parsed[0]).toBe(false)
+    expect('description_zh' in parsed[0]).toBe(false)
+  })
+
+  it.each(['name_zh', 'name_en', 'description_zh'] as const)(
+    'rejects a non-string %s in a catalog item',
+    (field) => {
+      expect(() =>
+        parseApcCatalog({ skills: { items: [{ name: 'a', version: 'v1.0.0', [field]: [1] }] } })
+      ).toThrow(new RegExp(field))
+    }
+  )
 })

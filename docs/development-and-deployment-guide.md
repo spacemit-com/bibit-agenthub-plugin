@@ -6,7 +6,7 @@
 
 | 项目 | 当前版本 |
 | --- | --- |
-| Agent Hub 插件 | `0.3.2` |
+| Agent Hub 插件 | `0.3.4` |
 | `manifestSchemaVersion` | `1` |
 | `sdkApiVersion` | `1` |
 | `@bibit/feature-contracts` | `0.3.0` |
@@ -24,7 +24,7 @@
 
 两个贡献点都不包含语言设置项：页面中英文文案跟随 Bibit 系统语言（宿主传入 `language`），菜单、导航与描述键通过 `pluginLocales` 交给宿主解析。详细规则见 7.1。
 
-当前 Demo 已实现 APC Power 展示与安装原型：通过 `powers.list.v1` 提供“我的 Power / Power 市场”两种数据范围、Agent / 类型 / tags 分层筛选、系列级卡片、版本选择与每页 20 张卡片的分页，并配套 Local Preview；通过 `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` 提供详情查看与单版本安装/卸载闭环。设置页仍提供实验 Agent 开关和刷新间隔两个字段。Power 下载、提交、审核、下架、恢复以及搜索等能力尚未实现，这些属于 Agent Hub 模块团队后续定制范围。
+当前 Demo 已实现 APC Power 展示与安装原型：通过 `powers.list.v1` 提供“我的 Power / Power 市场”两种数据范围、Agent / 类型 / tags 分层筛选、系列级卡片、版本选择与每页 20 张卡片的分页，并配套 Local Preview；通过 `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` 提供详情查看与单版本安装/卸载闭环。`powers.custom.list.v1` 在“我的 Power”里额外并入手动安装到各 Agent 目录下的自定义资源（卡片带 `Custom` 标记，版本位置换成静态标签，不满足最低格式的目录以 warning 提示），`powers.upload.v1` / `powers.delete.v1` 提供卡片弹窗内的 APC 上传与本地删除；上传所需的 APC API Key 在设置页维护。设置页字段为实验 Agent 开关、刷新间隔与 APC API Key。Power 下载、提交审核、搜索等能力尚未实现，这些属于 Agent Hub 模块团队后续定制范围。
 
 当前插件使用平台随目标 Bibit 一并发布的 `@bibit/feature-ui@0.3.0`，复用 `FeatureSettingsPage`、`Button`、状态组件和图标，并通过 Bibit 主题 token 适配明暗主题。该包必须与 React 及其余 SDK 一起锁定升级；不得直接导入 Bibit 私有 UI 源码。
 
@@ -77,24 +77,28 @@ bibit-agenthub-plugin/
 ├── index.html
 ├── dev/
 │   ├── main.tsx
-│   ├── store.ts          # wire 校验 + settings 内存 echo
+│   ├── store.ts          # wire 校验 + settings 内存 echo（含 apiKey/hasApiKey）
 │   ├── sources.ts        # 与 Go 同语义的 APM/APC transport
+│   ├── custom.ts         # 与 Go 同语义的自定义资源扫描/上传/删除
 │   └── *.test.ts
 ├── src/
 │   ├── feature.tsx
 │   ├── plugin.tsx
 │   ├── AgentHubPage.tsx
 │   ├── AgentHubSettingsPage.tsx
-│   ├── agentHubI18n.tsx   # 中英文词典、Provider、菜单 locales
+│   ├── agentHubI18n.tsx   # 中英文词典、Provider、语言 context、菜单 locales
+│   ├── displayFields.ts   # V2 展示字段的语言回退（name_zh/name_en/description_zh）
 │   ├── agentHub.css
 │   ├── api/
-│   │   ├── contracts.ts          # 协议边界 DTO + wire 信封
-│   │   ├── apm.ts                # installed 解析/聚合
+│   │   ├── contracts.ts          # 协议边界 DTO + wire 信封（含 custom/settings）
+│   │   ├── apm.ts                # installed 解析/聚合（含 custom 合并）
 │   │   ├── apc.ts                # market 解析
+│   │   ├── customResources.ts    # 自定义资源读取/上传/删除客户端
 │   │   ├── powerCatalogClient.ts # 共享缓存客户端
 │   │   └── catalogIntegrity.ts   # SHA-256 校验
 │   └── components/
 │       ├── PowerCard.tsx
+│       ├── PowerDetailsDialog.tsx
 │       ├── PowerFilters.tsx
 │       └── PowerPagination.tsx
 ├── provider/                      # 纯 Go 标准库 module（v1）
@@ -107,7 +111,8 @@ bibit-agenthub-plugin/
 │   ├── control                    # plugin(all) + cli(any)
 │   ├── rules
 │   ├── changelog
-│   ├── agenthub-provider.json     # Registry v2 drop-in
+│   ├── agenthub-provider.json     # Registry v2 drop-in（含 credentialParameters）
+│   ├── agenthub-feature-grants.json  # capability + operation grant
 │   └── vendor/                    # 公司签名 bundle（不提交）
 ├── vendor/                        # bibit-feature-* tarball（锁定版本）
 ├── .bibit-keys/                   # 忽略
@@ -162,8 +167,8 @@ registerFeaturePlugin({
 
 | 文件或内容 | 定制范围 | 必须遵守的边界 |
 | --- | --- | --- |
-| `src/AgentHubPage.tsx` | 列表、搜索、筛选、详情入口、上传下载入口、空态、错误态 | 只通过 Host capability 获取数据；卸载时取消请求 |
-| `src/AgentHubSettingsPage.tsx` | Agent Hub 自身设置字段、校验、保存状态 | 只渲染设置内容，不复制 Bibit Settings Shell |
+| `src/AgentHubPage.tsx` | 列表、搜索、筛选、详情入口、上传/删除入口、空态、错误态 | 只通过 Host capability 获取数据；卸载时取消请求 |
+| `src/AgentHubSettingsPage.tsx` | Agent Hub 自身设置字段、校验、保存状态 | 只渲染设置内容（根节点必须是 `section`/`div`，不能是 `main`），不复制 Bibit Settings Shell，不回显已保存的凭据 |
 | `src/agentHub.css` | 页面和设置内容样式 | 不覆盖 Bibit 全局选择器，不依赖宿主私有 class |
 | 业务 DTO 和 operation ID | 请求参数、返回数据、错误语义、版本 | 破坏性变更发布新 operation 版本 |
 | `dev/main.tsx` | Mock 数据、Mock operation、真实开发服务地址注入 | Mock 必须与生产 DTO 一致；不得导入生产插件包 |
@@ -198,9 +203,10 @@ src/
 
 | 需求 | 应修改 | 不应修改 |
 | --- | --- | --- |
-| 改页面布局、列表、详情或交互 | `src/AgentHubPage.tsx`、模块组件、`agentHub.css` | `plugin.tsx`、SDK vendor、Bibit 私有页面 |
-| 改设置字段或校验 | `AgentHubSettingsPage.tsx`、DTO、Store operation、Mock | Bibit Settings Shell、宿主 Store |
-| 新增后端能力 | 模块 DTO、带版本 operation、Store 服务、Mock | 直接 `fetch`、Tauri command、凭据字段 |
+| 改页面布局、列表、详情或交互 | `src/AgentHubPage.tsx`、`src/components/*`、`agentHub.css` | `plugin.tsx`、SDK vendor、Bibit 私有页面 |
+| 自定义资源的可见范围或最低格式 | `provider/internal/provider/custom.go`、`dev/custom.ts`、两边对应的测试 | 放宽上传门槛（上传仍由 `apm validate` 按 v2 判定）、把路径放进 `params` |
+| 改设置字段或校验 | `AgentHubSettingsPage.tsx`、DTO、Store operation、Mock、Registry `credentialParameters`（仅当字段是凭据） | Bibit Settings Shell、宿主 Store、在页面里回显已保存的凭据 |
+| 新增后端能力 | 模块 DTO、带版本 operation、Store 服务、Mock、`debian/agenthub-feature-grants.json` 的 grant | 直接 `fetch`、Tauri command、未在 Registry `credentialParameters` 声明的凭据字段 |
 | 新增 Agent Hub 内部详情路由 | 页面组件和 `FeaturePageProps.navigation` | Bibit Router、全局 URL 前缀、主侧边栏源码 |
 | 新增主页面或设置贡献点 | 组件、`feature.tsx`、Manifest 三者同步 | 只改 Manifest 或只改 Feature Module |
 | 需要新 icon、navigation group 或非 Service capability | 先提交平台契约缺口 | 在 Manifest 写入 Schema 未允许的字符串 |
@@ -221,7 +227,7 @@ src/
   "manifestSchemaVersion": 1,
   "sdkApiVersion": 1,
   "id": "agent-hub",
-  "version": "0.3.2",
+  "version": "0.3.4",
   "owner": "agent-hub-team",
   "display": {
     "titleKey": "agent-hub:title",
@@ -396,6 +402,15 @@ src/agentHubI18n.tsx
 
 **数据层不保存语言。** `src/api/operationMessages.ts` 的 operation 文案和 `installationStore` 的 notices 都是 `TranslatableText { text, values? }`：英文源串加占位符值，在渲染边界才翻译。这样安装状态、缓存与写互斥都不持有所在语言，切换语言不会改变状态机语义。
 
+**展示信息也随语言切换。** Power 资源的 V2 展示字段（`name_zh`/`name_en`/`description_zh`）是数据而非文案，因此不进词典，而是由 `src/displayFields.ts` 的 `resolvePowerTitle` / `resolvePowerDescription` 按当前语言解析（语言由 `useAgentHubLanguage()` 读取，与翻译器同一份规范化值）：
+
+| 语言 | 标题 | 描述 |
+| --- | --- | --- |
+| 中文 | `name_zh` → `name_en` → `name` | `description_zh` → `description` |
+| 英文 | `name_en` → `name` | `description`（英文界面不显示中文） |
+
+`name`/`description` 始终是回退项，所以 V1 资源（无展示字段）渲染结果与升级前一致；`name` 继续用于请求、安装状态比对、缓存键与 React key，展示名不参与任何身份判断。apm `list --json` 与 APC 目录尚未输出这三个字段（APM ADR-038 明确不改 `list`/`show` 输出），解析层已容忍其缺失，上游就绪后无需再改前端。
+
 **语言切换不得重挂载。** 不要在 Provider 子树或页面上加 `key`，也不要把 `language` 放进列表请求的 effect 依赖；`withAgentHubI18n` 只更新 context，页面保持组件身份与在途请求。`src/AgentHubPage.test.tsx` 有对应回归：切换语言后 `powers.list.v1` 请求数不变、已打开的详情弹窗与已选版本保持不变。
 
 **新增文案的顺序：**
@@ -463,8 +478,17 @@ Bibit 自动提供 Settings Shell、“设置”页头、设置子菜单、选�
 interface AgentHubSettingsV1 {
   showExperimental: boolean
   refreshMinutes: number
+  hasApiKey: boolean
+}
+
+interface AgentHubSettingsUpdateV1 {
+  showExperimental: boolean
+  refreshMinutes: number
+  apiKey?: string
 }
 ```
+
+`hasApiKey` 是只读派生字段：Provider 只回传「是否已配置」，API Key 本身永不出现在结果里。`apiKey` 只在用户确实编辑过输入框时出现在 update 参数中——省略表示保留，空串表示清除，因此设置页用 `apiKeyDirty` 区分这两种语义；`apiKey` 属于宿主 `credentialParameters` 声明范围，必须同时在 Registry drop-in 里声明。
 
 模块团队增加字段时必须同时更新：
 
@@ -513,14 +537,15 @@ return () => controller.abort()
 
 - capability 不存在时显示 Agent Hub 局部错误，不直接回退到 `fetch`；
 - `serviceId` 固定为 `store`；
-- `operationId` 必须带版本，页面数据使用 `powers.list.v1`，详情/安装/卸载使用 `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1`；
-- `params` 必须是 JSON object，由 `toListPowersParams` / `parsePowerTarget` / `parseInstallInput` 投影为字段闭集；
-- timeout 必须在 `1..300000` 毫秒内；读取默认 30000 毫秒，写入（安装/卸载）默认 120000 毫秒；
+- `operationId` 必须带版本，页面数据使用 `powers.list.v1`，详情/安装/卸载使用 `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1`，自定义资源使用 `powers.custom.list.v1` / `powers.upload.v1` / `powers.delete.v1`，设置为 `settings.get.v1` / `settings.update.v1`；
+- `params` 必须是 JSON object，由 `toListPowersParams` / `parsePowerTarget` / `parseInstallInput` / `parseCustomListInput` / `parseUploadInput` / `parseDeleteTarget` / `parseSettingsUpdate` 投影为字段闭集；
+- timeout 必须在 `1..300000` 毫秒内；读取默认 30000 毫秒，写入（安装/卸载/上传/删除）默认 120000 毫秒；
+- 路径绝不进入 `params`：自定义资源只传 `(agent,type,name[,message])`，由 Provider 解析并重新校验路径；
 - 单个请求最大 1 MiB，单个响应最大 4 MiB；正式发布前必须验证 `powers.list.v1` 单响应不超过 Host 的 4 MiB 上限；
-- 不把 URL、header、authorization、token、API key、cookie、credential 或 secret 放入 `params`；
+- 不把 URL、header、authorization、token、API key、cookie、credential 或 secret 放入 `params`；唯一例外是 `settings.update.v1` 的 `apiKey`——它必须同时在该 operation 的 Registry `credentialParameters` 中声明，宿主才会放行，且结果永不回传该值；
 - 不显示或记录原始凭据、请求 header 或后端内部堆栈。
 
-`powers.list.v1` 在插件 API 边界执行闭集运行时校验（`parseListPowersInput` / `parseListPowersResult`）：未知字段、非法 Power 类型、非 20 的 pageSize、版本乱序、重复或未排序 tags、market 携带 agent 等都会被拒绝。`powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` 用 `parsePowerTarget` / `parseInstallInput` 校验（安装必须带规范版本，卸载/详情不带版本；agent/type/name 必须满足规范命名）。`settings.get.v1` / `settings.update.v1` 由 store 服务处理（dev 为内存 echo；settings 持久化不在本期范围）。校验失败或后端返回未知结构时映射为局部错误态（`incompatible`），不能让页面白屏。
+`powers.list.v1` 在插件 API 边界执行闭集运行时校验（`parseListPowersInput` / `parseListPowersResult`）：未知字段、非法 Power 类型、非 20 的 pageSize、版本乱序、重复或未排序 tags、market 携带 agent 等都会被拒绝。`powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` 用 `parsePowerTarget` / `parseInstallInput` 校验（安装必须带规范版本，卸载/详情不带版本；agent/type/name 必须满足规范命名）。`powers.custom.list.v1` / `powers.upload.v1` / `powers.delete.v1` 用 `parseCustomListInput` / `parseUploadInput` / `parseDeleteTarget` 校验：agent 必须是四个已安装 Agent 之一，`type=agent` 只允许 bibit，name 必须是规范 kebab，upload 必须带单行非空 `message`；自定义系列在 `powers.list.v1` 结果里恰好一个版本、版本可为空串、tags 必须为空。`settings.get.v1` / `settings.update.v1` 由 store 服务处理（dev 为内存 echo，Provider 为 `settings.json` 持久化；`apiKey` 只在 update 入参出现，结果只有 `hasApiKey`）。校验失败或后端返回未知结构时映射为局部错误态（`incompatible`），不能让页面白屏。
 
 ## 10. Store 服务协议
 
@@ -532,12 +557,15 @@ return () => controller.abort()
 | `powers.inspect.v1` | `PowerTarget` | `InspectResult`（`listJson`） |
 | `powers.install.v1` | `InstallInput` | `MutationResult`（`exited`/`unavailable` 联合） |
 | `powers.uninstall.v1` | `PowerTarget` | `MutationResult`（`exited`/`unavailable` 联合） |
+| `powers.custom.list.v1` | `{agent}` | `{scope:'custom',status:'data',itemsJson}` |
+| `powers.upload.v1` | `{agent,type,name,message}` | `UploadResult`（`exited` + `stage`/`reason`/`stdout`） |
+| `powers.delete.v1` | `{agent,type,name}` | `{status:'deleted'}` |
 | `settings.get.v1` | `{}` | `AgentHubSettingsV1` |
-| `settings.update.v1` | `AgentHubSettingsV1` | `AgentHubSettingsV1` |
+| `settings.update.v1` | `AgentHubSettingsUpdateV1` | `AgentHubSettingsV1` |
 | `agents.upload.v1` | Job input `{displayName}` + input FileGrant | `{agentId,displayName,bytes,sha256}` |
 | `agents.download.v1` | Job input `{agentId}` + output FileGrant | `{agentId,bytes,sha256}` |
 
-`powers.list.v1` 是页面的业务数据 operation；`powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` 是详情与写入 operation，均通过共享安装状态 `installationStore` 驱动页面（见 10.5）。请求与结果类型（与 `src/api/contracts.ts` 一致）：
+`powers.list.v1` 是页面的业务数据 operation；`powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` 是详情与写入 operation，均通过共享安装状态 `installationStore` 驱动页面（见 10.5）。`powers.custom.list.v1` 是只读扫描（Provider 不调用 apm），`powers.upload.v1` / `powers.delete.v1` 是自定义资源的写入 operation，由弹窗内联表单驱动、成功后重新读取 installed 清单；两者的参数都只携带 `(agent,type,name[,message])`，路径由 Provider 自己解析并重新校验，前端永远不传路径。请求与结果类型（与 `src/api/contracts.ts` 一致）：
 
 ```ts
 export const POWER_TYPES = ['skill', 'plugin', 'mcp', 'agent'] as const
@@ -561,12 +589,15 @@ interface PowerVersion {
   version: string
   description: string
   tags: string[]
+  description_zh?: string   // V2 展示字段；缺失即 V1 资源
 }
 
 interface PowerSeries {
   type: PowerType
   name: string
   versions: PowerVersion[]
+  name_zh?: string          // V2 展示字段，仅展示；name 仍是身份、调用名与缓存键
+  name_en?: string
 }
 
 interface PowerWarning {
@@ -796,7 +827,68 @@ wire 结果闭集：
 - 共享安装状态以 `JSON.stringify([agent,type,name])` 为条目键，跨详情弹窗与列表卡片复用同一份 state；全局写锁确保同一时刻只有一个变更在途，重复点击被阻止；
 - 卸载的中断语义：发起后即进入 running 并阻止重复提交；若页面卸载或详情关闭，请求被取消但写命令可能已完成，重开页面靠刷新 installed 恢复真实状态。
 
-### 10.6 Market 数据源（APC 公共接口）
+### 10.6 自定义资源（扫描、上传、删除）
+
+「我的 Power」是 APM 清单与**手动安装资源**的并集。手动安装资源（下文简称自定义资源）在本地数据层用同一次 `powers.list.v1` 请求返回，卡片以 `source: "custom"` 标记区分，因此筛选、分页、tags facets 与版本选择逻辑完全复用。
+
+#### 10.6.1 识别规则（Provider 只做扫描）
+
+Provider 通过 `powers.custom.list.v1` 扫描固定目录，**不调用 apm、不读取 APM 清单、不做业务聚合**；`itemsJson` 是原始 JSON 文本，由前端 `parseCustomResourceList` 解析：
+
+```text
+{items:[{type,name,version,description,tags,source[,name_zh,name_en,description_zh]}], skipped:[{type,name,expected,reason}]}
+```
+
+| Agent | 根目录（用户 home 下） | 扫描类型 |
+| --- | --- | --- |
+| `bibit` | `.bianbu-agent` | skill `skills/`、plugin `plugins/`、agent `agents/` |
+| `codex` | `.codex` | skill `skills/` |
+| `claude-code` | `.claude` | skill `skills/` |
+| `hermes-agent` | `.hermes` | skill `skills/`、plugin `plugins/` |
+
+- **身份取目录名**，必须满足 APM 规范命名；以 `.` 开头的目录忽略，不是目录（含指向目录的符号链接以外的项）忽略。这些情况**不产生 warning**。
+- 权威文件：skill = `SKILL.md`；plugin = `apc-plugin.json` / `plugin.yaml` / `.claude-plugin/plugin.json` / `.codex-plugin/plugin.json`；agent = `agent.yaml`。
+- **显示门槛（低于上传门槛）**：skill 只要 frontmatter 是 YAML 映射且 `name`、`description` 非空；plugin 清单只要有非空 `name`；agent 只要有非空 `agent.name`。**不要求**满足 Power 资源 schema（`schema_version`、展示字段、长度限制等一律不检查），v1 与 v2 都按同一最低要求处理。
+- 低于门槛 / frontmatter 不是映射 / 非法 UTF-8 / 超过 64 KiB → 计入 `skipped`（最多 20 条），reason 为 `invalid-authority-file`；看起来是候选但缺权威文件（如 plugin 目录只有 `skills/`）→ `missing-authority-file`，`expected` 给出该类型主权威文件名。前端把每条 `skipped` 渲染为页面 warning，**不阻断列表**。
+- `version` 只接受规范 `v<x>.<y>.<z>`（缺 `v` 前缀时补齐）；其它写法或缺失一律置空串，卡片显示占位符，不猜测版本。
+- 扫描失败（含 Provider 不支持该 operation）降级为一条 `custom-resources-unavailable` warning，installed 列表仍正常显示——旧版 CLI 因此天然兼容。
+- MCP 不在扫描范围：APM 不为 MCP 维护目录。codex / claude-code 的 Plugin 由各自 CLI 管理，也不扫描。
+
+#### 10.6.2 合并规则（前端数据层）
+
+`buildMergedInstalledPowersResult` 先按 10.4 归一化 APM 记录，再合入自定义记录：
+
+- 同 `(type,name)` 已存在于 APM 清单 → **丢弃自定义项**，以 APM 清单为准（避免同一系列出现两个来源）。
+- 自定义资源是单个目录，因此它的系列**恰好一个版本**；契约层强制执行这一点（`parseListPowersResult` 在 `source: 'custom'` 时要求 `versions.length === 1`、版本可为空串、`tags` 必须为空）。
+- `source` 进入 snapshot 哈希：从 Hub 安装/卸载导致来源变化时，第 2 页会得到 `reset_required`，不会显示过期内容。
+
+#### 10.6.3 上传与删除（弹窗内联操作）
+
+两个 operation 的 wire 输入都是闭集，**绝不携带路径**：
+
+```text
+{agent, type, name, message}   // powers.upload.v1，message 单行非空 ≤200 字符
+{agent, type, name}            // powers.delete.v1，不带 version
+```
+
+Provider 按同一套规则把 `(agent,type,name)` 解析回路径并**重新校验**（规范名、该 Agent 支持的类型、类型目录必须是目录、结果必须是类型目录的直接子项），非法即 `incompatible`；前端在发送前也用 `parseUploadInput` / `parseDeleteTarget` 做同样校验。
+
+上传固定 argv（无 shell，先校验后提交，`powers.upload.v1`）：
+
+```text
+apm validate <path> --type=<type> --json
+apm submit   <path> --type=<type> --message=<message>
+```
+
+- APC 凭据来自设置页保存的 `apiKey`，经环境变量 `APC_API_KEY` 注入子进程（配置了 `--apc-root-url` 时额外注入 `APC_BASE_URL`）；未配置 Key 时直接 `unauthorized`，**不启动 apm**。
+- 结果是 `{status:"exited", exitCode, stage:"validate"|"submit", reason?, stdout?}`：非零退出是正常结果，`validate` 失败不会执行 `submit`。`reason` 取 apm 失败日志的 `error` 属性（成功走 stdout、失败走 stderr 是 apm 自身约定），再清洗（Key 替换为 `***`、去 ANSI 与控制字符、压单行、截断 300 字节），前端只把它当文本显示；usage 块与日志前缀不会进入结果。
+- 上传门槛高于显示门槛：显示只需最低格式，**上传必须满足 Power 格式 v2**，由 `apm validate` 判定；apm 的 stderr 只用于提取那一行失败原因，usage 块、日志前缀与任何堆栈都不进入结果。
+
+删除执行系统删除语义（`os.RemoveAll` 只作用于已解析并校验过的直接子项）：资源目录本身是符号链接时只删链接、不跟随；目标不存在返回错误而不是静默成功。前端在弹窗内先显示确认文案（明确写出 `agent`/`type`/`name`）再提交。
+
+两个写操作走 `installationStore` 之外的独立控制器（`customControllerRef`）：同一时刻只有一个自定义写请求在途，页面卸载即取消，成功后固定重新读取 installed 清单。
+
+### 10.7 Market 数据源（APC 公共接口）
 
 Store 收到 `scope=market` 时，前端发送 raw wire 输入：
 
@@ -818,19 +910,19 @@ Go Provider 每次请求先 `GET {base}/resources/version`；`catalog_sha256` �
 
 APC 全量约束：只调用 `resources/version` 与 `resources`，不调用 `resources/list` 或 `resources/tags`；类型过滤、tag OR 过滤、系列聚合、分页与 facets 全在前端 `buildPowersResult` 完成。前端在解析 `catalogJson` 前先用 Web Crypto 对原始 UTF-8 字节计算 SHA-256 并与 `snapshot` 比对（`src/api/catalogIntegrity.ts`），不一致抛可重试 `unavailable` 且不写入缓存。默认 base 为 `https://developer.bianbu.xyz/api-server/apc/api/v1`；HTTP 客户端使用系统受信 CA，重定向 ≤5 跳且禁止 https→http 降级，无跳过 TLS 校验的开关。
 
-### 10.7 部署与发布前置项
+### 10.8 部署与发布前置项
 
 已实现并纳入两个 deb：
 
-- Go 标准库 Provider（v1，`powers.list.v1` / `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1`），`bibit-agenthub-cli`（Architecture: any）拥有 `/usr/libexec/bibit/bibit-agenthub` 与 `/etc/bibit/external-services.d/agenthub.json`（Registry `version: 2`、`protocolVersions: [1]`、managed stdio、`requestTimeoutMs: 120000`）；
-- 前端 bundle 与 capability grant 仍在 `bibit-agenthub-plugin`（Architecture: all）；grant 的 store operations 追加 inspect/install/uninstall，capability 仍只有 `service:store`，不新增 job/file grant；
-- 前端数据层在 dev 与生产共用，`dev/sources.ts` 与 Go Provider 语义一致。
+- Go 标准库 Provider（v1，`powers.list.v1` / `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` / `powers.custom.list.v1` / `powers.upload.v1` / `powers.delete.v1` / `settings.get.v1` / `settings.update.v1`），`bibit-agenthub-cli`（Architecture: any）拥有 `/usr/libexec/bibit/bibit-agenthub` 与 `/etc/bibit/external-services.d/agenthub.json`（Registry `version: 2`、`protocolVersions: [1]`、managed stdio、`requestTimeoutMs: 120000`、`credentialParameters` 声明 `settings.update.v1` 的 `apiKey`）；
+- 前端 bundle 与 capability grant 仍在 `bibit-agenthub-plugin`（Architecture: all）；grant 的 store operations 追加 inspect/install/uninstall/custom.list/upload/delete，capability 仍只有 `service:store`，不新增 job/file grant；
+- 前端数据层在 dev 与生产共用，`dev/sources.ts`（APM/APC）与 `dev/custom.ts`（自定义资源扫描与两个写操作）与 Go Provider 语义一致。
 
 发布与板端验收仍依赖以下前置项，缺少时如实记录阻塞：
 
-- 按现有签名流程取得 0.2.3 的受信签名 bundle（开发签名不能代替 Release 信任链）；
+- 按现有签名流程取得受信签名 bundle（开发签名不能代替 Release 信任链）；
 - 构建环境提供 ≥1.26.5 的 Go 工具链（目标 suite 的 `golang-go` 可能只有旧版本，需回填工具链或记录阻塞）；
-- 开发板安装两包并重启宿主，验证 Registry 加载、协议 v1 协商、两个 scope 真实数据与详情/安装/卸载闭环。
+- 开发板安装两包并重启宿主，验证 Registry 加载、协议 v1 协商、两个 scope 真实数据、详情/安装/卸载闭环，以及自定义资源的展示/上传/删除与 APC Key 配置。
 
 在这些前置项完成前，只能宣称协议与构建已验证，不能宣称板端真实链路已接通。
 
@@ -866,7 +958,7 @@ npm run typecheck
 npm run dev
 ```
 
-浏览器打开 Vite 输出地址；首页地址追加 `?lang=zh-CN` 即为中文界面，右上角下拉框可随时切换语言（不刷新页面）。Feature Dev Host 读取真实 Manifest 和 Feature Module，并通过 `dev/main.tsx` 的 `serviceConnections` 把 `powers.list.v1` / `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` 路由到 Vite 中间件（`vite.config.ts` → `dev/store.ts`）提供的 Store。`scope=installed` 会真实执行 PATH 中的 `apm list --installed --agent=<selected> --json`（身份记录）；详情/安装/卸载分别执行 `apm list <name> --installed ...` / `apm install <name>=<version> ...` / `apm uninstall <name> ...`（argv 与 Go Provider 一致，读 30s / 写 120s）；`scope=market` 会每次请求真实拉取 APC 公开目录（`GET /resources/version` 取快照 + `GET /resources` 跟随重定向取全量列表），再按 `type` 过滤聚合；`settings.get.v1` / `settings.update.v1` 使用内存设置。此模式不启动、不编译 Bibit，也不要求远程 Store 后端在线；未安装 `apm` 时 installed 页显示可重试的 unavailable 错误，APC 不可达时 market 页显示可重试的 unavailable 错误。
+浏览器打开 Vite 输出地址；首页地址追加 `?lang=zh-CN` 即为中文界面，右上角下拉框可随时切换语言（不刷新页面）。Feature Dev Host 读取真实 Manifest 和 Feature Module，并通过 `dev/main.tsx` 的 `serviceConnections` 把 `powers.list.v1` / `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` / `powers.custom.list.v1` / `powers.upload.v1` / `powers.delete.v1` / `settings.get.v1` / `settings.update.v1` 路由到 Vite 中间件（`vite.config.ts` → `dev/store.ts`）提供的 Store。`scope=installed` 会真实执行 PATH 中的 `apm list --installed --agent=<selected> --json`（身份记录）；详情/安装/卸载分别执行 `apm list <name> --installed ...` / `apm install <name>=<version> ...` / `apm uninstall <name> ...`（argv 与 Go Provider 一致，读 30s / 写 120s）；`scope=market` 会每次请求真实拉取 APC 公开目录（`GET /resources/version` 取快照 + `GET /resources` 跟随重定向取全量列表），再按 `type` 过滤聚合；`settings.get.v1` / `settings.update.v1` 使用内存设置（`apiKey` 只保留在 dev 进程内，只回传 `hasApiKey`）；`powers.custom.list.v1` 扫描**本机真实 home**（`dev/custom.ts` 复刻 Provider 的目录与最低格式规则），`powers.upload.v1` / `powers.delete.v1` 分别调用本机 `apm validate` + `apm submit` 与真实删除。此模式不启动、不编译 Bibit，也不要求远程 Store 后端在线；未安装 `apm` 时 installed 页显示可重试的 unavailable 错误，APC 不可达时 market 页显示可重试的 unavailable 错误。
 
 market 每次点击类型/标签、翻页都重新拉取并解析 APC 全量列表（无本地 fixture、无跨请求缓存），覆盖 skill / plugin / mcp / agent 四种 Power 类型；installed 由真实 apm 输出驱动，Agent 菜单固定为 bibit / codex / claude-code / hermes-agent 四个选项。两种 scope 复用同一套筛选、聚合、分页、facets 与 snapshot 规则，与未来 Remote Store 一致。
 
@@ -952,16 +1044,16 @@ npm run build:plugin
 产物：
 
 ```text
-artifacts/agent-hub-0.3.2.bibit-plugin.tgz
+artifacts/agent-hub-0.3.4.bibit-plugin.tgz
 ```
 
 检查：
 
 ```bash
-tar -tzf artifacts/agent-hub-0.3.2.bibit-plugin.tgz
-tar -xOf artifacts/agent-hub-0.3.2.bibit-plugin.tgz plugin.json
-tar -xOf artifacts/agent-hub-0.3.2.bibit-plugin.tgz plugin.sig
-sha256sum artifacts/agent-hub-0.3.2.bibit-plugin.tgz
+tar -tzf artifacts/agent-hub-0.3.4.bibit-plugin.tgz
+tar -xOf artifacts/agent-hub-0.3.4.bibit-plugin.tgz plugin.json
+tar -xOf artifacts/agent-hub-0.3.4.bibit-plugin.tgz plugin.sig
+sha256sum artifacts/agent-hub-0.3.4.bibit-plugin.tgz
 ```
 
 归档必须包含：
@@ -1012,7 +1104,7 @@ Settings > Extensions > Trusted plugins
 选择：
 
 ```text
-artifacts/agent-hub-0.3.2.bibit-plugin.tgz
+artifacts/agent-hub-0.3.4.bibit-plugin.tgz
 ```
 
 Bibit 会验签、校验 hash、安装、激活并刷新 Feature Registry。确认主导航出现 Agent Hub，设置子菜单也出现 Agent Hub。
@@ -1038,7 +1130,7 @@ Agent Hub 插件 deb 应安装：
 
 ```bash
 sudo install -Dm0644 \
-  artifacts/agent-hub-0.3.2.bibit-plugin.tgz \
+  artifacts/agent-hub-0.3.4.bibit-plugin.tgz \
   /usr/lib/bibit/plugins/agent-hub.bibit-plugin.tgz
 sudo install -Dm0644 \
   deploy/agenthub-feature-grants.example.json \
@@ -1121,7 +1213,7 @@ dpkg-buildpackage -us -uc -b
 K3DEB1 的 Release 部署必须使用正式签名、且 `keyId` 已进入目标 Bibit 内置信任库的 bundle：
 
 ```bash
-export SIGNED_AGENT_HUB_BUNDLE=/absolute/path/agent-hub-0.3.2.bibit-plugin.tgz
+export SIGNED_AGENT_HUB_BUNDLE=/absolute/path/agent-hub-0.3.4.bibit-plugin.tgz
 test -f "$SIGNED_AGENT_HUB_BUNDLE"
 tar -xOf "$SIGNED_AGENT_HUB_BUNDLE" plugin.json
 tar -xOf "$SIGNED_AGENT_HUB_BUNDLE" plugin.sig
@@ -1199,10 +1291,10 @@ npm run build:plugin
 如果模块同时提供 HTTP Provider，使用真实 HTTP 服务验证：
 
 1. `POST /bibit/v1/invoke` 可达；
-2. 三个 v1 operation 均返回合法信封；
+2. 全部 v1 operation 均返回合法信封（含 `powers.custom.list.v1` / `powers.upload.v1` / `powers.delete.v1`）；
 3. 响应回显请求 `requestId`；
 4. `powers.list.v1` 返回通过闭集运行时校验的 `ready` / `reset_required` 结果；
-5. `settings.update.v1` 后再次调用 `settings.get.v1` 得到持久化值；
+5. `settings.update.v1` 后再次调用 `settings.get.v1` 得到持久化值（`apiKey` 只回传 `hasApiKey`，结果里不得出现 Key）；
 6. 重启 Store 服务后设置值仍存在；
 7. 非法 operation、超时、未授权和离线产生约定错误；
 8. 日志不包含 token 或完整凭据。
@@ -1215,7 +1307,7 @@ npm run build:plugin
 
 - 目标 Bibit 信任正式 `keyId`；
 - 系统目录只有预期 Agent Hub bundle；
-- Bibit 插件管理页显示 `agent-hub@0.3.2` 已激活；
+- Bibit 插件管理页显示 `agent-hub@0.3.4` 已激活；
 - 主导航出现 Agent Hub；
 - 设置子菜单出现 Agent Hub；
 - 选中设置页后全局“设置”页头和子菜单滚动不消失；
@@ -1247,6 +1339,7 @@ Store service version
 6. 恢复 Store 服务，点击 Retry，确认列表恢复；
 7. 把 Bibit 系统语言切成中文，确认主导航、设置子菜单标题、页面文案与操作提示变为中文，且切换瞬间列表不重新请求、详情弹窗不关闭；
 8. 切回英文，确认文案回到英文；
+   - 对同一条测试 Power 分别用 V1（只有 `name`/`description`）与 V2（带 `name_zh`/`name_en`/`description_zh`）记录验收：V2 记录在中文下显示 `name_zh`/`description_zh`、英文下显示 `name_en`/`description`；V1 记录两种语言都回退到 `name`/`description`；两种情况下的安装、卸载与详情请求参数都仍是 canonical `name`。注意 apm `list --json` 与 APC 目录尚未输出展示字段，需用能返回这些字段的夹具或临时 Store 服务构造；
 9. 在默认窗口（1200×800）与最小窗口（1024×740）下打开 Power 市场：卡片等高、描述在无边框框内可上下滚动、分页控件常驻可见，向下滚动能到达第 20 张卡片；翻页或切换类型后列表回到顶部，没有横向滚动条；
 10. 打开 Agent Hub 设置，修改 `showExperimental` 和 `refreshMinutes` 并保存；
 11. 关闭并重新打开设置页，确认读取到保存值；
@@ -1303,7 +1396,7 @@ CLI 模式检查 Registry 是否为 `version: 2`、`transport: stdio`、固定�
 - 独立 Dev Host Mock 验收结果；
 - CLI 自检和 Provider v2 协商结果；
 - Bibit 插件加载、激活、停用和回退结果；
-- 真实 Power 列表、设置持久化、错误映射与重试证据；
+- 真实 Power 列表、自定义资源展示（含 warning）、上传/删除、设置持久化（含 APC Key 不回显）、错误映射与重试证据；
 - 中英文切换证据（系统语言切换后页面文案、菜单标题与不重新请求的观察结果）；
 - 已知限制和可用回滚版本。
 
@@ -1319,9 +1412,12 @@ CLI 模式检查 Registry 是否为 `version: 2`、`transport: stdio`、固定�
 ## 19. 当前已知边界
 
 - v1 只支持 `desktop/main`；
-- 当前插件实现 APC Power 展示原型（筛选、系列卡、版本选择、每页 20 的分页、warning 与 Retry）、详情弹窗与单版本安装/卸载，和两个设置字段；
-- Power 下载、提交、审核、下架、恢复以及搜索尚未实现；
-- `powers.list.v1` / `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` DTO 已做闭集运行时校验；`settings.get.v1` / `settings.update.v1` 由 store 服务处理（dev 为内存 echo，settings 持久化不在本期范围）；
+- 当前插件实现 APC Power 展示原型（筛选、系列卡、版本选择、每页 20 的分页、warning 与 Retry）、详情弹窗与单版本安装/卸载，以及自定义资源的扫描/上传/删除，和三个设置字段（实验 Agent、刷新间隔、APC API Key）；
+- Power 下载、提交审核、下架、恢复以及搜索尚未实现；
+- `powers.list.v1` / `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` / `powers.custom.list.v1` / `powers.upload.v1` / `powers.delete.v1` DTO 已做闭集运行时校验；`settings.get.v1` / `settings.update.v1` 由 store 服务处理（dev 为内存 echo，Provider 侧为 `settings.json` 持久化，Key 只回传 `hasApiKey`）；
+- 自定义资源只覆盖 skill / plugin / agent：MCP 没有可扫描目录，codex 与 claude-code 的 Plugin 由各自 CLI 管理，两者都不在本期范围；
+- 自定义资源的**显示**只要求主流最低格式，**上传**仍要求 Power 格式 v2（由 `apm validate` 判定）；
+- 删除是本地系统删除（`os.RemoveAll` 只作用于已校验的直接子项），资源目录是符号链接时只删链接，无法从 APC 侧下架或恢复；
 - 安装/卸载依赖 Agent 自身 `apm` CLI；无 `apm` 时详情与写入降级为可重试 `unavailable`，页面显示固定“操作不可用”文案；
 - 自动化测试使用 Vitest 覆盖 DTO、dev transport、客户端、组件与页面行为（`src/api/contracts.test.ts` 等与源文件同目录）；
 - 设置页复用目标 Bibit 同版本的 `@bibit/feature-ui`；市场页使用 `.agent-hub*` 命名空间内的独立 CSS；

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import type { ListPowersInput, PowerType } from './contracts'
+import type { CustomResourceRecord, ListPowersInput, PowerType } from './contracts'
 import {
   buildInstalledPowersResult,
+  buildMergedInstalledPowersResult,
   parseApmInstalledList,
   type APMPowerRecord,
 } from './apm'
@@ -66,6 +67,45 @@ describe('parseApmInstalledList', () => {
   it('rejects a non-canonical type and malformed version', () => {
     expect(() => parseApmInstalledList([{ agent: 'b', type: 'skillz', name: 'a', version: 'v1.0.0' }])).toThrow(/type/)
     expect(() => parseApmInstalledList([{ agent: 'b', type: 'skill', name: 'a', version: 'v01.0.0' }])).toThrow(/version/)
+  })
+
+  it('tolerates a V1 record without any v2 display field', () => {
+    const parsed = parseApmInstalledList([
+      { agent: 'bibit', type: 'skill', name: 'a', version: 'v1.0.0', description: 'd', tags: [] },
+    ])
+    expect(parsed[0]).toEqual({
+      agent: 'bibit', type: 'skill', name: 'a', version: 'v1.0.0', description: 'd', tags: [],
+    })
+    expect('name_zh' in parsed[0]).toBe(false)
+    expect('name_en' in parsed[0]).toBe(false)
+    expect('description_zh' in parsed[0]).toBe(false)
+  })
+
+  it('keeps present v2 display fields and drops blank ones', () => {
+    const parsed = parseApmInstalledList([
+      {
+        agent: 'bibit', type: 'skill', name: 'a', version: 'v1.0.0', description: 'd', tags: [],
+        name_zh: '演示', name_en: 'Demo', description_zh: '演示描述',
+      },
+      {
+        agent: 'bibit', type: 'skill', name: 'b', version: 'v1.0.0', description: 'd', tags: [],
+        name_zh: '   ', description_zh: '',
+      },
+    ])
+    expect(parsed[0].name_zh).toBe('演示')
+    expect(parsed[0].name_en).toBe('Demo')
+    expect(parsed[0].description_zh).toBe('演示描述')
+    // Blank means "no display value": the key is absent so the UI falls back.
+    expect('name_zh' in parsed[1]).toBe(false)
+    expect('description_zh' in parsed[1]).toBe(false)
+  })
+
+  it.each(['name_zh', 'name_en', 'description_zh'] as const)('rejects a non-string %s', (field) => {
+    expect(() =>
+      parseApmInstalledList([
+        { agent: 'bibit', type: 'skill', name: 'a', version: 'v1.0.0', [field]: 1 },
+      ])
+    ).toThrow(new RegExp(field))
   })
 })
 
@@ -179,5 +219,186 @@ describe('buildInstalledPowersResult', () => {
     if (one.status !== 'ready' || two.status !== 'ready') return
     expect(one.snapshot).toBe(two.snapshot)
     expect(one.snapshot).toMatch(/^apm-installed-/)
+  })
+
+  it('hoists display names to the series and keeps description_zh per version', () => {
+    const result = buildInstalledPowersResult(query(), [
+      record({
+        agent: 'bibit', type: 'skill', name: 'a', version: 'v2.0.0',
+        name_zh: '演示技能', name_en: 'Demo Skill', description_zh: '新版本说明',
+      }),
+      record({
+        agent: 'bibit', type: 'skill', name: 'a', version: 'v1.0.0',
+        description_zh: '旧版本说明',
+      }),
+    ])
+    expect(result.status).toBe('ready')
+    if (result.status !== 'ready') return
+    expect(result.items[0].name_zh).toBe('演示技能')
+    expect(result.items[0].name_en).toBe('Demo Skill')
+    // One value per series: the highest version that carries the field wins.
+    expect(result.items[0].versions.map((v) => v.description_zh)).toEqual([
+      '新版本说明',
+      '旧版本说明',
+    ])
+  })
+
+  it('falls back to an older version display name when the newest record is V1', () => {
+    const result = buildInstalledPowersResult(query(), [
+      record({ agent: 'bibit', type: 'skill', name: 'a', version: 'v2.0.0' }),
+      record({ agent: 'bibit', type: 'skill', name: 'a', version: 'v1.0.0', name_zh: '旧版展示名' }),
+    ])
+    expect(result.status).toBe('ready')
+    if (result.status !== 'ready') return
+    expect(result.items[0].name_zh).toBe('旧版展示名')
+    expect('name_en' in result.items[0]).toBe(false)
+  })
+
+  it('leaves both display names absent for a fully V1 series', () => {
+    const result = buildInstalledPowersResult(query(), [
+      record({ agent: 'bibit', type: 'skill', name: 'a', version: 'v1.0.0' }),
+    ])
+    expect(result.status).toBe('ready')
+    if (result.status !== 'ready') return
+    expect('name_zh' in result.items[0]).toBe(false)
+    expect('name_en' in result.items[0]).toBe(false)
+    expect('description_zh' in result.items[0].versions[0]).toBe(false)
+  })
+
+  it('changes the snapshot when only a display field changes', () => {
+    const base = record({ agent: 'bibit', type: 'skill', name: 'a', version: 'v1.0.0' })
+    const plain = buildInstalledPowersResult(query(), [base])
+    const localized = buildInstalledPowersResult(query(), [{ ...base, name_zh: '演示' }])
+    expect(plain.status).toBe('ready')
+    expect(localized.status).toBe('ready')
+    if (plain.status !== 'ready' || localized.status !== 'ready') return
+    expect(localized.snapshot).not.toBe(plain.snapshot)
+  })
+})
+/**
+ * Cross-repo contract anchor: these two records are verbatim `apm list --installed --json`
+ * output from apm 0.1.6 (see apm ADR-040). apm always emits `description`, `tags` and the
+ * v2 display fields; a V1 resource leaves the display fields as `""`. Parsing must keep the
+ * populated fields, drop the blanks, and let series aggregation hoist the display names.
+ */
+describe('apm list --json contract (apm 0.1.6, ADR-040)', () => {
+  const apmV2Record =
+    '{"agent":"bibit","type":"skill","name":"brief-status","version":"v0.0.1",' +
+    '"description":"Use when writing a concise progress status update.","tags":[],' +
+    '"name_zh":"简报状态","name_en":"Brief Status","description_zh":"用于撰写简洁的进度状态更新。"}'
+  const apmV1Record =
+    '{"agent":"bibit","type":"skill","name":"legacy-skill","version":"v1.0.0",' +
+    '"description":"Legacy skill.","tags":["official"],"name_zh":"","name_en":"","description_zh":""}'
+
+  it('keeps populated display fields and drops the empty ones a V1 record carries', () => {
+    const parsed = parseApmInstalledList(JSON.parse(`[${apmV2Record},${apmV1Record}]`))
+    expect(parsed[0]).toEqual({
+      agent: 'bibit',
+      type: 'skill',
+      name: 'brief-status',
+      version: 'v0.0.1',
+      description: 'Use when writing a concise progress status update.',
+      tags: [],
+      name_zh: '简报状态',
+      name_en: 'Brief Status',
+      description_zh: '用于撰写简洁的进度状态更新。',
+    })
+    expect('name_zh' in parsed[1]).toBe(false)
+    expect('description_zh' in parsed[1]).toBe(false)
+  })
+
+  it('hoists the display names to the series and keeps description_zh per version', () => {
+    const result = buildInstalledPowersResult(
+      query(),
+      parseApmInstalledList(JSON.parse(`[${apmV2Record},${apmV1Record}]`))
+    )
+    expect(result.status).toBe('ready')
+    if (result.status !== 'ready') return
+    expect(result.items).toHaveLength(2)
+    const localized = result.items.find((item) => item.name === 'brief-status')
+    const legacy = result.items.find((item) => item.name === 'legacy-skill')
+    expect(localized?.name_zh).toBe('简报状态')
+    expect(localized?.name_en).toBe('Brief Status')
+    expect(localized?.versions[0].description_zh).toBe('用于撰写简洁的进度状态更新。')
+    // A V1 record stays on the fallback path: no display fields reach the series or version.
+    expect(legacy).toBeDefined()
+    expect(legacy && 'name_zh' in legacy).toBe(false)
+    expect(legacy && 'name_en' in legacy).toBe(false)
+    expect(legacy && 'description_zh' in legacy.versions[0]).toBe(false)
+  })
+})
+
+describe('buildMergedInstalledPowersResult', () => {
+  const customRecord = (overrides: Partial<CustomResourceRecord> = {}): CustomResourceRecord => ({
+    type: 'skill',
+    name: 'hand-written',
+    version: '',
+    description: 'Hand made.',
+    tags: [],
+    source: 'custom',
+    ...overrides,
+  })
+
+  it('keeps a versionless custom resource as a single-entry series', () => {
+    const result = buildMergedInstalledPowersResult(query(), [], [customRecord()])
+    expect(result.status).toBe('ready')
+    if (result.status !== 'ready') return
+    expect(result.items).toHaveLength(1)
+    expect(result.items[0].name).toBe('hand-written')
+    expect(result.items[0].source).toBe('custom')
+    expect(result.items[0].versions).toEqual([{ version: '', description: 'Hand made.', tags: [] }])
+    expect(result.facets.tags).toEqual([])
+  })
+
+  it('drops a custom resource whose series is already in the APM manifest', () => {
+    const result = buildMergedInstalledPowersResult(
+      query(),
+      [record({ agent: 'bibit', type: 'skill', name: 'hand-written', version: 'v1.0.0', description: 'hub' })],
+      [customRecord()]
+    )
+    expect(result.status).toBe('ready')
+    if (result.status !== 'ready') return
+    expect(result.items).toHaveLength(1)
+    expect(result.items[0].source).toBeUndefined()
+    expect(result.items[0].versions[0].description).toBe('hub')
+  })
+
+  it('merges Hub and custom resources into one sorted list', () => {
+    const result = buildMergedInstalledPowersResult(
+      query(),
+      [record({ agent: 'bibit', type: 'skill', name: 'alpha', version: 'v1.0.0', description: 'hub' })],
+      [customRecord({ name: 'zeta' }), customRecord({ name: 'mid' })]
+    )
+    expect(result.status).toBe('ready')
+    if (result.status !== 'ready') return
+    expect(result.items.map((item) => item.name)).toEqual(['alpha', 'mid', 'zeta'])
+    expect(result.items[0].source).toBeUndefined()
+    expect(result.items[1].source).toBe('custom')
+    expect(result.items[2].source).toBe('custom')
+  })
+
+  it('carries the custom source into the snapshot so a change invalidates page 2', () => {
+    const withCustom = buildMergedInstalledPowersResult(query(), [], [customRecord()])
+    const withoutCustom = buildMergedInstalledPowersResult(query(), [], [])
+    expect(withCustom.status).toBe('ready')
+    expect(withoutCustom.status).toBe('ready')
+    if (withCustom.status !== 'ready' || withoutCustom.status !== 'ready') return
+    expect(withCustom.snapshot).not.toBe(withoutCustom.snapshot)
+
+    const secondPage = buildMergedInstalledPowersResult(query({ page: 2, snapshot: 'stale' }), [], [customRecord()])
+    expect(secondPage).toEqual({ status: 'reset_required', reason: 'snapshot_changed' })
+  })
+
+  it('ignores a custom record of another type and keeps display fields', () => {
+    const result = buildMergedInstalledPowersResult(query(), [], [
+      customRecord({ type: 'plugin', name: 'p' }),
+      customRecord({ name_zh: '手写', name_en: 'Hand Written', description_zh: '手写资源。' }),
+    ])
+    expect(result.status).toBe('ready')
+    if (result.status !== 'ready') return
+    expect(result.items).toHaveLength(1)
+    expect(result.items[0].name_zh).toBe('手写')
+    expect(result.items[0].name_en).toBe('Hand Written')
+    expect(result.items[0].versions[0].description_zh).toBe('手写资源。')
   })
 })

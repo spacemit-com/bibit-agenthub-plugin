@@ -16,6 +16,16 @@ const (
 	serviceIDStore       = "store"
 	operationPowersList  = "powers.list.v1"
 
+	// Custom-resource operations. `powers.custom.list.v1` reports the Powers a
+	// user installed by hand into an Agent's own directory tree; the two writes
+	// publish one of them to APC and remove it from disk.
+	operationPowersCustomList = "powers.custom.list.v1"
+	operationPowersUpload     = "powers.upload.v1"
+	operationPowersDelete     = "powers.delete.v1"
+
+	operationSettingsGet    = "settings.get.v1"
+	operationSettingsUpdate = "settings.update.v1"
+
 	// maxInputBytes bounds a single NDJSON input line (the host request budget).
 	maxInputBytes = 1 << 20 // 1 MiB
 	// maxOutputBytes bounds a final serialized RPC response line including '\n'.
@@ -23,8 +33,31 @@ const (
 	// maxIDLength bounds a JSON-RPC string id; the host uses 1..128.
 	maxIDLength = 128
 
-	providerVersion = "0.2.3"
+	providerVersion = "0.3.4"
 )
+
+// declaredOperations is the closed set reported to the host at initialize and
+// enforced on every invoke.
+var declaredOperations = []string{
+	operationPowersList,
+	operationPowersInspect,
+	operationPowersInstall,
+	operationPowersUninstall,
+	operationPowersCustomList,
+	operationPowersUpload,
+	operationPowersDelete,
+	operationSettingsGet,
+	operationSettingsUpdate,
+}
+
+func isDeclaredOperation(operationID string) bool {
+	for _, declared := range declaredOperations {
+		if declared == operationID {
+			return true
+		}
+	}
+	return false
+}
 
 var errLineTooLong = errors.New("provider: input line exceeds limit")
 
@@ -175,7 +208,7 @@ func handleInitialize(obj map[string]json.RawMessage, id json.RawMessage, initia
 		ProtocolVersion: 1,
 		ProviderVersion: providerVersion,
 		Capabilities:    providerCapabilities{Invoke: true},
-		Operations:      []string{operationPowersList, operationPowersInspect, operationPowersInstall, operationPowersUninstall},
+		Operations:      append([]string(nil), declaredOperations...),
 	}
 	return emitResponse(out, id, result, nil)
 }
@@ -198,9 +231,7 @@ func handleInvoke(ctx context.Context, obj map[string]json.RawMessage, id json.R
 	if params.TimeoutMs < 1 || params.TimeoutMs > 300000 {
 		return emitResponse(out, id, nil, newRPCError(-32602, "Invalid params", "incompatible"))
 	}
-	switch params.OperationID {
-	case operationPowersList, operationPowersInspect, operationPowersInstall, operationPowersUninstall:
-	default:
+	if !isDeclaredOperation(params.OperationID) {
 		return emitResponse(out, id, nil, newRPCError(-32601, "Method not found", "incompatible"))
 	}
 	request, err := decodeOperationRequest(params.OperationID, params.Params)
@@ -330,9 +361,48 @@ func decodeOperationRequest(operationID string, raw json.RawMessage) (OperationR
 			return OperationRequest{}, err
 		}
 		return OperationRequest{OperationID: operationID, Target: &target}, nil
+	case operationPowersCustomList:
+		list, err := decodeCustomListInput(raw)
+		if err != nil {
+			return OperationRequest{}, err
+		}
+		return OperationRequest{OperationID: operationID, CustomList: &list}, nil
+	case operationPowersUpload:
+		upload, err := decodeUploadInput(raw)
+		if err != nil {
+			return OperationRequest{}, err
+		}
+		return OperationRequest{OperationID: operationID, Upload: &upload}, nil
+	case operationPowersDelete:
+		target, err := decodePowerTarget(raw)
+		if err != nil {
+			return OperationRequest{}, err
+		}
+		return OperationRequest{OperationID: operationID, Target: &target}, nil
+	case operationSettingsGet:
+		if _, err := decodeObject(raw); err != nil {
+			return OperationRequest{}, err
+		}
+		if err := rejectKeys(mustDecodeObject(raw)); err != nil {
+			return OperationRequest{}, err
+		}
+		return OperationRequest{OperationID: operationID}, nil
+	case operationSettingsUpdate:
+		update, err := decodeSettingsUpdate(raw)
+		if err != nil {
+			return OperationRequest{}, err
+		}
+		return OperationRequest{OperationID: operationID, Settings: &update}, nil
 	default:
 		return OperationRequest{}, errors.New("unknown operation")
 	}
+}
+
+// mustDecodeObject re-decodes an already validated raw object; the caller has
+// run decodeObject first, so the only failure mode is a programming error.
+func mustDecodeObject(raw json.RawMessage) map[string]json.RawMessage {
+	obj, _ := decodeObject(raw)
+	return obj
 }
 
 // --- JSON-RPC helpers ------------------------------------------------------

@@ -4,12 +4,20 @@ import {
   parseListPowersInput,
   parseListPowersResult,
   parsePowersWireResult,
+  type CustomResourceList,
+  type CustomResourceSkipped,
   type ListPowersInput,
   type ListPowersResult,
+  type PowerWarning,
 } from './contracts'
 import { verifyCatalogText } from './catalogIntegrity'
 import { parseApcCatalog } from './apc'
-import { buildInstalledPowersResult, buildPowersResult, type PowerRecord } from './apm'
+import {
+  buildMergedInstalledPowersResult,
+  buildPowersResult,
+  type PowerRecord,
+} from './apm'
+import { listCustomResources } from './customResources'
 import { getInstallationStore } from './installationStore'
 
 type CacheEntry = { kind: 'market'; snapshot: string; records: PowerRecord[] }
@@ -33,6 +41,56 @@ function platformError(code: PlatformCode, message: string, retryable: boolean):
  * cached here: it is delegated to the shared installation store.
  */
 const caches = new WeakMap<FeatureServiceApiV1<'store'>, Map<string, CacheSlot>>()
+
+type CustomLoad = { items: CustomResourceList['items']; skipped: CustomResourceSkipped[]; warnings: PowerWarning[] }
+
+/**
+ * Reads the custom scan and never rejects: the caller needs the Hub list either
+ * way, so a scan failure is reported as one warning on an empty custom list. An
+ * abort is the exception — it means the page is gone, so it propagates.
+ */
+async function loadCustomResources(
+  service: FeatureServiceApiV1<'store'>,
+  agent: string,
+  signal: AbortSignal
+): Promise<CustomLoad> {
+  try {
+    const list = await listCustomResources(service, agent, signal)
+    return { items: list.items, skipped: list.skipped, warnings: [] }
+  } catch (reason: unknown) {
+    if (signal.aborted) {
+      platformError('cancelled', 'Request was cancelled.', false)
+    }
+    const code = (reason as { code?: unknown } | null)?.code
+    if (code === 'cancelled') {
+      platformError('cancelled', 'Request was cancelled.', false)
+    }
+    return {
+      items: [],
+      skipped: [],
+      warnings: [
+        {
+          code: 'custom-resources-unavailable',
+          agent,
+          message: 'Custom resources could not be scanned for this Agent.',
+        },
+      ],
+    }
+  }
+}
+
+/** Turns the scanner's skip list into warnings the page can render. */
+function customSkippedWarnings(agent: string, skipped: readonly CustomResourceSkipped[]): PowerWarning[] {
+  return skipped.map((entry) => ({
+    code: 'custom-resource-skipped',
+    agent,
+    message:
+      entry.reason === 'missing-authority-file'
+        ? 'Skipped {type} "{name}": {expected} is missing.'
+        : 'Skipped {type} "{name}": its {expected} does not meet the minimum format.',
+    values: { type: entry.type, name: entry.name, expected: entry.expected },
+  }))
+}
 
 function slotFor(service: FeatureServiceApiV1<'store'>, key: string): CacheSlot {
   let slots = caches.get(service)
@@ -83,8 +141,25 @@ export async function listPowers(
     if (query.agent === undefined) {
       throw new Error('Invalid powers.list.v1 request: installed scope requires an agent')
     }
-    const records = await getInstallationStore(service).refreshAgent(query.agent, signal)
-    return parseListPowersResult(buildInstalledPowersResult(query, records))
+    const agent = query.agent
+    // The installed view is the APM manifest plus the resources a user dropped
+    // into the Agent's own tree. The custom scan is best-effort: a failure must
+    // degrade to "no custom resources, one warning" instead of turning the whole
+    // installed page into an error, which also keeps the page usable against a
+    // provider CLI that predates the custom operations.
+    const [records, custom] = await Promise.all([
+      getInstallationStore(service).refreshAgent(agent, signal),
+      loadCustomResources(service, agent, signal),
+    ])
+    const result = buildMergedInstalledPowersResult(query, records, custom.items)
+    const warnings = [...custom.warnings, ...customSkippedWarnings(agent, custom.skipped)]
+    if (result.status === 'ready' && warnings.length > 0) {
+      return parseListPowersResult({
+        ...result,
+        warnings: [...result.warnings, ...warnings],
+      })
+    }
+    return parseListPowersResult(result)
   }
 
   const slot = slotFor(service, 'market')

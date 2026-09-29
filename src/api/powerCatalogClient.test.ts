@@ -37,7 +37,9 @@ const installedInput: ListPowersInput = {
   pageSize: 20,
 }
 
-function makeService(respond: (callIndex: number) => unknown): {
+function makeService(
+  respond: (callIndex: number, input: FeatureServiceRequestV1<'store'>) => unknown
+): {
   service: FeatureServiceApiV1<'store'>
   calls: FeatureServiceRequestV1<'store'>[]
 } {
@@ -45,7 +47,7 @@ function makeService(respond: (callIndex: number) => unknown): {
   const service: FeatureServiceApiV1<'store'> = {
     async request<TResult>(input: FeatureServiceRequestV1<'store'>): Promise<TResult> {
       calls.push(input)
-      return respond(calls.length - 1) as TResult
+      return respond(calls.length - 1, input) as TResult
     },
   }
   return { service, calls }
@@ -113,16 +115,19 @@ describe('listPowers', () => {
     const listJson = JSON.stringify([
       { agent: 'bibit', type: 'skill', name: 'demo', version: 'v1.0.0', description: 'installed', tags: ['alpha'] },
     ])
-    const { service, calls } = makeService(() => ({
-      scope: 'installed',
-      status: 'data',
-      listJson,
-    }))
+    const { service, calls } = makeService((index, input) =>
+      input.operationId === 'powers.custom.list.v1'
+        ? { scope: 'custom', status: 'data', itemsJson: '{"items":[],"skipped":[]}' }
+        : { scope: 'installed', status: 'data', listJson }
+    )
 
     const result = await listPowers(service, installedInput, signal())
 
-    expect(calls).toHaveLength(1)
+    // One request reads the APM manifest, one scans for hand-installed resources.
+    expect(calls).toHaveLength(2)
     expect(calls[0].params).toEqual({ scope: 'installed', agent: 'bibit' })
+    expect(calls[1].operationId).toBe('powers.custom.list.v1')
+    expect(calls[1].params).toEqual({ agent: 'bibit' })
     expect(result.status).toBe('ready')
     if (result.status !== 'ready') return
     expect(result.items).toHaveLength(1)
@@ -249,13 +254,18 @@ describe('listPowers', () => {
   })
 
   it('keeps the installed cache isolated per agent', async () => {
-    const { service, calls } = makeService(() => ({ scope: 'installed', status: 'data', listJson: '[]' }))
+    const { service, calls } = makeService((_index, input) =>
+      input.operationId === 'powers.custom.list.v1'
+        ? { scope: 'custom', status: 'data', itemsJson: '{"items":[],"skipped":[]}' }
+        : { scope: 'installed', status: 'data', listJson: '[]' }
+    )
 
     await listPowers(service, installedInput, signal())
     await listPowers(service, { ...installedInput, agent: 'codex' }, signal())
 
-    expect(calls[0].params).toEqual({ scope: 'installed', agent: 'bibit' })
-    expect(calls[1].params).toEqual({ scope: 'installed', agent: 'codex' })
+    const listCalls = calls.filter((call) => call.operationId === 'powers.list.v1')
+    expect(listCalls[0].params).toEqual({ scope: 'installed', agent: 'bibit' })
+    expect(listCalls[1].params).toEqual({ scope: 'installed', agent: 'codex' })
   })
 
   it('does not commit when the signal is already aborted', async () => {
@@ -294,3 +304,111 @@ describe('listPowers', () => {
     expect(caught).toBe(error)
   })
 })
+
+describe('listPowers custom merge', () => {
+  const installedWith = (listJson: string, itemsJson: string) =>
+    makeService((_index, input) =>
+      input.operationId === 'powers.custom.list.v1'
+        ? { scope: 'custom', status: 'data', itemsJson }
+        : { scope: 'installed', status: 'data', listJson }
+    )
+
+  const hubRecord = { agent: 'bibit', type: 'skill', name: 'hub-skill', version: 'v1.0.0', description: 'hub', tags: [] }
+  const customItem = {
+    type: 'skill',
+    name: 'hand-written',
+    version: '',
+    description: 'Hand made.',
+    tags: [],
+    source: 'custom',
+  }
+
+  it('lists Hub and hand-installed resources together, marked with their source', async () => {
+    const { service } = installedWith(
+      JSON.stringify([hubRecord]),
+      JSON.stringify({ items: [customItem], skipped: [] })
+    )
+    const result = await listPowers(service, installedInput, signal())
+    expect(result.status).toBe('ready')
+    if (result.status !== 'ready') return
+    expect(result.items.map((series) => series.name)).toEqual(['hand-written', 'hub-skill'])
+    expect(result.items.find((series) => series.name === 'hand-written')?.source).toBe('custom')
+    expect(result.items.find((series) => series.name === 'hub-skill')?.source).toBeUndefined()
+    expect(result.warnings).toEqual([])
+  })
+
+  it('prefers the APM manifest when a hand-installed directory has the same name', async () => {
+    const { service } = installedWith(
+      JSON.stringify([{ ...hubRecord, name: 'hand-written' }]),
+      JSON.stringify({ items: [customItem], skipped: [] })
+    )
+    const result = await listPowers(service, installedInput, signal())
+    expect(result.status).toBe('ready')
+    if (result.status !== 'ready') return
+    expect(result.items).toHaveLength(1)
+    expect(result.items[0].source).toBeUndefined()
+    expect(result.items[0].versions[0].description).toBe('hub')
+  })
+
+  it('turns scan skips into readable warnings without dropping the Hub list', async () => {
+    const { service } = installedWith(
+      JSON.stringify([hubRecord]),
+      JSON.stringify({
+        items: [],
+        skipped: [
+          { type: 'skill', name: 'partial', expected: 'SKILL.md', reason: 'invalid-authority-file' },
+          { type: 'plugin', name: 'container', expected: 'apc-plugin.json', reason: 'missing-authority-file' },
+        ],
+      })
+    )
+    const result = await listPowers(service, installedInput, signal())
+    expect(result.status).toBe('ready')
+    if (result.status !== 'ready') return
+    expect(result.items.map((series) => series.name)).toEqual(['hub-skill'])
+    expect(result.warnings).toHaveLength(2)
+    expect(result.warnings[0]).toMatchObject({
+      code: 'custom-resource-skipped',
+      agent: 'bibit',
+      message: 'Skipped {type} "{name}": its {expected} does not meet the minimum format.',
+      values: { type: 'skill', name: 'partial', expected: 'SKILL.md' },
+    })
+    expect(result.warnings[1].message).toBe('Skipped {type} "{name}": {expected} is missing.')
+  })
+
+  it('degrades a failed scan to one warning instead of failing the installed view', async () => {
+    const { service } = makeService((_index, input) => {
+      if (input.operationId === 'powers.custom.list.v1') {
+        // A provider that predates the custom operation answers incompatible.
+        throw { version: 1, code: 'incompatible', message: 'unknown operation', retryable: false }
+      }
+      return { scope: 'installed', status: 'data', listJson: JSON.stringify([hubRecord]) }
+    })
+    const result = await listPowers(service, installedInput, signal())
+    expect(result.status).toBe('ready')
+    if (result.status !== 'ready') return
+    expect(result.items.map((series) => series.name)).toEqual(['hub-skill'])
+    expect(result.warnings).toEqual([
+      {
+        code: 'custom-resources-unavailable',
+        agent: 'bibit',
+        message: 'Custom resources could not be scanned for this Agent.',
+      },
+    ])
+  })
+
+  it('still propagates a cancellation of the whole read', async () => {
+    const controller = new AbortController()
+    const { service } = makeService((_index, input) => {
+      if (input.operationId === 'powers.custom.list.v1') {
+        controller.abort()
+        throw { version: 1, code: 'cancelled', message: 'cancelled', retryable: false }
+      }
+      return { scope: 'installed', status: 'data', listJson: '[]' }
+    })
+    await expect(installedRequest(service, controller.signal)).rejects.toMatchObject({ code: 'cancelled' })
+  })
+})
+
+function installedRequest(service: FeatureServiceApiV1<'store'>, signal: AbortSignal) {
+  return listPowers(service, installedInput, signal)
+}

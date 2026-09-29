@@ -131,6 +131,53 @@ const zh: Readonly<Record<string, string>> = {
   'The command failed; version {version} is still installed.':
     '命令执行失败，当前仍安装 {version}',
   'The command failed; nothing is installed.': '命令执行失败，当前未安装',
+
+  // ---- custom (hand-installed) resources ----
+  'Custom': '自定义',
+  'No version': '无版本',
+  'Installed outside Agent Hub; not managed by APM.': '在 Agent Hub 之外手动安装，不受 APM 管理。',
+  'Upload': '上传',
+  'Delete': '删除',
+  'Upload to APC': '上传到 APC',
+  'Publish message': '发布说明',
+  'Required for the APC submission.': 'APC 提交必填。',
+  'Upload requires Power format v2.': '上传要求资源满足 Power 格式 v2。',
+  'Cancel': '取消',
+  'Confirm delete': '确认删除',
+  'Delete this resource?': '删除该资源？',
+  'Removes the local {type} "{name}" for {agent}. This cannot be undone.':
+    '将删除 {agent} 本地的 {type} “{name}”，且不可恢复。',
+  'Uploading…': '正在上传…',
+  'Deleting…': '正在删除…',
+  'Upload complete.': '上传完成',
+  'Upload complete: {submissionId}': '上传完成：{submissionId}',
+  'Upload failed.': '上传失败',
+  'Upload failed: {reason}': '上传失败：{reason}',
+  'This resource does not meet the Power format required for upload; fix it and retry.':
+    '该资源不满足上传所需的 Power 格式，请修正后重试。',
+  'Deleted {type} "{name}".': '已删除 {type} “{name}”。',
+  'The custom resource request was cancelled.': '自定义资源请求已取消。',
+  'The custom resource service is offline.': '自定义资源服务处于离线状态。',
+  'The custom resource request timed out.': '自定义资源请求超时。',
+  'The custom resource service is incompatible with this plugin.': '自定义资源服务与此插件不兼容。',
+  'The custom resource service is unavailable.': '自定义资源服务不可用。',
+  'The custom resource provider crashed.': '自定义资源 Provider 已崩溃。',
+  'The custom resource request exceeded a resource limit.': '自定义资源请求超出资源上限。',
+  'The custom resource operation failed.': '自定义资源操作失败。',
+  'APC API Key is not configured; set it in Agent Hub settings.':
+    '未配置 APC API Key，请在 Agent Hub 设置中填写。',
+  'Skipped {type} "{name}": {expected} is missing.': '已跳过 {type} “{name}”：缺少 {expected}。',
+  'Skipped {type} "{name}": its {expected} does not meet the minimum format.':
+    '已跳过 {type} “{name}”：{expected} 不满足最低格式要求。',
+  'Custom resources could not be scanned for this Agent.': '无法扫描该 Agent 的自定义资源。',
+
+  // ---- settings: APC credential ----
+  'APC API Key': 'APC API Key',
+  'Required to upload custom resources to APC.': '用于把自定义资源上传到 APC。',
+  'Configured': '已配置',
+  'Not configured': '未配置',
+  'Clear saved key': '清除已保存的 Key',
+  'The API Key is never shown again once saved.': '保存后不再回显 API Key。',
 }
 
 export const agentHubChinese: Readonly<Record<string, string>> = zh
@@ -174,6 +221,13 @@ const AgentHubI18nContext = createContext<AgentHubTranslate>((source, values) =>
   format(source, values)
 )
 
+/**
+ * The normalized host language, exposed next to the translator so components can
+ * pick between localized data fields (for example a Power's `name_zh` and
+ * `name_en`) with the same value the copy is rendered in.
+ */
+const AgentHubLanguageContext = createContext<AgentHubLanguage>('en')
+
 export function AgentHubI18nProvider({
   language,
   children,
@@ -188,9 +242,11 @@ export function AgentHubI18nProvider({
     [normalized]
   )
   return (
-    <AgentHubI18nContext.Provider value={translate}>
-      {children}
-    </AgentHubI18nContext.Provider>
+    <AgentHubLanguageContext.Provider value={normalized}>
+      <AgentHubI18nContext.Provider value={translate}>
+        {children}
+      </AgentHubI18nContext.Provider>
+    </AgentHubLanguageContext.Provider>
   )
 }
 
@@ -207,6 +263,11 @@ export function useAgentHubI18n(): AgentHubTranslate {
     (source, values) => currentRef.current(source, values),
     []
   )
+}
+
+/** Reads the normalized host language; `en` outside a provider. */
+export function useAgentHubLanguage(): AgentHubLanguage {
+  return useContext(AgentHubLanguageContext)
 }
 
 /**

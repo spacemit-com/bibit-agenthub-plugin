@@ -15,15 +15,16 @@ import {
   type PowerSeries,
 } from './api/contracts'
 import { ScrollThumb } from './ScrollThumb'
-import { useAgentHubI18n } from './agentHubI18n'
+import { useAgentHubI18n, type TranslatableText } from './agentHubI18n'
 import { listPowers } from './api/powerCatalogClient'
+import { deleteCustomResource, submissionIdFrom, uploadCustomResource } from './api/customResources'
 import {
   getInstallationStore,
   type InstallationSnapshot,
 } from './api/installationStore'
 import { type MutationIntent } from './api/powerOperations'
 import { PowerCard } from './components/PowerCard'
-import { PowerDetailsDialog } from './components/PowerDetailsDialog'
+import { PowerDetailsDialog, type CustomActionState } from './components/PowerDetailsDialog'
 import { PowerFilters } from './components/PowerFilters'
 import { PowerPagination } from './components/PowerPagination'
 import './agentHub.css'
@@ -65,6 +66,24 @@ const RETRYABLE_CODES: ReadonlySet<FeatureServiceErrorV1['code']> = new Set([
   'provider_crashed',
   'resource_exhausted',
 ])
+
+/**
+ * English source text for a failed custom-resource write, by platform code. The
+ * messages are deliberately operation-neutral so one table covers upload and
+ * delete; a credential problem is the one case that tells the user where to fix
+ * it.
+ */
+const CUSTOM_ERROR_MESSAGES: Record<FeatureServiceErrorV1['code'], string> = {
+  cancelled: 'The custom resource request was cancelled.',
+  offline: 'The custom resource service is offline.',
+  timeout: 'The custom resource request timed out.',
+  unauthorized: 'APC API Key is not configured; set it in Agent Hub settings.',
+  incompatible: 'The custom resource service is incompatible with this plugin.',
+  unavailable: 'The custom resource service is unavailable.',
+  provider_crashed: 'The custom resource provider crashed.',
+  resource_exhausted: 'The custom resource request exceeded a resource limit.',
+  unknown: 'The custom resource operation failed.',
+}
 
 function isFeatureServiceError(value: unknown): value is FeatureServiceErrorV1 {
   if (typeof value !== 'object' || value === null) return false
@@ -183,9 +202,13 @@ export function AgentHubPage(_: FeaturePageProps) {
   const [selectedVersions, setSelectedVersions] = useState<ReadonlyMap<string, string>>(new Map())
   const [dialog, setDialog] = useState<PowerSeries | null>(null)
   const [dialogAgent, setDialogAgent] = useState('bibit')
+  /** In-flight custom write, keyed by resource so the dialog only shows its own. */
+  const [customAction, setCustomAction] = useState<{ key: string; state: CustomActionState } | null>(null)
+  const [customNotices, setCustomNotices] = useState<ReadonlyMap<string, TranslatableText>>(new Map())
 
   const executeControllerRef = useRef<AbortController | null>(null)
   const inspectControllerRef = useRef<AbortController | null>(null)
+  const customControllerRef = useRef<AbortController | null>(null)
   // The page owns its scroll container (the host clips the contribution's box), so a
   // query change must put the new list back at the top instead of keeping the offset.
   const pageScrollRef = useRef<HTMLElement>(null)
@@ -229,6 +252,7 @@ export function AgentHubPage(_: FeaturePageProps) {
     return () => {
       executeControllerRef.current?.abort()
       inspectControllerRef.current?.abort()
+      customControllerRef.current?.abort()
     }
   }, [])
 
@@ -363,12 +387,17 @@ export function AgentHubPage(_: FeaturePageProps) {
     const targetAgent = scope === 'installed' ? agent : 'bibit'
     setDialogAgent(targetAgent)
     setDialog(series)
-    inspectTarget(targetAgent, series)
+    // A hand-installed resource is not in the APM manifest, so an inspect would
+    // only ask apm about a Power it does not manage. The custom dialog renders
+    // its own facts instead of the installation lifecycle.
+    if (series.source !== 'custom') inspectTarget(targetAgent, series)
   }
 
   const closeDetails = () => {
     inspectControllerRef.current?.abort()
     inspectControllerRef.current = null
+    // A custom write keeps running (the provider owns the subprocess), but the
+    // page must not keep resolving the dialog it no longer shows.
     setDialog(null)
   }
 
@@ -419,6 +448,92 @@ export function AgentHubPage(_: FeaturePageProps) {
     )
   }
 
+  const setCustomNotice = (key: string, notice: TranslatableText | undefined) => {
+    setCustomNotices((prev) => {
+      const next = new Map(prev)
+      if (notice === undefined) next.delete(key)
+      else next.set(key, notice)
+      return next
+    })
+  }
+
+  /**
+   * Runs one custom write. The controller is kept in a ref and replaced on every
+   * call, so a second click cannot leave an orphaned request, and the page
+   * unmount aborts whatever is in flight. A finished write always re-reads the
+   * installed view: upload may have changed nothing locally, but the scan is the
+   * only authority for what is on disk.
+   */
+  const runCustomAction = useCallback(
+    async (
+      kind: CustomActionState['kind'],
+      series: PowerSeries,
+      targetAgent: string,
+      run: (signal: AbortSignal) => Promise<TranslatableText>
+    ) => {
+      if (!store) return
+      customControllerRef.current?.abort()
+      const controller = new AbortController()
+      customControllerRef.current = controller
+      const key = itemKey(targetAgent, series.type, series.name)
+      setCustomNotice(key, undefined)
+      setCustomAction({ key, state: { kind, phase: 'running' } })
+      let notice: TranslatableText
+      try {
+        notice = await run(controller.signal)
+      } catch (reason: unknown) {
+        if (controller.signal.aborted) return
+        const code =
+          typeof reason === 'object' && reason !== null && typeof (reason as { code?: unknown }).code === 'string'
+            ? ((reason as { code: FeatureServiceErrorV1['code'] }).code)
+            : 'unknown'
+        notice = { text: CUSTOM_ERROR_MESSAGES[code] ?? CUSTOM_ERROR_MESSAGES.unknown }
+      }
+      if (controller.signal.aborted) return
+      setCustomAction((current) => (current?.key === key ? { key, state: { kind, phase: 'reconciling' } } : current))
+      setCustomNotice(key, notice)
+      setCustomAction((current) => (current?.key === key ? null : current))
+      setRetry((value) => value + 1)
+    },
+    [store]
+  )
+
+  const uploadDialog = (message: string) => {
+    if (!dialog || !store) return
+    void runCustomAction('upload', dialog, dialogAgent, async (signal) => {
+      const result = await uploadCustomResource(
+        store,
+        { agent: dialogAgent, type: dialog.type, name: dialog.name, message },
+        signal
+      )
+      if (result.exitCode !== 0) {
+        // apm rejected the resource or the submission. Its sanitized diagnostic
+        // (the real reason behind the exit code) is the only actionable text, so
+        // it becomes the notice; without one, the stage names what failed.
+        const failure: TranslatableText = result.reason
+          ? { text: 'Upload failed: {reason}', values: { reason: result.reason } }
+          : result.stage === 'validate'
+            ? { text: 'This resource does not meet the Power format required for upload; fix it and retry.' }
+            : { text: 'Upload failed.' }
+        return failure
+      }
+      const submissionId = submissionIdFrom(result.stdout)
+      const success: TranslatableText =
+        submissionId !== undefined
+          ? { text: 'Upload complete: {submissionId}', values: { submissionId } }
+          : { text: 'Upload complete.' }
+      return success
+    })
+  }
+
+  const deleteDialog = () => {
+    if (!dialog || !store) return
+    void runCustomAction('delete', dialog, dialogAgent, async (signal) => {
+      await deleteCustomResource(store, { agent: dialogAgent, type: dialog.type, name: dialog.name }, signal)
+      return { text: 'Deleted {type} "{name}".', values: { type: dialog.type, name: dialog.name } }
+    })
+  }
+
   const retryInspect = () => {
     if (dialog) inspectTarget(dialogAgent, dialog)
   }
@@ -435,6 +550,12 @@ export function AgentHubPage(_: FeaturePageProps) {
   const dialogNotice =
     dialog !== null
       ? installationSnapshot.notices.get(itemKey(dialogAgent, dialog.type, dialog.name))
+      : undefined
+  const dialogCustomNotice =
+    dialog !== null ? customNotices.get(itemKey(dialogAgent, dialog.type, dialog.name)) : undefined
+  const dialogCustomAction =
+    dialog !== null && customAction !== null && customAction.key === itemKey(dialogAgent, dialog.type, dialog.name)
+      ? customAction.state
       : undefined
 
   return (
@@ -469,7 +590,7 @@ export function AgentHubPage(_: FeaturePageProps) {
         <>
           {view.data.warnings.map((warning, index) => (
             <p key={`${warning.code}-${warning.agent}-${index}`} className="agent-hub__status">
-              {warning.message}
+              {t(warning.message, warning.values)}
             </p>
           ))}
           {view.data.items.length === 0 ? (
@@ -512,6 +633,10 @@ export function AgentHubPage(_: FeaturePageProps) {
           active={installationSnapshot.active}
           notice={dialogNotice}
           readOnly={scope === 'installed'}
+          customAction={dialogCustomAction}
+          customNotice={dialogCustomNotice}
+          onUpload={uploadDialog}
+          onDelete={deleteDialog}
           onVersionChange={(version) => changeVersion(dialog, version)}
           onAgentChange={changeDialogAgent}
           onInstall={installSelected}

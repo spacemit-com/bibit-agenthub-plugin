@@ -51,6 +51,37 @@ type MutationResult struct {
 	ExitCode int    `json:"exitCode"`
 }
 
+// UploadInput identifies one custom resource plus the APC publish message. Like
+// PowerTarget it carries no path: the provider resolves the directory itself
+// from the agent/type/name triple it validates.
+type UploadInput struct {
+	PowerTarget
+	Message string `json:"message"`
+}
+
+// CustomListInput selects the Agent whose hand-installed resources are scanned.
+type CustomListInput struct {
+	Agent string `json:"agent"`
+}
+
+// DeleteResult reports a completed local removal.
+type DeleteResult struct {
+	Status string `json:"status"`
+}
+
+// UploadResult reports one upload attempt. A non-zero ExitCode is a result, not
+// a platform error: Stage says whether apm rejected the resource format
+// ("validate") or the submission itself ("submit"), Reason carries the
+// sanitized diagnostic for a failure, and Stdout carries the sanitized
+// submission report on success.
+type UploadResult struct {
+	Status   string `json:"status"`
+	ExitCode int    `json:"exitCode"`
+	Stage    string `json:"stage"`
+	Reason   string `json:"reason,omitempty"`
+	Stdout   string `json:"stdout,omitempty"`
+}
+
 // OperationRequest is the validated, operation-specific request the server hands
 // to an InvokeFunc. Exactly one data pointer is set for a given OperationID.
 type OperationRequest struct {
@@ -58,6 +89,9 @@ type OperationRequest struct {
 	List        *WireInput
 	Target      *PowerTarget
 	Install     *InstallInput
+	Upload      *UploadInput
+	CustomList  *CustomListInput
+	Settings    *SettingsUpdate
 }
 
 // InvokeFunc resolves a validated OperationRequest into an operation-specific

@@ -201,4 +201,26 @@ describe('Agent Hub layout contract', () => {
       'flex',
     ])
   })
+
+  it('keeps the settings root content-only and able to shrink', () => {
+    // The host owns the Settings shell; a fixed application width or a `main`
+    // wrapper would nest a second shell inside it.
+    const settings = rules('.agent-hub-settings')
+    expect(settings).not.toHaveLength(0)
+    const declaredOnce = (property: string) => settings.flatMap((block) => declared(block, property))
+    expect(declaredOnce('width')).toContain('100%')
+    expect(declaredOnce('min-width')).toContain('0')
+    expect(declaredOnce('max-width')).toContain('100%')
+    expect(declaredOnce('max-width')).not.toContain('720px')
+  })
+
+  it('keeps a custom Power card visibly distinct from a Hub-managed one', () => {
+    const custom = rules(".power-card[data-source='custom']")
+    expect(custom.flatMap((block) => declared(block, 'border-style'))).toContain('dashed')
+    const badge = rules('.power-card__badge')
+    expect(badge.flatMap((block) => declared(block, 'text-transform'))).toContain('uppercase')
+    // The static version label reuses the version slot but drops the control look.
+    const staticVersion = rules('.power-card__version--static')
+    expect(staticVersion.flatMap((block) => declared(block, 'border-style'))).toContain('dashed')
+  })
 })

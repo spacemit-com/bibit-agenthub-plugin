@@ -4,6 +4,9 @@ import type { ListPowersInput } from '../src/api/contracts'
 import { listPowers } from '../src/api/powerCatalogClient'
 import {
   handleStoreRequest,
+  type CustomDeleteSource,
+  type CustomListSource,
+  type CustomUploadSource,
   type InspectSource,
   type InstalledSource,
   type MarketSource,
@@ -23,9 +26,25 @@ const okMarket: MarketSource = async () => ({
 })
 const okInspect: InspectSource = async () => ({ listJson: '[]' })
 const okMutate: MutateSource = async () => ({ status: 'exited', exitCode: 0 })
+const okCustomList: CustomListSource = async () => ({
+  scope: 'custom',
+  status: 'data',
+  itemsJson: '{"items":[],"skipped":[]}',
+})
+const okCustomUpload: CustomUploadSource = async () => ({ status: 'exited', exitCode: 0, stage: 'submit' })
+const okCustomDelete: CustomDeleteSource = async () => ({ status: 'deleted' })
 
 function sources(overrides: Partial<StoreSources> = {}): StoreSources {
-  return { readInstalled: okInstalled, readMarket: okMarket, inspect: okInspect, mutate: okMutate, ...overrides }
+  return {
+    readInstalled: okInstalled,
+    readMarket: okMarket,
+    inspect: okInspect,
+    mutate: okMutate,
+    readCustom: okCustomList,
+    upload: okCustomUpload,
+    removeCustom: okCustomDelete,
+    ...overrides,
+  }
 }
 
 function marketQuery(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -36,17 +55,100 @@ describe('handleStoreRequest', () => {
   it('returns default settings for settings.get.v1', async () => {
     await expect(
       handleStoreRequest({ operationId: 'settings.get.v1', params: {} }, sources(), new AbortController().signal)
-    ).resolves.toEqual({ showExperimental: false, refreshMinutes: 15 })
+    ).resolves.toEqual({ showExperimental: false, refreshMinutes: 15, hasApiKey: false })
   })
 
-  it('echoes settings.update.v1 and persists the change', async () => {
-    const next = { showExperimental: true, refreshMinutes: 30 }
+  it('echoes settings.update.v1 and persists the change without returning the key', async () => {
     await expect(
-      handleStoreRequest({ operationId: 'settings.update.v1', params: next }, sources(), new AbortController().signal)
-    ).resolves.toEqual(next)
+      handleStoreRequest(
+        { operationId: 'settings.update.v1', params: { showExperimental: true, refreshMinutes: 30, apiKey: 'k' } },
+        sources(),
+        new AbortController().signal
+      )
+    ).resolves.toEqual({ showExperimental: true, refreshMinutes: 30, hasApiKey: true })
+    const reread = await handleStoreRequest(
+      { operationId: 'settings.get.v1', params: {} },
+      sources(),
+      new AbortController().signal
+    )
+    expect(reread).toEqual({ showExperimental: true, refreshMinutes: 30, hasApiKey: true })
+    expect(JSON.stringify(reread)).not.toContain('"apiKey"')
+    // Omitting apiKey keeps it; an empty string clears it.
     await expect(
-      handleStoreRequest({ operationId: 'settings.get.v1', params: {} }, sources(), new AbortController().signal)
-    ).resolves.toEqual(next)
+      handleStoreRequest(
+        { operationId: 'settings.update.v1', params: { showExperimental: true, refreshMinutes: 30 } },
+        sources(),
+        new AbortController().signal
+      )
+    ).resolves.toEqual({ showExperimental: true, refreshMinutes: 30, hasApiKey: true })
+    await expect(
+      handleStoreRequest(
+        { operationId: 'settings.update.v1', params: { showExperimental: true, refreshMinutes: 30, apiKey: '' } },
+        sources(),
+        new AbortController().signal
+      )
+    ).resolves.toEqual({ showExperimental: true, refreshMinutes: 30, hasApiKey: false })
+  })
+
+  it('routes the custom scan and the two custom writes to their sources', async () => {
+    const readCustom = vi.fn<CustomListSource>(okCustomList)
+    const upload = vi.fn<CustomUploadSource>(okCustomUpload)
+    const removeCustom = vi.fn<CustomDeleteSource>(okCustomDelete)
+    const store = sources({ readCustom, upload, removeCustom })
+    const signal = new AbortController().signal
+
+    await expect(
+      handleStoreRequest({ operationId: 'powers.custom.list.v1', params: { agent: 'codex' } }, store, signal)
+    ).resolves.toEqual({ scope: 'custom', status: 'data', itemsJson: '{"items":[],"skipped":[]}' })
+    expect(readCustom).toHaveBeenCalledWith('codex', signal)
+
+    await expect(
+      handleStoreRequest(
+        {
+          operationId: 'powers.upload.v1',
+          params: { agent: 'bibit', type: 'skill', name: 'demo', message: 'publish it' },
+        },
+        store,
+        signal
+      )
+    ).resolves.toEqual({ status: 'exited', exitCode: 0, stage: 'submit' })
+    expect(upload).toHaveBeenCalledWith(
+      { agent: 'bibit', type: 'skill', name: 'demo' },
+      'publish it',
+      expect.any(String),
+      signal
+    )
+
+    await expect(
+      handleStoreRequest(
+        { operationId: 'powers.delete.v1', params: { agent: 'bibit', type: 'skill', name: 'demo' } },
+        store,
+        signal
+      )
+    ).resolves.toEqual({ status: 'deleted' })
+    expect(removeCustom).toHaveBeenCalledWith({ agent: 'bibit', type: 'skill', name: 'demo' })
+  })
+
+  it('rejects a custom request outside the closed shape', async () => {
+    const store = sources()
+    const signal = new AbortController().signal
+    await expect(
+      handleStoreRequest({ operationId: 'powers.custom.list.v1', params: { agent: 'all' } }, store, signal)
+    ).rejects.toThrow(/powers\.custom\.list\.v1/)
+    await expect(
+      handleStoreRequest(
+        { operationId: 'powers.upload.v1', params: { agent: 'bibit', type: 'skill', name: 'demo', message: '   ' } },
+        store,
+        signal
+      )
+    ).rejects.toThrow(/message/)
+    await expect(
+      handleStoreRequest(
+        { operationId: 'powers.delete.v1', params: { agent: 'bibit', type: 'skill', name: '../escape' } },
+        store,
+        signal
+      )
+    ).rejects.toThrow(/powers\.delete\.v1/)
   })
 
   it('passes the market wire through to the source and returns the raw envelope', async () => {

@@ -1,5 +1,83 @@
 # Changelog
 
+## 2026-09-28 — 自定义（手动安装）资源：展示、APC 上传与本地删除（0.3.4）
+
+分类：需求改进
+
+用户需求：
+
+「我的 Power」除了显示在 APC 上下载的资源外，还要扫描并显示手动安装到安装目录下的自定义资源，卡片上必须与云资源明显区分；卡片提供 APC 上传与本地删除（系统 rm）功能；上传所需的 Key 在 Agent Hub 插件设置中配置。随后需求放宽为：**显示**不要求满足 apm 资源 schema，只要求对应资源的主流最低格式，不满足时给出 warning；**上传**仍必须满足格式要求；上传/删除按钮参考「安装」一并放进卡片弹窗。
+
+已确认的边界（与用户逐条确认）：
+
+- 「自定义」不是名为 `custom` 的目录，而是**手动安装、且 `(type,name)` 不在 apm installed 清单里**的资源；
+- 本期跳过 MCP（apm 不为 MCP 维护目录，无法扫描）；codex 与 claude-code 的 Plugin 由各自 CLI 管理，也不扫描；
+- 不新增 scope，合并进「我的 Power」，卡片打 `Custom` 标记；
+- 显示校验取「Provider 轻量解析 + v1/v2 都接受」；上传仍走 `apm validate` + `apm submit`，Key 经环境变量注入；
+- Provider 实现 `settings.get/update` 持久化，新增 `apiKey` 字段，结果只回传 `hasApiKey`。
+
+解决方案或完成结果：
+
+- Provider 新增三个自定义资源 operation 与两个 settings operation：`powers.custom.list.v1`（只做文件系统扫描，不调用 apm）、`powers.upload.v1`（`apm validate` → `apm submit`）、`powers.delete.v1`（`os.RemoveAll`）、`settings.get.v1` / `settings.update.v1`。`providerVersion` 与 `bibit.initialize` 的 operation 列表同步到 9 项。
+- `internal/provider/custom.go`（新）：目录名即身份（须为规范 kebab）、权威文件按类型固定、只要求主流最低格式（skill 的 `name`+`description`、plugin 的 `name`、agent 的 `agent.name`），低于门槛的目录进入 `skipped` 并给出 `missing-authority-file` / `invalid-authority-file`；版本只接受规范 `v<x>.<y>.<z>`，否则留空；类型目录与资源目录都允许符号链接（跟随读取）。
+- `internal/provider/upload.go`（新）：参数只带 `(agent,type,name,message)`，路径由 Provider 解析并重新校验；Key 从 `settings.json` 读出后经 `APC_API_KEY` 注入子进程，未配置时直接 `unauthorized` 且不启动 apm；失败原因先替换 Key 为 `***`、再去除 ANSI 与控制字符、压成单行并截断 300 字节。apm 的约定是「成功写 stdout、失败只写 stderr（slog logfmt 一行 + Cobra usage）」，因此 Provider 有界收集两条流并只取 stderr 那行的 `error` 属性作为原因，usage 块与日志前缀不进结果；前端优先显示该原因，拿不到时才退回 stage 固定文案。
+- `internal/provider/settings.go`（新）：`settings.json` 目录 0700、文件 0600，写入走临时文件 + fsync + rename，拒绝向符号链接写入，损坏 JSON 报错而不覆盖；`apiKey` 省略表示保留、空串表示清除。
+- 前端新增 `src/api/customResources.ts` 与一批闭集 DTO（`CustomResourceRecord/Skipped/List`、`UploadInput/Result`、`DeleteResult`、`AgentHubSettingsV1/UpdateV1`），`PowerWarning` 增加 `values` 与两个新 code；`buildMergedInstalledPowersResult` 把自定义记录并进 installed 结果、按 `(type,name)` 与 APM 清单去重、`source` 进 snapshot。
+- 卡片：`data-source="custom"` + `Custom` 徽章 + 虚线琥珀配色；自定义资源只有一个版本，版本下拉换成静态标签（无版本时显示占位符）。弹窗：自定义资源不显示 APM 安装状态与安装/卸载，改为 `Upload`（内联发布说明表单）与 `Delete`（二次确认，文案写明 agent/type/name）。
+- 扫描失败（含旧 Provider 不支持该 operation）只降级为一条 warning，installed 列表照常显示；`skipped` 逐条转为可翻译的 warning。
+- 设置页根节点从 `main` 改为 `section` 并按设置内容契约改成可收缩；新增 APC Key 密码框与「已配置/未配置」状态、清除按钮；用 `apiKeyDirty` 区分「保留」与「清除」，保存防重复提交；Key 永不在页面回显。
+- 打包：`debian/agenthub-feature-grants.json` 追加三个 operation；`debian/agenthub-provider.json` 新增 `credentialParameters: { "settings.update.v1": ["apiKey"] }`（宿主参数策略必需）；版本统一提升到 `0.3.4`。
+- dev Mock：新增 `dev/custom.ts`（与 Provider 同语义的扫描/上传/删除，扫本机真实 home），`dev/store.ts` 与 `vite.config.ts` 接入 5 个新 operation，settings 改为带 `apiKey`/`hasApiKey` 的内存 echo。
+
+相关文件：
+
+- Provider：`provider/internal/provider/custom.go`（新）、`upload.go`（新）、`settings.go`（新）、`config.go`、`contracts.go`、`operations.go`、`server.go`、`selftest.go`、`apm.go`、`cmd/provider-probe/main.go`
+- 前端：`src/api/contracts.ts`、`src/api/customResources.ts`（新）、`src/api/apm.ts`、`src/api/powerCatalogClient.ts`、`src/components/PowerCard.tsx`、`src/components/PowerDetailsDialog.tsx`、`src/AgentHubPage.tsx`、`src/AgentHubSettingsPage.tsx`、`src/agentHub.css`、`src/agentHubI18n.tsx`
+- dev/打包/文档：`dev/custom.ts`（新）、`dev/store.ts`、`vite.config.ts`、`dev/main.tsx`、`debian/agenthub-feature-grants.json`、`debian/agenthub-provider.json`、`package.json`、`package-lock.json`、`bibit.feature.json`、`README.md`、`docs/development-and-deployment-guide.md`、`docs/cli-provider-development-and-deployment.md`
+- 测试基础设施：`src/testSetup.ts`（新）在 jsdom 丢失 `crypto.subtle` 时装回 Node 的 WebCrypto（Node 20+ 为 no-op），`vitest.config.ts` 通过 `setupFiles` 引入；这恢复了 Node 18 下 23 项既有失败，不属于功能范围
+- 测试：Provider 新增 `custom_test.go` / `upload_test.go` / `settings_test.go` 并扩展 `server_test.go`、`config_test.go`；前端新增 `src/api/customResources.test.ts`、`dev/custom.test.ts`，扩展 `contracts` / `apm` / `powerCatalogClient` / `PowerCard` / `PowerDetailsDialog` / `AgentHubPage` / `AgentHubSettingsPage` / `agentHubLayout` 测试
+- 验证记录：`docs/verification/2026-09-28-custom-resources.md`（新增）
+
+验证结果或限制：
+
+`npm test` 448/448（Node 24.16，25 个文件，较 0.3.3 的 378 增 70；系统 Node 18.19 上 445/448，剩余 3 项为 0.3.2 基线逐条一致的 `dev/sources.test.ts` 既有失败）、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin`（产物 `artifacts/agent-hub-0.3.4.bibit-plugin.tgz`，sha256 `6230cc55…`）、`make -C provider test vet build`（`internal/provider` 115 例、`cmd/provider-probe` 10 例）、`--self-test` exit 0、`gofmt -l` 无输出、`git diff --check` 无新增空白错误。反向验证共 14 项（Provider 5 项、前端/dev 9 项），每一处改动分别导致 1–17 个用例失败，详见验证记录。
+
+限制：本机只完成构建与单测；riscv64 交叉构建、两包上板与真实 GUI 中的展示/上传/删除未执行，真实 `apm submit` 需要有效 Key 与通过 v2 校验的资源，也未在本机打通。扫描有固定上限（每类型 200 项 / 总 1000 项 / 单文件 64 KiB），超限截断而非报错。
+
+## 2026-09-28 — Power 展示信息跟随应用语言（0.3.3）
+
+分类：需求改进
+
+用户需求：
+
+Power 格式已升级到 V2（`../using-apm`、APM ADR-038/ADR-039），四类资源的权威文件新增仅用于展示的 `name_zh`、`name_en` 与 `description_zh`，`name` 仍是唯一调用名。前端插件需要按应用语言把 Power 信息改为 `name_zh` / `name_en` / `description` / `description_zh`，原本的 `name` 不再显示，同时必须兼容只有 `name`/`description` 的 V1 资源。
+
+上游字段现状（本次已实测确认）：
+
+- APM `docs/Changelog.md` 2026-09-28 条目与 ADR-038 明确「不改 `list --json`/`show` 输出」，`internal/cli/list_render.go` 的 `listPowerJSON` 仍是 `agent/type/name/version/description/tags`；
+- 实测两套 APC 目录（`developer.bianbu.xyz`、`www.spacemit.com` 的 `/resources`）全部 item 仍为 `schema_version: 1`，无任何展示键。
+
+因此本轮只能先把**接收侧做对**：前端按契约容忍这三个字段、字段出现时按语言渲染、缺失时逐级回退。APM/APC 开始输出展示字段后前端无需再改。
+
+解决方案或完成结果：
+
+- `src/api/contracts.ts`：`PowerSeries` 新增可选 `name_zh`/`name_en`，`PowerVersion` 新增可选 `description_zh`；键集加入新字段，存在时必须是 trim 后非空的字符串，缺失则不写该键（区分「没有展示信息」与「作者填了空串」）。
+- `src/api/apm.ts` / `src/api/apc.ts`：新增共享 `normalizeDisplayField`，非字符串报错点名字段、空白串按缺失丢弃；`buildPowersResult` 把 `name_zh`/`name_en` 提升到系列级（标题不随版本切换闪烁）、`description_zh` 留在版本级；`snapshotForRecords` 纳入展示字段，使「只改了展示名」的刷新也能触发换页失效与重渲染。
+- `src/agentHubI18n.tsx`：新增 `AgentHubLanguageContext` 与 `useAgentHubLanguage()`，与翻译器共享同一份规范化语言；未新增任何文案键。
+- 新 `src/displayFields.ts`：`resolvePowerTitle` / `resolvePowerDescription` 纯函数实现回退链 —— 中文宿主 `name_zh` → `name_en` → `name`、`description_zh` → `description`；英文宿主 `name_en` → `name`、始终用 `description`（英文界面绝不显示中文）。
+- `PowerCard.tsx` / `PowerDetailsDialog.tsx`：标题与描述改走解析函数，卡片单行自适应字号也用解析后的标题；弹窗 `aria-label` 与标题一致。身份、请求、缓存键与 React key 一律继续使用 canonical `series.name`。
+
+相关文件：
+
+- `src/api/contracts.ts`、`src/api/apm.ts`、`src/api/apc.ts`、`src/displayFields.ts`、`src/agentHubI18n.tsx`、`src/components/PowerCard.tsx`、`src/components/PowerDetailsDialog.tsx`
+- `src/displayFields.test.ts`（新增）、`src/api/contracts.test.ts`、`src/api/apm.test.ts`、`src/api/apc.test.ts`、`src/components/PowerCard.test.tsx`、`src/components/PowerDetailsDialog.test.tsx`、`src/AgentHubPage.test.tsx`、`src/agentHubI18n.test.tsx`
+
+验证结果或限制：
+
+`npm test` 378/378（23 个文件，较 0.3.2 的 337 增 41）、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin`（产物 `artifacts/agent-hub-0.3.3.bibit-plugin.tgz`）与 `git diff --check` 均通过。新用例在回滚实现后确实失败：去掉 `displayFields.ts` 的回退分支后 13 项失败，去掉 `contracts.ts` 新键白名单后 2 项失败。i18n 死键扫描仍为 0 孤儿键。Go Provider 未涉及，`provider/` 未改动。
+
+限制：APM `list --json` 与 APC 目录尚未输出展示字段，因此板端当前渲染结果仍是 V1 回退（canonical name + description）；字段契约与语言回退已由单测锁定，上游就绪后即生效。板端真实 GUI 的语言切换复核未执行。
+
 ## 2026-09-24 — 修复 Power 市场误报「请求已取消」（0.3.2）
 
 分类：缺陷修复

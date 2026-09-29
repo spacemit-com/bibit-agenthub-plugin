@@ -1,3 +1,49 @@
+bibit-agenthub-plugin (0.3.4) resolute-porting; urgency=medium
+
+  * Show hand-installed resources next to the APM manifest. "My Powers" now
+    also lists resources a user placed in an Agent's own directory tree
+    (~/.bianbu-agent for bibit, ~/.codex, ~/.claude, ~/.hermes). The scan reads
+    the mainstream minimum of each type only (a skill needs name+description in
+    its frontmatter, a plugin a name in its manifest, an agent agent.name), so
+    v1 and v2 resources both show; anything below that is reported as a warning
+    instead of being dropped silently. Custom cards carry a Custom badge and a
+    dashed accent, and the version slot becomes a static label because a
+    hand-installed resource is a single directory.
+  * Upload a custom resource to APC and delete it locally from the card dialog,
+    alongside Install/Uninstall. The dialog grows a publish-message field and a
+    confirm step; upload runs `apm validate` then `apm submit` (so it still
+    requires Power format v2) and delete removes the local directory.
+  * Store the APC API key in Agent Hub settings. The provider persists it in
+    settings.json (0700 directory, 0600 file, atomic write, symlink writes
+    refused) and only ever returns hasApiKey; the key reaches apm through the
+    APC_API_KEY environment variable and is redacted from any reported failure.
+  * New provider operations powers.custom.list.v1, powers.upload.v1,
+    powers.delete.v1, settings.get.v1 and settings.update.v1; the Registry
+    declares settings.update.v1's apiKey as a credential parameter, and the
+    plugin's capability grant gains the three custom-resource operations.
+  * Requests never carry paths: (agent,type,name[,message]) is re-resolved and
+    re-validated inside the provider, and a failed custom scan degrades to one
+    warning so the installed page keeps working against an older CLI.
+
+ -- liangjunzhao <junzhao.liang@spacemit.com>  Mon, 28 Sep 2026 23:30:00 +0800
+
+bibit-agenthub-plugin (0.3.3) resolute-porting; urgency=medium
+
+  * Follow the host language for Power display information. Power resource
+    format v2 adds display-only name_zh/name_en/description_zh; the cards and
+    the details dialog now show the Chinese name and description on a Chinese
+    host and the English name on an English host, instead of always showing
+    the canonical call name.
+  * Stay compatible with v1 records: a missing display field falls back
+    (zh: name_zh, name_en, name; en: name_en, name) and the description falls
+    back to the source description, so existing resources render as before.
+  * The display fields are parsed when apm list --json or the APC catalog
+    start emitting them; neither does yet, so this release only makes the
+    receiving side ready. Power identity, requests and cache keys keep using
+    the canonical name.
+
+ -- liangjunzhao <junzhao.liang@spacemit.com>  Mon, 28 Sep 2026 18:20:00 +0800
+
 bibit-agenthub-plugin (0.3.2) resolute-porting; urgency=medium
 
   * Fix a spurious "Power catalog request was cancelled" error in the Power

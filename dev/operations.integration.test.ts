@@ -25,6 +25,17 @@ const record = (version: string): APMPowerRecord => ({
   tags: [],
 })
 
+/**
+ * The installation-store integration only drives inspect/mutate; the custom
+ * sources are present because the dev Store core always routes them, and are
+ * never reached by these assertions.
+ */
+const unusedCustomSources = {
+  readCustom: async () => ({ scope: 'custom', status: 'data', itemsJson: '{"items":[],"skipped":[]}' }) as const,
+  upload: async () => ({ status: 'exited', exitCode: 0, stage: 'submit' }) as const,
+  removeCustom: async () => ({ status: 'deleted' }) as const,
+}
+
 const key = JSON.stringify(['bibit', 'skill', 'demo'])
 
 describe('dev transport + installation store end-to-end', () => {
@@ -64,6 +75,7 @@ describe('dev transport + installation store end-to-end', () => {
         }
         return { status: 'exited', exitCode: 0 }
       },
+      ...unusedCustomSources,
     }
 
     const service = makeService(sources)
@@ -97,6 +109,7 @@ describe('dev transport + installation store end-to-end', () => {
       readMarket: async () => ({ scope: 'market', status: 'data', snapshot: 'sha-1', catalogJson: '{}' }),
       inspect: async () => ({ listJson: '[]' }),
       mutate: async () => ({ status: 'exited', exitCode: 1 }),
+      ...unusedCustomSources,
     }
 
     const service = makeService(sources)

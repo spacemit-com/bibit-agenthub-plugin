@@ -56,6 +56,15 @@ function installedData(listJson: string) {
   return { scope: 'installed', status: 'data', listJson }
 }
 
+/**
+ * The custom-resource scan the installed view always performs alongside the APM
+ * manifest read. Tests that do not care about custom resources answer with an
+ * empty scan; a test that does care overrides it explicitly.
+ */
+function customData(itemsJson = '{"items":[],"skipped":[]}') {
+  return { scope: 'custom', status: 'data', itemsJson }
+}
+
 function installedPage(count: number, agent = 'bibit'): string {
   return JSON.stringify(
     Array.from({ length: count }, (_, index) => ({
@@ -85,6 +94,39 @@ const marketCatalogJson = JSON.stringify({
   },
 })
 
+// A v2 market catalog: the display fields live on the record, and the source
+// `description`/`name` stay the fallback an English host renders.
+const localizedCatalogJson = JSON.stringify({
+  skills: {
+    items: [
+      {
+        name: 'market-translate',
+        version: 'v1.0.0',
+        description: 'Translates text.',
+        tags: [],
+        schema_version: 2,
+        name_zh: '翻译助手',
+        name_en: 'Translator',
+        description_zh: '翻译文本。',
+      },
+    ],
+  },
+})
+
+const localizedInstalledList = JSON.stringify([
+  {
+    agent: 'bibit',
+    type: 'skill',
+    name: 'code-review',
+    version: 'v1.0.0',
+    description: 'Peer review workflow.',
+    tags: ['quality'],
+    name_zh: '代码审查',
+    name_en: 'Code Review',
+    description_zh: '代码审查工作流。',
+  },
+])
+
 let marketSnapshotPromise: Promise<string> | undefined
 function marketSnapshot(): Promise<string> {
   marketSnapshotPromise ??= sha256(marketCatalogJson)
@@ -113,6 +155,7 @@ function makeStoreHost(respond?: (input: StoreRequest) => unknown): {
     async request<TResult>(input: StoreRequest): Promise<TResult> {
       calls.push(input)
       if (respond) return (await respond(input)) as TResult
+      if (input.operationId === 'powers.custom.list.v1') return customData() as TResult
       return installedData(codeReviewList) as TResult
     },
   }
@@ -186,8 +229,12 @@ describe('AgentHubPage', () => {
 
     expect(document.querySelector('.agent-hub__grid')).toBeTruthy()
     expect(document.querySelector('.power-pagination')).toBeTruthy()
-    expect(calls).toHaveLength(1)
-    expect(wireParamsOf(calls[0])).toEqual({ scope: 'installed', agent: 'bibit' })
+    // The installed view reads the APM manifest and scans for hand-installed
+    // resources; only the manifest read carries the list wire envelope.
+    const listCalls = calls.filter((call) => call.operationId === 'powers.list.v1')
+    expect(listCalls).toHaveLength(1)
+    expect(wireParamsOf(listCalls[0])).toEqual({ scope: 'installed', agent: 'bibit' })
+    expect(calls.filter((call) => call.operationId === 'powers.custom.list.v1')).toHaveLength(1)
     expect(pageNumber()).toBe('1')
     expect(screen.getByText('of 1')).toBeTruthy()
   })
@@ -221,13 +268,16 @@ describe('AgentHubPage', () => {
   })
 
   it('shows Loading Powers… then the empty copy when the result has no items', async () => {
-    let resolveEmpty!: (value: unknown) => void
-    const { hostApi } = makeStoreHost(() => new Promise((resolve) => (resolveEmpty = resolve)))
+    const resolvers: Array<(value: unknown) => void> = []
+    const { hostApi } = makeStoreHost((input) => {
+      if (input.operationId === 'powers.custom.list.v1') return customData()
+      return new Promise((resolve) => resolvers.push(resolve))
+    })
     renderPage(hostApi)
 
     expect(screen.getByText('Loading Powers…')).toBeTruthy()
 
-    resolveEmpty(installedData('[]'))
+    resolvers[0](installedData('[]'))
 
     expect(await screen.findByText('No Powers are available.')).toBeTruthy()
   })
@@ -235,6 +285,7 @@ describe('AgentHubPage', () => {
   it('omits the agent and hides Agent controls when switching to the market', async () => {
     const user = userEvent.setup()
     const { hostApi, calls } = makeStoreHost((input) => {
+      if (input.operationId === 'powers.custom.list.v1') return customData()
       const params = wireParamsOf(input)
       return params.scope === 'market' ? marketData() : installedData(codeReviewList)
     })
@@ -244,9 +295,10 @@ describe('AgentHubPage', () => {
     await user.click(screen.getByRole('button', { name: 'Power market' }))
     await screen.findByRole('heading', { name: 'market-translate' })
 
-    expect(calls).toHaveLength(2)
-    expect(wireParamsOf(calls[1])).toEqual({ scope: 'market' })
-    expect('agent' in wireParamsOf(calls[1])).toBe(false)
+    const marketCalls = calls.filter((call) => wireParamsOf(call).scope === 'market')
+    expect(marketCalls).toHaveLength(1)
+    expect(wireParamsOf(marketCalls[0])).toEqual({ scope: 'market' })
+    expect('agent' in wireParamsOf(marketCalls[0])).toBe(false)
     expect(screen.queryByRole('group', { name: 'Agent' })).toBeNull()
   })
 
@@ -368,22 +420,27 @@ describe('AgentHubPage', () => {
   it('retains the selected installed Agent after visiting the market', async () => {
     const user = userEvent.setup()
     const { hostApi, calls } = makeStoreHost((input) => {
+      if (input.operationId === 'powers.custom.list.v1') return customData()
       const params = wireParamsOf(input)
       return params.scope === 'market' ? marketData() : installedData(codeReviewList)
     })
+    const lastListParams = () => {
+      const listCalls = calls.filter((call) => call.operationId === 'powers.list.v1')
+      return wireParamsOf(listCalls[listCalls.length - 1])
+    }
     renderPage(hostApi)
     await screen.findByRole('heading', { name: 'code-review' })
 
     await user.hover(screen.getByRole('button', { name: 'My Powers' }))
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'codex' }))
-    await waitFor(() => expect(wireParamsOf(calls[calls.length - 1]).agent).toBe('codex'))
+    await waitFor(() => expect(lastListParams().agent).toBe('codex'))
 
     await user.click(screen.getByRole('button', { name: 'Power market' }))
-    await waitFor(() => expect(wireParamsOf(calls[calls.length - 1]).scope).toBe('market'))
+    await waitFor(() => expect(lastListParams().scope).toBe('market'))
 
     await user.click(screen.getByRole('button', { name: 'My Powers' }))
     await waitFor(() => {
-      const last = wireParamsOf(calls[calls.length - 1])
+      const last = lastListParams()
       expect(last.scope).toBe('installed')
       expect(last.agent).toBe('codex')
     })
@@ -623,6 +680,53 @@ describe('AgentHubPage', () => {
     expect(screen.queryByText('INTERNAL CATALOG')).toBeNull()
   })
 
+  it('renders the localized display name of an installed Power', async () => {
+    const { hostApi } = makeStoreHost(() => installedData(localizedInstalledList))
+    renderLocalizedPage(hostApi, 'zh-CN')
+
+    expect(await screen.findByRole('heading', { name: '代码审查' })).toBeTruthy()
+    expect(screen.getByText('代码审查工作流。')).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'code-review' })).toBeNull()
+  })
+
+  it('renders the localized display name of a market Power', async () => {
+    const user = userEvent.setup()
+    const translatedCatalog = {
+      scope: 'market',
+      status: 'data',
+      snapshot: await sha256(localizedCatalogJson),
+      catalogJson: localizedCatalogJson,
+    }
+    const { hostApi, calls } = makeStoreHost((input) =>
+      wireParamsOf(input).scope === 'market' ? translatedCatalog : installedData('[]')
+    )
+    renderLocalizedPage(hostApi, 'zh-CN')
+    await screen.findByText('没有可用的 Power。')
+
+    await user.click(screen.getByRole('button', { name: 'Power 市场' }))
+
+    expect(await screen.findByRole('heading', { name: '翻译助手' })).toBeTruthy()
+    expect(screen.getByText('翻译文本。')).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'market-translate' })).toBeNull()
+    expect(calls.some((call) => call.operationId === 'powers.list.v1')).toBe(true)
+  })
+
+  it('swaps display names with the language without re-reading the catalog', async () => {
+    const listCalls = (calls: StoreRequest[]) =>
+      calls.filter((call) => call.operationId === 'powers.list.v1').length
+    const { hostApi, calls } = makeStoreHost(() => installedData(localizedInstalledList))
+    const view = renderLocalizedPage(hostApi, 'en')
+
+    await screen.findByRole('heading', { name: 'Code Review' })
+    const before = listCalls(calls)
+
+    rerenderLocalizedPage(view, hostApi, 'zh-CN')
+
+    expect(await screen.findByRole('heading', { name: '代码审查' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Code Review' })).toBeNull()
+    await waitFor(() => expect(listCalls(calls)).toBe(before))
+  })
+
   it('keeps the loaded market view and the open dialog across a language change', async () => {
     const user = userEvent.setup()
     const { hostApi, calls } = makeStoreHost((input) => {
@@ -667,28 +771,41 @@ describe('AgentHubPage', () => {
 
   it('never lets a late older response replace a newer filter response', async () => {
     const user = userEvent.setup()
-    const resolvers: Array<(value: unknown) => void> = []
-    const { hostApi, calls } = makeStoreHost(() => new Promise((resolve) => resolvers.push(resolve)))
+    const installedResolvers: Array<(value: unknown) => void> = []
+    const marketResolvers: Array<(value: unknown) => void> = []
+    const { hostApi, calls } = makeStoreHost((input) => {
+      if (input.operationId === 'powers.custom.list.v1') return customData()
+      if (wireParamsOf(input).scope === 'market') {
+        return new Promise((resolve) => marketResolvers.push(resolve))
+      }
+      return new Promise((resolve) => installedResolvers.push(resolve))
+    })
     renderPage(hostApi)
 
-    await waitFor(() => expect(calls).toHaveLength(1))
+    await waitFor(() => expect(installedResolvers).toHaveLength(1))
     await user.click(screen.getByRole('button', { name: 'Power market' }))
-    await waitFor(() => expect(calls).toHaveLength(2))
+    await waitFor(() => expect(marketResolvers).toHaveLength(1))
 
-    resolvers[1](await marketData())
+    marketResolvers[0](await marketData())
     await screen.findByRole('heading', { name: 'market-translate' })
 
-    resolvers[0](installedData(codeReviewList))
+    installedResolvers[0](installedData(codeReviewList))
 
     await waitFor(() => expect(screen.queryByRole('heading', { name: 'code-review' })).toBeNull())
     expect(screen.getByRole('heading', { name: 'market-translate' })).toBeTruthy()
+    expect(calls.length).toBeGreaterThan(0)
   })
 
   it('renders the fixed Agent menu and loads Hermes when selected', async () => {
     const user = userEvent.setup()
-    const { hostApi, calls } = makeStoreHost((params) => installedData(
-      wireParamsOf(params).agent === 'hermes-agent' ? JSON.stringify([{ ...codeReviewRecord, agent: 'hermes-agent' }]) : '[]'
-    ))
+    const { hostApi, calls } = makeStoreHost((input) => {
+      if (input.operationId === 'powers.custom.list.v1') return customData()
+      return installedData(
+        wireParamsOf(input).agent === 'hermes-agent'
+          ? JSON.stringify([{ ...codeReviewRecord, agent: 'hermes-agent' }])
+          : '[]'
+      )
+    })
     renderPage(hostApi)
     await screen.findByText('No Powers are available.')
 
@@ -699,7 +816,11 @@ describe('AgentHubPage', () => {
     expect(screen.getByRole('menuitemradio', { name: 'claude-code' })).toBeTruthy()
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'hermes-agent' }))
     await screen.findByRole('heading', { name: 'code-review' })
-    expect(calls.at(-1)?.params).toEqual({ scope: 'installed', agent: 'hermes-agent' })
+    const listCalls = calls.filter((call) => call.operationId === 'powers.list.v1')
+    expect(wireParamsOf(listCalls[listCalls.length - 1])).toEqual({
+      scope: 'installed',
+      agent: 'hermes-agent',
+    })
   })
 
   it('does not restart the in-flight request when the host recreates the store object on re-render', async () => {
@@ -902,5 +1023,213 @@ describe('AgentHubPage', () => {
       expect(screen.queryByRole('button', { name: 'Uninstall' })).toBeNull()
       expect((dialog.getByLabelText('Version') as HTMLSelectElement).disabled).toBe(false)
     })
+  })
+})
+
+describe('AgentHubPage custom resources', () => {
+  const customItem = {
+    type: 'skill',
+    name: 'hand-written',
+    version: '',
+    description: 'Hand made.',
+    tags: [],
+    source: 'custom',
+  }
+  const customDocument = JSON.stringify({ items: [customItem], skipped: [] })
+  const skippedDocument = JSON.stringify({
+    items: [],
+    skipped: [{ type: 'skill', name: 'partial', expected: 'SKILL.md', reason: 'invalid-authority-file' }],
+  })
+
+  it('renders a hand-installed resource with a Custom badge and no version control', async () => {
+    const { hostApi } = makeStoreHost((input) =>
+      input.operationId === 'powers.custom.list.v1' ? customData(customDocument) : installedData(codeReviewList)
+    )
+    renderPage(hostApi)
+
+    await screen.findByRole('heading', { name: 'hand-written' })
+    expect(screen.getByText('Custom')).toBeTruthy()
+    expect(document.querySelector('.power-card[data-source="custom"]')).toBeTruthy()
+    // Two series are on the page, so exactly one version select exists.
+    expect(screen.getAllByLabelText('Version')).toHaveLength(1)
+  })
+
+  it('renders the scan warnings as translated text', async () => {
+    const { hostApi } = makeStoreHost((input) =>
+      input.operationId === 'powers.custom.list.v1' ? customData(skippedDocument) : installedData(codeReviewList)
+    )
+    renderPage(hostApi)
+
+    await screen.findByRole('heading', { name: 'code-review' })
+    expect(
+      await screen.findByText('Skipped skill "partial": its SKILL.md does not meet the minimum format.')
+    ).toBeTruthy()
+  })
+
+  it('keeps the Hub list when the custom scan is unsupported by the provider', async () => {
+    const { hostApi } = makeStoreHost((input) => {
+      if (input.operationId === 'powers.custom.list.v1') {
+        throw { version: 1, code: 'incompatible', message: 'unknown operation', retryable: false }
+      }
+      return installedData(codeReviewList)
+    })
+    renderPage(hostApi)
+
+    await screen.findByRole('heading', { name: 'code-review' })
+    expect(await screen.findByText('Custom resources could not be scanned for this Agent.')).toBeTruthy()
+    expect(document.querySelector('.agent-hub__error')).toBeNull()
+  })
+
+  it('opens the custom dialog without asking apm to inspect the resource', async () => {
+    const user = userEvent.setup()
+    const { hostApi, calls } = makeStoreHost((input) =>
+      input.operationId === 'powers.custom.list.v1' ? customData(customDocument) : installedData('[]')
+    )
+    renderPage(hostApi)
+
+    await user.click(await screen.findByRole('heading', { name: 'hand-written' }))
+    const dialog = within(document.querySelector('dialog') as HTMLElement)
+    expect(dialog.getByText('Installed outside Agent Hub; not managed by APM.')).toBeTruthy()
+    expect(calls.filter((call) => call.operationId === 'powers.inspect.v1')).toHaveLength(0)
+  })
+
+  it('uploads with the entered message and re-reads the installed view', async () => {
+    const user = userEvent.setup()
+    let uploadCall: StoreRequest | undefined
+    const { hostApi } = makeStoreHost((input) => {
+      if (input.operationId === 'powers.custom.list.v1') {
+        return customData(uploadCall ? '{"items":[],"skipped":[]}' : customDocument)
+      }
+      if (input.operationId === 'powers.upload.v1') {
+        uploadCall = input
+        return { status: 'exited', exitCode: 0, stage: 'submit', stdout: 'submission_id: sub_42' }
+      }
+      return installedData('[]')
+    })
+    renderPage(hostApi)
+
+    await user.click(await screen.findByRole('heading', { name: 'hand-written' }))
+    const dialog = within(document.querySelector('dialog') as HTMLElement)
+    await user.click(dialog.getByRole('button', { name: 'Upload' }))
+    await user.type(dialog.getByLabelText('Publish message'), 'Publish the local demo skill')
+    await user.click(dialog.getByRole('button', { name: 'Upload to APC' }))
+
+    expect(await dialog.findByText('Upload complete: sub_42')).toBeTruthy()
+    expect(uploadCall?.params).toEqual({
+      agent: 'bibit',
+      type: 'skill',
+      name: 'hand-written',
+      message: 'Publish the local demo skill',
+    })
+    // The write refreshes the list, so the uploaded resource disappears from the
+    // scan and the page falls back to the empty copy.
+    expect(await screen.findByText('No Powers are available.')).toBeTruthy()
+  })
+
+  it('surfaces a missing APC key as a settings hint instead of a raw provider error', async () => {
+    const user = userEvent.setup()
+    const { hostApi } = makeStoreHost((input) => {
+      if (input.operationId === 'powers.custom.list.v1') return customData(customDocument)
+      if (input.operationId === 'powers.upload.v1') {
+        throw { version: 1, code: 'unauthorized', message: 'no key', retryable: false }
+      }
+      return installedData('[]')
+    })
+    renderPage(hostApi)
+
+    await user.click(await screen.findByRole('heading', { name: 'hand-written' }))
+    const dialog = within(document.querySelector('dialog') as HTMLElement)
+    await user.click(dialog.getByRole('button', { name: 'Upload' }))
+    await user.type(dialog.getByLabelText('Publish message'), 'Publish')
+    await user.click(dialog.getByRole('button', { name: 'Upload to APC' }))
+
+    expect(
+      await dialog.findByText('APC API Key is not configured; set it in Agent Hub settings.')
+    ).toBeTruthy()
+  })
+
+  it('reports the validate failure reason from a rejected upload', async () => {
+    const user = userEvent.setup()
+    const { hostApi } = makeStoreHost((input) => {
+      if (input.operationId === 'powers.custom.list.v1') return customData(customDocument)
+      if (input.operationId === 'powers.upload.v1') {
+        return { status: 'exited', exitCode: 1, stage: 'validate', reason: 'schema_version 1 is not accepted' }
+      }
+      return installedData('[]')
+    })
+    renderPage(hostApi)
+
+    await user.click(await screen.findByRole('heading', { name: 'hand-written' }))
+    const dialog = within(document.querySelector('dialog') as HTMLElement)
+    await user.click(dialog.getByRole('button', { name: 'Upload' }))
+    await user.type(dialog.getByLabelText('Publish message'), 'Publish')
+    await user.click(dialog.getByRole('button', { name: 'Upload to APC' }))
+
+    // apm's own sentence is the actionable text, so it is shown verbatim.
+    expect(await dialog.findByText('Upload failed: schema_version 1 is not accepted')).toBeTruthy()
+  })
+
+  it('falls back to the stage copy when apm reported no reason', async () => {
+    const user = userEvent.setup()
+    const { hostApi } = makeStoreHost((input) => {
+      if (input.operationId === 'powers.custom.list.v1') return customData(customDocument)
+      if (input.operationId === 'powers.upload.v1') {
+        return { status: 'exited', exitCode: 1, stage: 'validate' }
+      }
+      return installedData('[]')
+    })
+    renderPage(hostApi)
+
+    await user.click(await screen.findByRole('heading', { name: 'hand-written' }))
+    const dialog = within(document.querySelector('dialog') as HTMLElement)
+    await user.click(dialog.getByRole('button', { name: 'Upload' }))
+    await user.type(dialog.getByLabelText('Publish message'), 'Publish')
+    await user.click(dialog.getByRole('button', { name: 'Upload to APC' }))
+
+    expect(
+      await dialog.findByText('This resource does not meet the Power format required for upload; fix it and retry.')
+    ).toBeTruthy()
+  })
+
+  it('deletes only after the footer confirmation and refreshes the list', async () => {
+    const user = userEvent.setup()
+    let deleteCall: StoreRequest | undefined
+    const { hostApi } = makeStoreHost((input) => {
+      if (input.operationId === 'powers.custom.list.v1') {
+        return customData(deleteCall ? '{"items":[],"skipped":[]}' : customDocument)
+      }
+      if (input.operationId === 'powers.delete.v1') {
+        deleteCall = input
+        return { status: 'deleted' }
+      }
+      return installedData('[]')
+    })
+    renderPage(hostApi)
+
+    await user.click(await screen.findByRole('heading', { name: 'hand-written' }))
+    const dialog = within(document.querySelector('dialog') as HTMLElement)
+    await user.click(dialog.getByRole('button', { name: 'Delete' }))
+
+    // Nothing happens until the confirmation inside the dialog is clicked.
+    expect(deleteCall).toBeUndefined()
+    await user.click(dialog.getByRole('button', { name: 'Confirm delete' }))
+
+    expect(await dialog.findByText('Deleted skill "hand-written".')).toBeTruthy()
+    expect(deleteCall?.params).toEqual({ agent: 'bibit', type: 'skill', name: 'hand-written' })
+    expect(await screen.findByText('No Powers are available.')).toBeTruthy()
+  })
+
+  it('does not offer install or uninstall for a hand-installed resource', async () => {
+    const user = userEvent.setup()
+    const { hostApi } = makeStoreHost((input) =>
+      input.operationId === 'powers.custom.list.v1' ? customData(customDocument) : installedData(codeReviewList)
+    )
+    renderPage(hostApi)
+
+    await user.click(await screen.findByRole('heading', { name: 'hand-written' }))
+    const dialog = within(document.querySelector('dialog') as HTMLElement)
+    expect(dialog.queryByRole('button', { name: 'Install' })).toBeNull()
+    expect(dialog.queryByRole('button', { name: 'Uninstall' })).toBeNull()
+    expect(dialog.getByRole('button', { name: 'Delete' })).toBeTruthy()
   })
 })

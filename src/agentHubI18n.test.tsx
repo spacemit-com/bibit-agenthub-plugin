@@ -8,6 +8,7 @@ import {
   agentHubLocales,
   normalizeAgentHubLanguage,
   useAgentHubI18n,
+  useAgentHubLanguage,
 } from './agentHubI18n'
 
 afterEach(cleanup)
@@ -15,6 +16,10 @@ afterEach(cleanup)
 function Probe({ source }: { source: string }) {
   const t = useAgentHubI18n()
   return <p data-testid="value">{t(source)}</p>
+}
+
+function LanguageProbe() {
+  return <p data-testid="language">{useAgentHubLanguage()}</p>
 }
 
 function ValueProbe() {
@@ -110,6 +115,37 @@ describe('AgentHubI18nProvider', () => {
   it('translates the source outside a provider, so unit tests read English', () => {
     render(<Probe source="Install" />)
     expect(screen.getByTestId('value').textContent).toBe('Install')
+  })
+})
+
+describe('useAgentHubLanguage', () => {
+  it('exposes the normalized host language next to the translator', () => {
+    const view = render(
+      <AgentHubI18nProvider language="zh-CN">
+        <LanguageProbe />
+      </AgentHubI18nProvider>
+    )
+    expect(screen.getByTestId('language').textContent).toBe('zh')
+
+    view.rerender(
+      <AgentHubI18nProvider language="en-US">
+        <LanguageProbe />
+      </AgentHubI18nProvider>
+    )
+    expect(screen.getByTestId('language').textContent).toBe('en')
+  })
+
+  it('defaults to en outside a provider and for an omitted host language', () => {
+    render(<LanguageProbe />)
+    expect(screen.getByTestId('language').textContent).toBe('en')
+
+    cleanup()
+    render(
+      <AgentHubI18nProvider>
+        <LanguageProbe />
+      </AgentHubI18nProvider>
+    )
+    expect(screen.getByTestId('language').textContent).toBe('en')
   })
 })
 

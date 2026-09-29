@@ -59,16 +59,10 @@ func validateTarget(agent, typ, name string) error {
 	return nil
 }
 
-// decodePowerTarget strictly decodes and validates a {agent,type,name} object
-// for inspect and uninstall, rejecting extra keys and invalid fields.
-func decodePowerTarget(raw json.RawMessage) (PowerTarget, error) {
-	obj, err := decodeObject(raw)
-	if err != nil {
-		return PowerTarget{}, err
-	}
-	if err := rejectKeys(obj, "agent", "type", "name"); err != nil {
-		return PowerTarget{}, err
-	}
+// decodePowerTargetCore validates an already-decoded {agent,type,name} envelope
+// without closing the key set, so a caller that adds fields (upload) shares the
+// exact target rules.
+func decodePowerTargetCore(obj map[string]json.RawMessage) (PowerTarget, error) {
 	agent, ok := parseString(obj["agent"])
 	if !ok || agent == "" {
 		return PowerTarget{}, errors.New("operation input: agent must be a non-empty string")
@@ -85,6 +79,87 @@ func decodePowerTarget(raw json.RawMessage) (PowerTarget, error) {
 		return PowerTarget{}, err
 	}
 	return PowerTarget{Agent: agent, Type: typ, Name: name}, nil
+}
+
+// decodePowerTarget strictly decodes and validates a {agent,type,name} object
+// for inspect, uninstall and custom deletion, rejecting extra keys and invalid
+// fields.
+func decodePowerTarget(raw json.RawMessage) (PowerTarget, error) {
+	obj, err := decodeObject(raw)
+	if err != nil {
+		return PowerTarget{}, err
+	}
+	if err := rejectKeys(obj, "agent", "type", "name"); err != nil {
+		return PowerTarget{}, err
+	}
+	return decodePowerTargetCore(obj)
+}
+
+// decodeUploadInput strictly decodes {agent,type,name,message}. The message is
+// the APC publish note and becomes a single argv element, so it must be a
+// non-empty single line.
+func decodeUploadInput(raw json.RawMessage) (UploadInput, error) {
+	obj, err := decodeObject(raw)
+	if err != nil {
+		return UploadInput{}, err
+	}
+	if err := rejectKeys(obj, "agent", "type", "name", "message"); err != nil {
+		return UploadInput{}, err
+	}
+	target, err := decodePowerTargetCore(obj)
+	if err != nil {
+		return UploadInput{}, err
+	}
+	message, ok := parseString(obj["message"])
+	if !ok || strings.TrimSpace(message) == "" || len(message) > 200 ||
+		strings.ContainsAny(message, "\n\r\t\x00") {
+		return UploadInput{}, errors.New("operation input: message must be a non-empty single line")
+	}
+	return UploadInput{PowerTarget: target, Message: message}, nil
+}
+
+// decodeCustomListInput strictly decodes the `powers.custom.list.v1` envelope
+// {agent}: the only input the scan needs is which Agent's tree to walk.
+func decodeCustomListInput(raw json.RawMessage) (CustomListInput, error) {
+	obj, err := decodeObject(raw)
+	if err != nil {
+		return CustomListInput{}, err
+	}
+	if err := rejectKeys(obj, "agent"); err != nil {
+		return CustomListInput{}, err
+	}
+	agent, ok := parseString(obj["agent"])
+	if !ok || agent == "" {
+		return CustomListInput{}, errors.New("operation input: agent must be a non-empty string")
+	}
+	if !installedAgents[agent] {
+		return CustomListInput{}, errors.New("operation input: agent must be a fixed installed agent")
+	}
+	return CustomListInput{Agent: agent}, nil
+}
+
+// decodeSettingsUpdate strictly decodes the settings.update.v1 payload. A
+// missing apiKey means "keep the stored key"; an empty one clears it.
+func decodeSettingsUpdate(raw json.RawMessage) (SettingsUpdate, error) {
+	obj, err := decodeObject(raw)
+	if err != nil {
+		return SettingsUpdate{}, err
+	}
+	if err := rejectKeys(obj, "showExperimental", "refreshMinutes", "apiKey"); err != nil {
+		return SettingsUpdate{}, err
+	}
+	var update SettingsUpdate
+	if err := strictUnmarshal(raw, &update); err != nil {
+		return SettingsUpdate{}, err
+	}
+	if update.RefreshMinutes < minRefreshMinutes || update.RefreshMinutes > maxRefreshMinutes {
+		return SettingsUpdate{}, errors.New("operation input: refreshMinutes out of range")
+	}
+	if update.APIKey != nil && *update.APIKey != "" &&
+		(len(*update.APIKey) > maxAPIKeyBytes || !isPrintableASCII(*update.APIKey)) {
+		return SettingsUpdate{}, errors.New("operation input: apiKey must be printable ASCII")
+	}
+	return update, nil
 }
 
 // decodeInstallInput strictly decodes and validates a {agent,type,name,version}

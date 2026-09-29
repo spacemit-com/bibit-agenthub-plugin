@@ -4,14 +4,17 @@ Bibit Agent Hub 的独立前端插件 + 独立 Go CLI Provider，当前包含：
 
 - Bibit 主侧边栏中的 Agent Hub 页面（installed / market 两个 scope）；
 - Power 详情弹窗（描述、tags、Agent 归属、版本选择）与安装/卸载闭环；
-- Agent Hub 设置子页面；
-- `service:store` Host API 接入（`powers.list.v1` / `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` + `settings.get.v1`/`settings.update.v1`）；
+- 「我的 Power」里除 APM 清单外，还展示手动安装到各 Agent 目录下的自定义资源（卡片带 `Custom` 标记），并在弹窗内提供 APC 上传与本地删除；
+- Agent Hub 设置子页面（含 APC API Key）；
+- `service:store` Host API 接入（`powers.list.v1` / `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` / `powers.custom.list.v1` / `powers.upload.v1` / `powers.delete.v1` + `settings.get.v1`/`settings.update.v1`）；
 - 独立 Feature Dev Host 与共享的前端数据层（解析、过滤、聚合、分页、facets、snapshot 判断、共享安装状态）；
 - 纯 Go 标准库 CLI Provider（仅 Provider Protocol v1，`bibit-agenthub`）。
 
 Agent 选择支持 `bibit`、`codex`、`claude-code`、`hermes-agent`。Hermes 支持 Skill、MCP 和 Plugin 的列表、详情、安装与卸载，`agent` 类型仅支持 Bibit；运行环境中的 APM 需要支持 `--agent=hermes-agent`。
 
-本期范围是 v1：installed（APM）与 market（APC 全量目录）浏览，以及单版本安装/卸载（读 30s、写 120s 超时）。上传/下载、job、文件传输与 settings 持久化不在本期 CLI 内。
+自定义资源扫描范围与各 Agent 的能力一致：目录 `~/.bianbu-agent/{skills,plugins,agents}`（Bibit）、`~/.codex/skills`、`~/.claude/skills`、`~/.hermes/{skills,plugins}`。本期不含 MCP（APM 不为其维护目录，无法扫描），codex / claude-code 的 Plugin 由各自 CLI 管理，也不在扫描范围内。展示只需满足主流最低格式（Skill 的 `SKILL.md` frontmatter 至少有 `name`/`description`；Plugin 清单至少有 `name`；Agent 的 `agent.yaml` 至少有 `agent.name`），不满足的被跳过并在页面上给出 warning；上传仍交给 `apm validate` + `apm submit`，因此上传要求资源满足 Power 格式 v2。
+
+本期范围是 v1：installed（APM + 自定义资源）与 market（APC 全量目录）浏览、单版本安装/卸载，以及自定义资源的 APC 上传 / 本地删除（读 30s、写 120s 超时）。下载、job 与文件传输不在本期。
 
 完整的代码边界、独立开发、服务协议、签名、部署、升级和验收步骤见：
 
@@ -35,7 +38,7 @@ npm run keygen
 npm run build:plugin
 ```
 
-当前产物：`artifacts/agent-hub-0.3.0.bibit-plugin.tgz`。`.bibit-keys/` 中的私钥禁止提交，开发签名不能代替目标 Release 的信任链。开发预览地址追加 `?lang=zh-CN` 可查看中文界面；页面语言跟随 Bibit 系统语言，插件本身不提供语言设置。
+当前产物：`artifacts/agent-hub-0.3.4.bibit-plugin.tgz`。`.bibit-keys/` 中的私钥禁止提交，开发签名不能代替目标 Release 的信任链。开发预览地址追加 `?lang=zh-CN` 可查看中文界面；页面语言跟随 Bibit 系统语言，插件本身不提供语言设置。Local Preview 的 Store 中间件会扫描本机 home（`dev/custom.ts`），因此自定义资源在开发环境也可见。
 
 ## CLI Provider 构建与自检
 
@@ -54,7 +57,7 @@ bibit-agenthub-plugin (all)  -> plugin bundle + capability grant
 bibit-agenthub-cli    (any)  -> /usr/libexec/bibit/bibit-agenthub + Provider Registry
 ```
 
-CLI 包通过 `/etc/bibit/external-services.d/agenthub.json`（Registry `version: 2`，`protocolVersions: [1]`，managed stdio）接入宿主；Provider 始终协商协议 v1。
+CLI 包通过 `/etc/bibit/external-services.d/agenthub.json`（Registry `version: 2`，`protocolVersions: [1]`，managed stdio）接入宿主；Provider 始终协商协议 v1。`settings.update.v1` 的 `apiKey` 走 Registry 的 `credentialParameters` 声明，密钥只经环境变量 `APC_API_KEY` 传给 `apm submit`，落盘在 `settings.json`（0600，原子写入，拒绝对符号链接写入），接口只返回 `hasApiKey`。
 
 ## cache-on-check
 

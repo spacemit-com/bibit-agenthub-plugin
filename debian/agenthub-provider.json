@@ -7,7 +7,10 @@
       "args": ["provider"],
       "lifecycle": "managed",
       "protocolVersions": [1],
-      "requestTimeoutMs": 120000
+      "requestTimeoutMs": 120000,
+      "credentialParameters": {
+        "settings.update.v1": ["apiKey"]
+      }
     }
   }
 }

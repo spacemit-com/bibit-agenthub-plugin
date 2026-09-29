@@ -39,6 +39,22 @@ const record = (version: string): APMPowerRecord => ({
   tags: [],
 })
 
+const localizedSeries: PowerSeries = {
+  type: 'skill',
+  name: 'code-review',
+  name_zh: '代码审查',
+  name_en: 'Code Review',
+  versions: [
+    {
+      version: 'v2.0.0',
+      description: 'Peer review with a quality gate.',
+      tags: ['quality'],
+      description_zh: '带质量门禁的代码审查。',
+    },
+    { version: 'v1.0.0', description: 'Peer review workflow.', tags: ['writing'] },
+  ],
+}
+
 const props = {
   series,
   selectedVersion: 'v2.0.0',
@@ -92,6 +108,43 @@ describe('PowerDetailsDialog', () => {
     const tags = screen.getByTestId('dialog-tags')
     expect(within(tags).getByText('quality')).toBeTruthy()
     expect((screen.getByLabelText('Version') as HTMLSelectElement).value).toBe('v2.0.0')
+  })
+
+  it('shows the Chinese display name and description for a Chinese host', () => {
+    render(
+      <AgentHubI18nProvider language="zh-CN">
+        <PowerDetailsDialog {...props} series={localizedSeries} />
+      </AgentHubI18nProvider>
+    )
+
+    expect(screen.getByRole('heading', { name: '代码审查' })).toBeTruthy()
+    expect(screen.getByText('带质量门禁的代码审查。')).toBeTruthy()
+    // The dialog's accessible name follows the same resolved title as the heading.
+    expect(document.querySelector('dialog')?.getAttribute('aria-label')).toBe('代码审查')
+  })
+
+  it('shows the English display name and source description for an English host', () => {
+    render(
+      <AgentHubI18nProvider language="en">
+        <PowerDetailsDialog {...props} series={localizedSeries} />
+      </AgentHubI18nProvider>
+    )
+
+    expect(screen.getByRole('heading', { name: 'Code Review' })).toBeTruthy()
+    expect(screen.getByText('Peer review with a quality gate.')).toBeTruthy()
+    expect(screen.queryByText('带质量门禁的代码审查。')).toBeNull()
+    expect(document.querySelector('dialog')?.getAttribute('aria-label')).toBe('Code Review')
+  })
+
+  it('falls back to the canonical name and source description for a V1 series', () => {
+    render(
+      <AgentHubI18nProvider language="zh-CN">
+        <PowerDetailsDialog {...props} />
+      </AgentHubI18nProvider>
+    )
+
+    expect(screen.getByRole('heading', { name: 'code-review' })).toBeTruthy()
+    expect(screen.getByText('Peer review with a quality gate.')).toBeTruthy()
   })
 
   it('updates the description and tags when the version changes', async () => {
@@ -275,5 +328,146 @@ describe('PowerDetailsDialog', () => {
     )
     await user.click(screen.getByRole('button', { name: 'Uninstall' }))
     expect(onUninstall).toHaveBeenCalled()
+  })
+})
+
+describe('PowerDetailsDialog custom resources', () => {
+  const customSeries: PowerSeries = {
+    type: 'skill',
+    name: 'hand-written',
+    source: 'custom',
+    versions: [{ version: '', description: 'Hand made.', tags: [] }],
+  }
+
+  const customProps = {
+    ...props,
+    series: customSeries,
+    selectedVersion: '',
+    installation: { status: 'ready' as const, records: [] as APMPowerRecord[] },
+    customNotice: undefined,
+  }
+
+  it('shows directory facts and the two custom actions instead of the APM lifecycle', () => {
+    const view = render(<PowerDetailsDialog {...customProps} />)
+
+    expect(screen.getByText('Custom')).toBeTruthy()
+    expect(screen.getByText('Installed outside Agent Hub; not managed by APM.')).toBeTruthy()
+    expect(screen.getByTestId('dialog-agent-static').textContent).toBe('bibit')
+    expect(screen.getByTestId('dialog-version-static').textContent).toBe('No version')
+    // No APM install state and no install/uninstall pair for a hand-installed resource.
+    expect(screen.queryByText('Not installed')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Install' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Uninstall' })).toBeNull()
+    expect(view.container.querySelector('dialog')?.getAttribute('data-source')).toBe('custom')
+  })
+
+  it('requires a non-blank message before uploading, then reports it upward', async () => {
+    const user = userEvent.setup()
+    const onUpload = vi.fn()
+    render(<PowerDetailsDialog {...customProps} onUpload={onUpload} onDelete={vi.fn()} />)
+
+    await user.click(screen.getByRole('button', { name: 'Upload' }))
+    const submit = screen.getByRole('button', { name: 'Upload to APC' }) as HTMLButtonElement
+    expect(submit.disabled).toBe(true)
+
+    await user.type(screen.getByLabelText('Publish message'), 'Publish the local demo skill')
+    expect(submit.disabled).toBe(false)
+    await user.click(submit)
+
+    expect(onUpload).toHaveBeenCalledWith('Publish the local demo skill')
+    // The inline form closes and its text does not linger.
+    expect(screen.queryByLabelText('Publish message')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Upload' })).toBeTruthy()
+  })
+
+  it('does not upload a whitespace-only message', async () => {
+    const user = userEvent.setup()
+    const onUpload = vi.fn()
+    render(<PowerDetailsDialog {...customProps} onUpload={onUpload} />)
+
+    await user.click(screen.getByRole('button', { name: 'Upload' }))
+    await user.type(screen.getByLabelText('Publish message'), '   ')
+
+    expect((screen.getByRole('button', { name: 'Upload to APC' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(onUpload).not.toHaveBeenCalled()
+  })
+
+  it('confirms before deleting and can be cancelled', async () => {
+    const user = userEvent.setup()
+    const onDelete = vi.fn()
+    render(<PowerDetailsDialog {...customProps} onDelete={onDelete} />)
+
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
+    expect(screen.getByText('Delete this resource?')).toBeTruthy()
+    // The confirm copy names the exact directory that will be removed.
+    expect(
+      screen.getByText('Removes the local skill "hand-written" for bibit. This cannot be undone.')
+    ).toBeTruthy()
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(onDelete).not.toHaveBeenCalled()
+    expect(screen.queryByText('Delete this resource?')).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
+    await user.click(screen.getByRole('button', { name: 'Confirm delete' }))
+    expect(onDelete).toHaveBeenCalled()
+  })
+
+  it('disables both actions and shows the phase while a write is in flight', async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(<PowerDetailsDialog {...customProps} onUpload={vi.fn()} onDelete={vi.fn()} />)
+
+    await user.click(screen.getByRole('button', { name: 'Upload' }))
+    rerender(
+      <PowerDetailsDialog
+        {...customProps}
+        onUpload={vi.fn()}
+        onDelete={vi.fn()}
+        customAction={{ kind: 'upload', phase: 'running' }}
+      />
+    )
+
+    expect(screen.getByText('Uploading…')).toBeTruthy()
+    expect((screen.getByRole('button', { name: 'Upload to APC' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: 'Cancel' }) as HTMLButtonElement).disabled).toBe(true)
+
+    rerender(
+      <PowerDetailsDialog
+        {...customProps}
+        onUpload={vi.fn()}
+        onDelete={vi.fn()}
+        customAction={{ kind: 'delete', phase: 'reconciling' }}
+      />
+    )
+    expect(screen.getByText('Confirming installation state…')).toBeTruthy()
+  })
+
+  it('renders the custom notice and translates it', () => {
+    const notice = { text: 'Upload complete: {submissionId}', values: { submissionId: 'sub_1' } }
+    const view = render(
+      <AgentHubI18nProvider language="en">
+        <PowerDetailsDialog {...customProps} customNotice={notice} />
+      </AgentHubI18nProvider>
+    )
+    expect(screen.getByText('Upload complete: sub_1')).toBeTruthy()
+
+    view.rerender(
+      <AgentHubI18nProvider language="zh-CN">
+        <PowerDetailsDialog {...customProps} customNotice={notice} />
+      </AgentHubI18nProvider>
+    )
+    expect(screen.getByText('上传完成：sub_1')).toBeTruthy()
+  })
+
+  it('switches the custom actions with the host language', () => {
+    render(
+      <AgentHubI18nProvider language="zh-CN">
+        <PowerDetailsDialog {...customProps} onUpload={vi.fn()} onDelete={vi.fn()} />
+      </AgentHubI18nProvider>
+    )
+
+    expect(screen.getByRole('button', { name: '上传' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '删除' })).toBeTruthy()
+    expect(screen.getByText('自定义')).toBeTruthy()
   })
 })

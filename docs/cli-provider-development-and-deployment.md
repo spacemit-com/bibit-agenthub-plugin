@@ -7,7 +7,7 @@ AgentHub UI -> Feature SDK -> Bibit external-service gateway
             -> Provider Protocol v1 -> AgentHub CLI (Go)
 ```
 
-CLI 是纯 Go 标准库实现（`provider/` 独立 module），只声明 Provider Protocol v1 与四个 operation `powers.list.v1` / `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1`。上传/下载、job、文件传输、settings 归属均不在本期 CLI 范围内。
+CLI 是纯 Go 标准库实现（`provider/` 独立 module），只声明 Provider Protocol v1 与九个 operation：`powers.list.v1` / `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` / `powers.custom.list.v1` / `powers.upload.v1` / `powers.delete.v1` / `settings.get.v1` / `settings.update.v1`。下载、job 与文件传输不在本期 CLI 范围内。
 
 ## 1. 系统入口与进程约束
 
@@ -39,7 +39,7 @@ Provider 从 stdin 读取 UTF-8 NDJSON，stdout 只输出完整单行 JSON-RPC 2
 支持传输的 Provider 返回：
 
 ```json
-{"jsonrpc":"2.0","id":"session:initialize","result":{"protocolVersion":1,"providerVersion":"0.2.3","capabilities":{"invoke":true},"operations":["powers.list.v1","powers.inspect.v1","powers.install.v1","powers.uninstall.v1"]}}
+{"jsonrpc":"2.0","id":"session:initialize","result":{"protocolVersion":1,"providerVersion":"0.3.4","capabilities":{"invoke":true},"operations":["powers.list.v1","powers.inspect.v1","powers.install.v1","powers.uninstall.v1","powers.custom.list.v1","powers.upload.v1","powers.delete.v1","settings.get.v1","settings.update.v1"]}}
 ```
 
 初始化前拒绝 `bibit.invoke`。Provider 只声明 `invoke`，不声明 v2 的 `jobs`/`cancellation`/`maxConcurrentJobs`。`bibit.shutdown` 通知结束会话，`bibit.cancel`（v2 保留字）在 v1 会话中被忽略。
@@ -122,6 +122,112 @@ apm uninstall demo --agent=bibit --type=skill
 - apm 启动失败（含不存在）→ `{status:"unavailable"}`；
 - 安装的 `version` 必须是规范版本 `v<major>.<minor>.<patch>`，卸载/详情不带 version；`name` 必须满足 APM 规范命名（1–64 字节小写 kebab）。
 
+### 3.5 powers.custom.list.v1
+
+```json
+{"jsonrpc":"2.0","id":"req-5","method":"bibit.invoke","params":{"serviceId":"store","operationId":"powers.custom.list.v1","params":{"agent":"bibit"},"timeoutMs":30000}}
+```
+
+参数是闭集 `{agent}`，agent 必须是四个已安装 Agent 之一。Provider 只做文件系统扫描，不调用 apm，因此没有超时风险，也不需要网络。
+
+结果携带原始 JSON 文本 `itemsJson`（前端解析，Provider 不做业务聚合）：
+
+```text
+{scope:"custom", status:"data", itemsJson:"{\"items\":[…],\"skipped\":[…]}"}
+```
+
+扫描目录（`userHome` 下的相对路径，与 APM 的 Agent 目录一致）：
+
+| Agent | 根目录 | 类型 |
+| --- | --- | --- |
+| `bibit` | `.bianbu-agent` | `skills/`、`plugins/`、`agents/` |
+| `codex` | `.codex` | `skills/` |
+| `claude-code` | `.claude` | `skills/` |
+| `hermes-agent` | `.hermes` | `skills/`、`plugins/` |
+
+身份取**目录名**，必须满足 APM 命名规范（1–64 字节小写 kebab，不以 `-` 开头/结尾，不含 `--`）；以 `.` 开头的目录直接忽略。权威文件按类型固定：
+
+| 类型 | 目录 | 权威文件（优先级） | 主流最低要求 |
+| --- | --- | --- | --- |
+| skill | `skills/` | `SKILL.md` | frontmatter 是映射，且 `name`、`description` 均非空 |
+| plugin | `plugins/` | `apc-plugin.json`、`plugin.yaml`、`.claude-plugin/plugin.json`、`.codex-plugin/plugin.json` | 清单至少有非空 `name` |
+| agent | `agents/` | `agent.yaml` | 至少有非空 `agent.name` |
+
+判定规则：
+
+- **跳过还是纳入**以「能否解析出最低要求」为准，不要求满足 Power 资源 schema（`schema_version`、展示字段、长度上限等都不检查）；上传才由 `apm validate` 按 v2 严格要求。
+- 目录名不合规范、以 `.` 开头、不是目录（或指向目录的符号链接）→ 完全不出现在结果里（不报 warning）。
+- 看起来是候选但缺权威文件（如 Plugin 目录只有 `skills/`）→ `skipped` 项，`reason: "missing-authority-file"`，`expected` 是该类型的主权威文件名。
+- 权威文件存在但低于最低要求、前半段不是 YAML 映射、非法 UTF-8 或超过 64 KiB → `skipped`，`reason: "invalid-authority-file"`。
+- `version` 只接受 `v<major>.<minor>.<patch>`（不带 `v` 前缀时补上）；其它写法或缺失一律置 `""`，前端显示占位符，绝不猜测版本。
+- 类型目录可以是符号链接（会跟随）；单个资源目录也可以是符号链接（会跟随读取）。
+- 上限：每类型目录 200 项、总条目 1000、单文件 64 KiB、`skipped` 最多 20 条。
+- 同 `(type,name)` 同时存在于 APM 清单时，**前端**以 APM 清单为准（Provider 不读取清单，也不做去重）。
+
+### 3.6 powers.upload.v1
+
+```json
+{"jsonrpc":"2.0","id":"req-6","method":"bibit.invoke","params":{"serviceId":"store","operationId":"powers.upload.v1","params":{"agent":"bibit","type":"skill","name":"demo","message":"Publish the local demo skill"},"timeoutMs":120000}}
+```
+
+参数是闭集 `{agent,type,name,message}`：绝不携带路径。`message` 必须是单行、≤200 字符且非空（apm `submit` 必填）。Provider 侧重新解析目标路径（`ResolveCustomTarget`：规范名、该 Agent 支持的类型、类型目录必须是目录、解析结果必须是类型目录的直接子项），任何一步不满足即 `incompatible`。
+
+固定 argv（无 shell，先校验后提交）：
+
+```text
+apm validate <resolvedPath> --type=skill --json
+apm submit   <resolvedPath> --type=skill --message=<message>
+```
+
+凭据：从 `settings.json` 读取 APC API Key，通过环境变量注入子进程（`APC_API_KEY`，配置了 `--apc-root-url` 时额外注入 `APC_BASE_URL`）。未配置 Key 时直接返回 `unauthorized`，**不启动 apm**。Key 不会出现在结果里：失败原因会先把 Key 替换为 `***`、去掉 ANSI 转义与控制字符、压成单行并截断到 300 字节。
+
+结果：
+
+```text
+{status:"exited", exitCode:0, stage:"submit", stdout:"outcome: accepted\nsubmission_id: …"}
+{status:"exited", exitCode:N, stage:"validate", reason:"<清洗后的原因>"}
+{status:"exited", exitCode:N, stage:"submit",   reason:"<清洗后的原因>"}
+```
+
+`validate` 非零退出时不会执行 `submit`。非零退出是**正常结果**而不是 RPC 错误。
+
+`reason` 的来源按 apm 自身约定决定：**成功**的 `validate`/`submit` 把业务结果写到 stdout，**失败**时只在 stderr 写一行 slog logfmt 日志（`level=ERROR msg="command failed" error="…"`）并在其后打印 Cobra usage。因此 Provider 有界收集 stdout（4 MiB）与 stderr（8 KiB），失败时只取 stderr 那一行的 `error` 属性值作为原因，usage 块、`level=ERROR` 前缀和 Go 错误包装都不会进入结果；拿不到 `error` 属性时才回退到 stdout，最后才回退到整段 stderr。两条流都会先做凭据替换与控制字符清洗。前端拿到非零结果时优先显示 apm 的原因（`Upload failed: {reason}`），没有原因时按 stage 显示固定文案。
+
+### 3.7 powers.delete.v1
+
+```json
+{"jsonrpc":"2.0","id":"req-7","method":"bibit.invoke","params":{"serviceId":"store","operationId":"powers.delete.v1","params":{"agent":"bibit","type":"skill","name":"demo"},"timeoutMs":120000}}
+```
+
+参数是闭集 `{agent,type,name}`（不带 version），按与上传相同的规则解析路径后执行系统删除语义（Go `os.RemoveAll`）：
+
+- 只删类型目录下的**直接子项**，且必须是目录或指向目录的符号链接；文件、越界名、未知 Agent/类型一律 `incompatible`；
+- 资源目录本身是符号链接时，只删除链接，不跟随删除链接指向的内容；
+- 目标不存在时返回错误（不是静默成功），避免「以为删掉了」。
+
+结果：
+
+```text
+{status:"deleted"}
+```
+
+### 3.8 settings.get.v1 / settings.update.v1
+
+```json
+{"jsonrpc":"2.0","id":"req-8","method":"bibit.invoke","params":{"serviceId":"store","operationId":"settings.get.v1","params":{},"timeoutMs":30000}}
+{"jsonrpc":"2.0","id":"req-9","method":"bibit.invoke","params":{"serviceId":"store","operationId":"settings.update.v1","params":{"showExperimental":false,"refreshMinutes":15,"apiKey":"<APC key>"},"timeoutMs":30000}}
+```
+
+`settings.get.v1` 参数是空对象，结果是 `{showExperimental, refreshMinutes, hasApiKey}`——**永不返回 Key 本身**，只告诉页面是否已配置。`settings.update.v1` 参数是闭集：
+
+```text
+{showExperimental: bool, refreshMinutes: 5..120, apiKey?: "<printable ASCII, ≤512>"}
+```
+
+- 省略 `apiKey` → 保留已存 Key；传空串 → 清除。
+- 存储位置：`--data-dir` 指定目录（宿主通过 `BIBIT_PROVIDER_DATA_DIR` 注入 `/var/lib` 下的私有目录），否则回退 `$HOME/.local/state/bibit-agenthub/settings.json`；目录 0700、文件 0600，写入走「临时文件 + fsync + rename」；读到符号链接或损坏 JSON 一律报错，不静默覆盖。
+- `apiKey` 属于宿主 `credentialParameters` 声明范围，见第 6 节的 Registry 片段；未声明时宿主会直接拒绝该参数。
+
 ## 4. 错误闭集
 
 Provider 错误的 `data.code` 仅使用平台闭集：
@@ -139,7 +245,7 @@ provider_crashed resource_exhausted unknown
 /usr/libexec/bibit/bibit-agenthub --self-test
 ```
 
-自检离线运行 5 项子检查：初始化与 v1 协商、power operations（inspect/install/uninstall 的 argv 与结果形状）、纯 v2 不支持路径、invoke 错误映射、malformed NDJSON（`-32700`），exit 0 表示通过。不要求真实 APM 或公网服务。
+自检离线运行 6 项子检查：初始化与 v1 协商、power operations（inspect/install/uninstall 的 argv 与结果形状）、custom resources（custom.list / upload / delete / settings.get / settings.update 的参数与结果形状，且结果不得含 `apiKey`、路径或 stderr）、纯 v2 不支持路径、invoke 错误映射、malformed NDJSON（`-32700`），exit 0 表示通过。不要求真实 APM 或公网服务。
 
 ## 6. Registry 与双 deb
 
@@ -155,13 +261,16 @@ Registry 严格对齐宿主 `RawConnectionRegistry`（serde camelCase）：
       "args": ["provider"],
       "lifecycle": "managed",
       "protocolVersions": [1],
-      "requestTimeoutMs": 120000
+      "requestTimeoutMs": 120000,
+      "credentialParameters": {
+        "settings.update.v1": ["apiKey"]
+      }
     }
   }
 }
 ```
 
-`version: 2` 只是 Registry 文件格式版本；Provider 始终协商协议 v1，`protocolVersions` 固定 `[1]`。CLI 不安装 probe。
+`version: 2` 只是 Registry 文件格式版本；Provider 始终协商协议 v1，`protocolVersions` 固定 `[1]`。`credentialParameters` 必须与 `debian/agenthub-provider.json` 保持一致：宿主的参数策略把 `apiKey` 视为凭据键，未在该 operation 下声明时 `settings.update.v1` 会被宿主直接拒绝，Provider 收不到请求。CLI 不安装 probe。
 
 构建与交叉构建：
 
@@ -187,5 +296,6 @@ CLI 包不依赖 APM 或 bi-bit；APM 缺失允许降级为 `unavailable` 而非
 
 1. `make -C provider test vet`；`make -C provider build GOARCH=riscv64` 后 `readelf -h` 确认 RISC-V。
 2. `/usr/libexec/bibit/bibit-agenthub --self-test`（或本机二进制路径）exit 0。
-3. `go run ./cmd/provider-probe --executable <binary> --scope market` 记录 snapshot，再用该 snapshot 复调确认 `not_modified`。
-4. 板端安装两包后，宿主协商 `protocol=1`，页面 installed/market 真实数据、翻页/筛选每次 version 检查、缓存命中不下载全量，详情与安装/卸载走 `apm`（读 30s / 写 120s）。
+3. `go run ./cmd/provider-probe --executable <binary> --scope market` 记录 snapshot，再用该 snapshot 复调确认 `not_modified`；`--scope custom` 走 `powers.custom.list.v1`，`--operation settings.get.v1` 检查 `hasApiKey`。
+4. 临时 home 下放一个只含 `name`/`description` 的 `~/.codex/skills/<name>/SKILL.md`，用 `--scope custom --agent codex` 确认被列出；删掉 `description` 后确认进入 `skipped` 且 `reason` 为 `invalid-authority-file`。
+5. 板端安装两包后，宿主协商 `protocol=1`，页面 installed/market 真实数据、翻页/筛选每次 version 检查、缓存命中不下载全量，详情与安装/卸载走 `apm`（读 30s / 写 120s）；自定义资源在「我的 Power」中带 `Custom` 标记显示，弹窗可上传/删除。

@@ -34,7 +34,7 @@ function makeStoreHost(respond?: (input: StoreRequest) => unknown): {
     async request<TResult>(input: StoreRequest): Promise<TResult> {
       calls.push(input)
       if (respond) return (await respond(input)) as TResult
-      return { showExperimental: false, refreshMinutes: 15 } as TResult
+      return { showExperimental: false, refreshMinutes: 15, hasApiKey: false } as TResult
     },
   }
   function getCapability<K extends FeatureHostCapability>(
@@ -126,7 +126,7 @@ describe('AgentHubSettingsPage', () => {
     const user = userEvent.setup()
     const { hostApi } = makeStoreHost((input) => {
       if (input.operationId === 'settings.update.v1') throw new Error('write rejected')
-      return { showExperimental: true, refreshMinutes: 30 }
+      return { showExperimental: true, refreshMinutes: 30, hasApiKey: false }
     })
     renderSettings(hostApi, 'zh-CN')
 
@@ -134,6 +134,90 @@ describe('AgentHubSettingsPage', () => {
     await user.click(screen.getByRole('button', { name: '保存设置' }))
 
     expect(await screen.findByText('无法保存 Agent Hub 设置。')).toBeTruthy()
+  })
+
+  it('reports whether an APC API key is configured without ever showing it', async () => {
+    const { hostApi } = makeStoreHost(() => ({
+      showExperimental: false,
+      refreshMinutes: 15,
+      hasApiKey: true,
+    }))
+    renderSettings(hostApi, 'en')
+
+    expect((await screen.findByTestId('api-key-state')).textContent).toBe('Configured')
+    const field = screen.getByLabelText('APC API Key') as HTMLInputElement
+    expect(field.type).toBe('password')
+    expect(field.value).toBe('')
+  })
+
+  it('sends apiKey only after a user edit, and clears it through the save', async () => {
+    const user = userEvent.setup()
+    const { hostApi, calls } = makeStoreHost((input) =>
+      input.operationId === 'settings.update.v1'
+        ? { showExperimental: false, refreshMinutes: 15, hasApiKey: true }
+        : { showExperimental: false, refreshMinutes: 15, hasApiKey: false }
+    )
+    renderSettings(hostApi, 'en')
+    await screen.findByText('Settings synchronized.')
+
+    // An untouched field must not appear in the update at all.
+    await user.click(screen.getByRole('button', { name: 'Save settings' }))
+    await screen.findByText('Settings saved.')
+    const firstUpdate = calls.find((call) => call.operationId === 'settings.update.v1')
+    expect(firstUpdate?.params).toEqual({ showExperimental: false, refreshMinutes: 15 })
+    expect('apiKey' in (firstUpdate?.params as Record<string, unknown>)).toBe(false)
+
+    await user.type(screen.getByLabelText('APC API Key'), 'apc-secret')
+    await user.click(screen.getByRole('button', { name: 'Save settings' }))
+    await screen.findByText('Settings saved.')
+    const updates = calls.filter((call) => call.operationId === 'settings.update.v1')
+    expect(updates[updates.length - 1].params).toMatchObject({ apiKey: 'apc-secret' })
+
+    // Clearing sends the empty string, which the provider treats as "remove".
+    await user.click(screen.getByRole('button', { name: 'Clear saved key' }))
+    await user.click(screen.getByRole('button', { name: 'Save settings' }))
+    await screen.findByText('Settings saved.')
+    const afterClear = calls.filter((call) => call.operationId === 'settings.update.v1')
+    expect(afterClear[afterClear.length - 1].params).toMatchObject({ apiKey: '' })
+  })
+
+  it('keeps the typed key out of the rendered document', async () => {
+    const user = userEvent.setup()
+    const { hostApi } = makeStoreHost()
+    renderSettings(hostApi, 'en')
+    await screen.findByText('Settings synchronized.')
+
+    const field = screen.getByLabelText('APC API Key') as HTMLInputElement
+    await user.type(field, 'apc-secret')
+    expect(field.value).toBe('apc-secret')
+    // The value lives only in the password field; nothing else renders it.
+    expect(screen.queryByText('apc-secret')).toBeNull()
+    const textOutsideTheField = Array.from(document.querySelectorAll('p, span, small, strong'))
+      .map((node) => node.textContent ?? '')
+      .join(' ')
+    expect(textOutsideTheField).not.toContain('apc-secret')
+  })
+
+  it('prevents a double submit while a save is in flight', async () => {
+    const user = userEvent.setup()
+    let resolveSave!: (value: unknown) => void
+    const { hostApi, calls } = makeStoreHost((input) => {
+      if (input.operationId === 'settings.update.v1') {
+        return new Promise((resolve) => (resolveSave = resolve))
+      }
+      return { showExperimental: false, refreshMinutes: 15, hasApiKey: false }
+    })
+    renderSettings(hostApi, 'en')
+    await screen.findByText('Settings synchronized.')
+
+    const saveButton = screen.getByRole('button', { name: 'Save settings' }) as HTMLButtonElement
+    await user.click(saveButton)
+    await waitFor(() => expect(saveButton.disabled).toBe(true))
+    await user.click(saveButton)
+
+    expect(calls.filter((call) => call.operationId === 'settings.update.v1')).toHaveLength(1)
+    resolveSave({ showExperimental: false, refreshMinutes: 15, hasApiKey: false })
+    await screen.findByText('Settings saved.')
   })
 
   it('reports a localized read failure', async () => {
