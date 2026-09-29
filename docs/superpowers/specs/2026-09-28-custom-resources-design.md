@@ -18,6 +18,7 @@ Provider Protocol 保持 v1，Registry 保持 version 2 / managed / protocolVers
 | `mcp` | 本期跳过。apm 不为 MCP 维护目录，无法扫描 |
 | `scope` | 不新增 scope，合并进「我的 Power」，卡片打 `Custom` 标记 |
 | `validation` | 显示取「Provider 轻量解析（v1/v2 都接受）+ 主流最低格式」；不满足最低要求时给出 warning，而不是静默丢弃 |
+| `title` | 卡片标题取展示名（`name_zh` → `name_en` → 资源声明的 `name`），目录名只作身份；扫描器在资源未声明 `name_en` 时把权威文件的 `name` 投影到 `name_en` |
 | `upload` | 上传仍走 apm：`apm validate` → `apm submit`，Key 经环境变量注入；因此上传要求资源满足 Power 格式 v2 |
 | `settings` | Provider 自己实现 `settings.get.v1` / `settings.update.v1` 持久化，新增 `apiKey`，结果只回传 `hasApiKey` |
 | 交互 | 上传/删除按钮与「安装」一致放进卡片弹窗；卡片上只做来源区分，不放写按钮 |

@@ -17,12 +17,13 @@
 
 改动：
 
+- 修复：自定义卡片的标题不再显示目录名。扫描器只把权威文件的 `name` 用于最低格式校验后即丢弃，于是缺 `name_zh`/`name_en` 的资源退回到身份名（目录名）。现在扫描器在资源未声明 `name_en` 时把声明的 `name` 投影到 `name_en`（skill/plugin 用 `name`，agent 用 `agent.name`），`name_zh` 仍优先、已声明的 `name_en` 不被覆盖；目录名保持为身份，继续用于去重与上传/删除目标解析。板端真实数据（`vi-coder` → `vibe-coder`、`space-power` → `spacemit-power`）已在两端复现并验证修复。
 - 前端：`src/AgentHubPage.tsx`（`runCustomAction` 新增 `closeOnSuccess`；`tab` 状态与 `changeTab`；载入 effect 在设置标签下提前返回；`closeDetails` 改为 `useCallback`）、`src/components/PowerFilters.tsx`（导出 `PowerTab = PowerScope | 'settings'`，props 由 `scope/onScopeChange` 改为 `tab/onTabChange`，设置标签下不渲染 Type/Tags 面板）、`src/components/AgentHubSettingsPanel.tsx`（新，由 `AgentHubSettingsPage.tsx` 迁移并只保留 APC API Key）、`src/feature.tsx` 与 `bibit.feature.json`（移除 settings contribution）、`src/agentHubI18n.tsx`（新增 `Settings`；改写 unauthorized 文案；删除只服务于已删字段的 6 个键；`agentHubLocales` 去掉 `settings`）、`src/agentHub.css`（`.agent-hub-settings` → `.agent-hub-settings-panel`，改为页内卡片面板）。
 - 删除：`src/AgentHubSettingsPage.tsx`、`src/AgentHubSettingsPage.test.tsx`。
 - 测试：新增 `src/components/AgentHubSettingsPanel.test.tsx`（12 例）；`AgentHubPage.test.tsx` 新增设置标签 2 例与删除失败 1 例、改写删除成功用例（弹窗关闭 + 无提示）与 unauthorized 文案；`PowerFilters.test.tsx` 新增设置标签 2 例；`feature.test.ts` / `agentHubI18n.test.tsx` / `agentHubLayout.test.ts` 同步。
 - 版本：`package.json`、`package-lock.json`、`bibit.feature.json`、`providerVersion` 统一提升到 `0.3.6`。
 
-门禁：`npm test` 456/456（25 个文件）、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin`、`make -C provider test vet build`、`--self-test` exit 0。反向验证 8 项，其中 2 项首次未生效（CSS 变异打到了 `.power-filters__panel`；`savingRef` 在同 tick 内不可从 DOM 触达，实际生效的是按钮的 `disabled={saving …}` 绑定），已分别纠正为打中目标规则与绑定后确认失败。详见 `docs/verification/2026-09-29-settings-tab-and-delete-return.md`。
+门禁：`npm test` 459/459（25 个文件）、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin`、`make -C provider test vet build`（Provider 117 例）、`--self-test` exit 0。反向验证 10 项（含标题兜底 2 项），其中 2 项首次未生效（CSS 变异打到了 `.power-filters__panel`；`savingRef` 在同 tick 内不可从 DOM 触达，实际生效的是按钮的 `disabled={saving …}` 绑定），已分别纠正为打中目标规则与绑定后确认失败。详见 `docs/verification/2026-09-29-settings-tab-and-delete-return.md`。
 
 ## 2026-09-28 — 自定义（手动安装）资源：展示、APC 上传与本地删除（0.3.4）
 

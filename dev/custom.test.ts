@@ -61,6 +61,26 @@ describe('readCustom', () => {
     })
   })
 
+  it('shows the declared name instead of the directory for a v1 resource', () => {
+    withHome((home) => {
+      // Directory and declared name disagree, and there are no v2 display fields.
+      writeFile(home, '.bianbu-agent/skills/vi-coder/SKILL.md', '---\nname: vibe-coder\ndescription: Vibe.\n---\n')
+      // A real name_en still wins; name_zh alone must not become name_en.
+      writeFile(
+        home,
+        '.bianbu-agent/skills/en-only/SKILL.md',
+        '---\nname: en-only\ndescription: D.\nname_en: English Display\n---\n'
+      )
+      writeFile(home, '.bianbu-agent/skills/zh-only/SKILL.md', '---\nname: zh-only\ndescription: D.\nname_zh: 中文名\n---\n')
+
+      const byName = new Map(scan(home, 'bibit').items.map((item) => [item.name, item]))
+      expect(byName.get('vi-coder')).toMatchObject({ name_en: 'vibe-coder' })
+      expect(byName.get('vi-coder')?.name_zh).toBeUndefined()
+      expect(byName.get('en-only')).toMatchObject({ name_en: 'English Display' })
+      expect(byName.get('zh-only')).toMatchObject({ name_zh: '中文名', name_en: 'zh-only' })
+    })
+  })
+
   it('lists a plugin from apc-plugin.json and an agent from agent.yaml', () => {
     withHome((home) => {
       writeFile(

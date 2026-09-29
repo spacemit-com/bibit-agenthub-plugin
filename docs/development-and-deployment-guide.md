@@ -831,9 +831,10 @@ Provider 通过 `powers.custom.list.v1` 扫描固定目录，**不调用 apm、�
 | `claude-code` | `.claude` | skill `skills/` |
 | `hermes-agent` | `.hermes` | skill `skills/`、plugin `plugins/` |
 
-- **身份取目录名**，必须满足 APM 规范命名；以 `.` 开头的目录忽略，不是目录（含指向目录的符号链接以外的项）忽略。这些情况**不产生 warning**。
+- **身份取目录名**，必须满足 APM 规范命名；以 `.` 开头的目录忽略，不是目录（含指向目录的符号链接以外的项）忽略。这些情况**不产生 warning**。身份与展示名是两件事，见下一条。
 - 权威文件：skill = `SKILL.md`；plugin = `apc-plugin.json` / `plugin.yaml` / `.claude-plugin/plugin.json` / `.codex-plugin/plugin.json`；agent = `agent.yaml`。
 - **显示门槛（低于上传门槛）**：skill 只要 frontmatter 是 YAML 映射且 `name`、`description` 非空；plugin 清单只要有非空 `name`；agent 只要有非空 `agent.name`。**不要求**满足 Power 资源 schema（`schema_version`、展示字段、长度限制等一律不检查），v1 与 v2 都按同一最低要求处理。
+- **卡片标题**用展示名而不是目录名：扫描器把权威文件里声明的 `name` 投影到 `name_en`（仅在资源自己没有 `name_en` 时），前端仍按 `name_zh → name_en → name` 回退。因此 v1 资源显示作者声明的名字，而不是它恰好所在的目录；中文宿主仍优先 `name_zh`，英文宿主不看中文。目录名始终只是**身份**（APM 调用名），用于去重、上传与删除的目标解析，从不作为标题。
 - 低于门槛 / frontmatter 不是映射 / 非法 UTF-8 / 超过 64 KiB → 计入 `skipped`（最多 20 条），reason 为 `invalid-authority-file`；看起来是候选但缺权威文件（如 plugin 目录只有 `skills/`）→ `missing-authority-file`，`expected` 给出该类型主权威文件名。前端把每条 `skipped` 渲染为页面 warning，**不阻断列表**。
 - `version` 只接受规范 `v<x>.<y>.<z>`（缺 `v` 前缀时补齐）；其它写法或缺失一律置空串，卡片显示占位符，不猜测版本。
 - 扫描失败（含 Provider 不支持该 operation）降级为一条 `custom-resources-unavailable` warning，installed 列表仍正常显示——旧版 CLI 因此天然兼容。
@@ -943,7 +944,7 @@ npm run typecheck
 npm run dev
 ```
 
-浏览器打开 Vite 输出地址；首页地址追加 `?lang=zh-CN` 即为中文界面，右上角下拉框可随时切换语言（不刷新页面）。Feature Dev Host 读取真实 Manifest 和 Feature Module，并通过 `dev/main.tsx` 的 `serviceConnections` 把 `powers.list.v1` / `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` / `powers.custom.list.v1` / `powers.upload.v1` / `powers.delete.v1` / `settings.get.v1` / `settings.update.v1` 路由到 Vite 中间件（`vite.config.ts` → `dev/store.ts`）提供的 Store。`scope=installed` 会真实执行 PATH 中的 `apm list --installed --agent=<selected> --json`（身份记录）；详情/安装/卸载分别执行 `apm list <name> --installed ...` / `apm install <name>=<version> ...` / `apm uninstall <name> ...`（argv 与 Go Provider 一致，读 30s / 写 120s）；`scope=market` 会每次请求真实拉取 APC 公开目录（`GET /resources/version` 取快照 + `GET /resources` 跟随重定向取全量列表），再按 `type` 过滤聚合；`settings.get.v1` / `settings.update.v1` 使用内存设置（`apiKey` 只保留在 dev 进程内，只回传 `hasApiKey`）；`powers.custom.list.v1` 扫描**本机真实 home**（`dev/custom.ts` 复刻 Provider 的目录与最低格式规则），`powers.upload.v1` / `powers.delete.v1` 分别调用本机 `apm validate` + `apm submit` 与真实删除。此模式不启动、不编译 Bibit，也不要求远程 Store 后端在线；未安装 `apm` 时 installed 页显示可重试的 unavailable 错误，APC 不可达时 market 页显示可重试的 unavailable 错误。
+浏览器打开 Vite 输出地址；首页地址追加 `?lang=zh-CN` 即为中文界面，右上角下拉框可随时切换语言（不刷新页面）。Feature Dev Host 读取真实 Manifest 和 Feature Module，并通过 `dev/main.tsx` 的 `serviceConnections` 把 `powers.list.v1` / `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` / `powers.custom.list.v1` / `powers.upload.v1` / `powers.delete.v1` / `settings.get.v1` / `settings.update.v1` 路由到 Vite 中间件（`vite.config.ts` → `dev/store.ts`）提供的 Store。`scope=installed` 会真实执行 PATH 中的 `apm list --installed --agent=<selected> --json`（身份记录）；详情/安装/卸载分别执行 `apm list <name> --installed ...` / `apm install <name>=<version> ...` / `apm uninstall <name> ...`（argv 与 Go Provider 一致，读 30s / 写 120s）；`scope=market` 会每次请求真实拉取 APC 公开目录（`GET /resources/version` 取快照 + `GET /resources` 跟随重定向取全量列表），再按 `type` 过滤聚合；`settings.get.v1` / `settings.update.v1` 使用内存设置（`apiKey` 只保留在 dev 进程内，只回传 `hasApiKey`）；`powers.custom.list.v1` 扫描**本机真实 home**（`dev/custom.ts` 复刻 Provider 的目录、最低格式与展示名兜底规则），`powers.upload.v1` / `powers.delete.v1` 分别调用本机 `apm validate` + `apm submit` 与真实删除。此模式不启动、不编译 Bibit，也不要求远程 Store 后端在线；未安装 `apm` 时 installed 页显示可重试的 unavailable 错误，APC 不可达时 market 页显示可重试的 unavailable 错误。
 
 market 每次点击类型/标签、翻页都重新拉取并解析 APC 全量列表（无本地 fixture、无跨请求缓存），覆盖 skill / plugin / mcp / agent 四种 Power 类型；installed 由真实 apm 输出驱动，Agent 菜单固定为 bibit / codex / claude-code / hermes-agent 四个选项。两种 scope 复用同一套筛选、聚合、分页、facets 与 snapshot 规则，与未来 Remote Store 一致。
 

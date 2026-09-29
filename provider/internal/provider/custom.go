@@ -393,12 +393,24 @@ func parseAuthorityMapping(path, contents string) (map[string]string, bool) {
 // MAJOR.MINOR.PATCH version to the canonical v-prefixed form. A version that is
 // not canonical is treated as undeclared rather than shown as-is, because the
 // frontend version slot and the DTO both expect a canonical value.
+//
+// The authority file's own `name` becomes the English display name when the
+// resource declares no `name_en`. A V1 resource carries only that one name, and
+// it is the name its author chose: the card must show it rather than the
+// directory the resource happens to sit in, which is only the APM call name this
+// scanner uses for identity. A resource that does declare `name_en` keeps it, and
+// `name_zh` still wins on a Chinese host. Every type's minimum-format gate above
+// has already rejected a blank `name`, so the fallback is never empty.
 func authorityFromFields(fields map[string]string, prefix string) parsedAuthority {
+	nameEN := strings.TrimSpace(fields[prefix+"name_en"])
+	if nameEN == "" {
+		nameEN = strings.TrimSpace(fields[prefix+"name"])
+	}
 	return parsedAuthority{
 		version:       normalizeAuthorityVersion(fields[prefix+"version"]),
 		description:   strings.TrimSpace(fields[prefix+"description"]),
 		nameZH:        strings.TrimSpace(fields[prefix+"name_zh"]),
-		nameEN:        strings.TrimSpace(fields[prefix+"name_en"]),
+		nameEN:        nameEN,
 		descriptionZH: strings.TrimSpace(fields[prefix+"description_zh"]),
 	}
 }

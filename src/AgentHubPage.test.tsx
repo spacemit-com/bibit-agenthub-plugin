@@ -1062,6 +1062,44 @@ describe('AgentHubPage custom resources', () => {
     expect(screen.getAllByLabelText('Version')).toHaveLength(1)
   })
 
+  it('shows the declared name of a v1 resource instead of its directory name', async () => {
+    // The scanner reports identity (directory) and the display fallback
+    // separately, so the card must render the name its author declared.
+    const item = { ...customItem, name: 'vi-coder', name_en: 'vibe-coder' }
+    const { hostApi } = makeStoreHost((input) =>
+      input.operationId === 'powers.custom.list.v1'
+        ? customData(JSON.stringify({ items: [item], skipped: [] }))
+        : installedData('[]')
+    )
+    const view = renderLocalizedPage(hostApi, 'en')
+
+    expect(await screen.findByRole('heading', { name: 'vibe-coder' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'vi-coder' })).toBeNull()
+
+    // Switching language must not resurrect the directory name.
+    rerenderLocalizedPage(view, hostApi, 'zh-CN')
+
+    expect(screen.getByRole('heading', { name: 'vibe-coder' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'vi-coder' })).toBeNull()
+  })
+
+  it('prefers name_zh over the declared name on a Chinese host', async () => {
+    const item = { ...customItem, name: 'zh-dir', name_zh: '中文名', name_en: 'Declared Name' }
+    const { hostApi } = makeStoreHost((input) =>
+      input.operationId === 'powers.custom.list.v1'
+        ? customData(JSON.stringify({ items: [item], skipped: [] }))
+        : installedData('[]')
+    )
+    const view = renderLocalizedPage(hostApi, 'zh-CN')
+
+    expect(await screen.findByRole('heading', { name: '中文名' })).toBeTruthy()
+    // An English host never sees Chinese, and still gets the declared name.
+    rerenderLocalizedPage(view, hostApi, 'en')
+
+    expect(screen.getByRole('heading', { name: 'Declared Name' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: '中文名' })).toBeNull()
+  })
+
   it('renders the scan warnings as translated text', async () => {
     const { hostApi } = makeStoreHost((input) =>
       input.operationId === 'powers.custom.list.v1' ? customData(skippedDocument) : installedData(codeReviewList)

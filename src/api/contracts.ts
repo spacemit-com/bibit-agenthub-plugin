@@ -619,8 +619,11 @@ export function parsePowersWireResult(value: unknown): PowersWireResult {
 
 /**
  * One hand-installed resource as the scanner reports it. Identity is the
- * directory name; `name` in the authority file is display-only, so a mismatch is
- * not an error here. `version` may be empty when the file declares none.
+ * directory name; the `name` declared in the authority file is display-only, so a
+ * mismatch is not an error. The scanner projects that declared name into
+ * `name_en` when the resource declares no `name_en`, which is what keeps a V1
+ * resource's card from showing the directory it happens to sit in.
+ * `version` may be empty when the file declares none.
  */
 export interface CustomResourceRecord {
   type: PowerType

@@ -103,6 +103,65 @@ func TestScanCustomSkillReadsDisplayAndVersionFields(t *testing.T) {
 	}
 }
 
+// TestScanCustomSkillFallsBackToDeclaredName pins the display name of a V1
+// resource: it declares only `name`, and the card must show that instead of the
+// directory it sits in, which is only the APM call name this scanner uses for
+// identity. `name_zh` still wins for a Chinese host, and a real `name_en` is
+// never overridden.
+func TestScanCustomSkillFallsBackToDeclaredName(t *testing.T) {
+	home := t.TempDir()
+	// Directory name and the declared name disagree; no v2 display fields.
+	writeResourceFile(t, home, ".bianbu-agent/skills/vi-coder/SKILL.md",
+		"---\nname: vibe-coder\ndescription: Vibe coding.\n---\nbody\n")
+	// A declared name_en wins over the declared `name`.
+	writeResourceFile(t, home, ".bianbu-agent/skills/en-only/SKILL.md",
+		"---\nname: en-only\ndescription: Has a display name.\nname_en: English Display\n---\nbody\n")
+	// name_zh wins on a Chinese host but must not become name_en.
+	writeResourceFile(t, home, ".bianbu-agent/skills/zh-only/SKILL.md",
+		"---\nname: zh-only\ndescription: 中文展示名。\nname_zh: 中文名\n---\nbody\n")
+
+	document := scanCustom(t, home, "bibit")
+	if len(document.Items) != 3 {
+		t.Fatalf("expected three items, got %+v", document.Items)
+	}
+	byName := map[string]customResourceJSON{}
+	for _, item := range document.Items {
+		byName[item.Name] = item
+	}
+
+	if got := byName["vi-coder"]; got.NameEN != "vibe-coder" || got.NameZH != "" {
+		t.Fatalf("v1 fallback = %+v, want name_en vibe-coder and no name_zh", got)
+	}
+	if got := byName["en-only"]; got.NameEN != "English Display" {
+		t.Fatalf("declared name_en was overridden: %+v", got)
+	}
+	if got := byName["zh-only"]; got.NameZH != "中文名" || got.NameEN != "zh-only" {
+		t.Fatalf("zh-only = %+v, want name_zh 中文名 and name_en fallback zh-only", got)
+	}
+}
+
+// TestScanCustomPluginAndAgentFallBackToDeclaredName covers the other two types:
+// both gates read a namespaced or manifest name, and both must reach the card.
+func TestScanCustomPluginAndAgentFallBackToDeclaredName(t *testing.T) {
+	home := t.TempDir()
+	writeResourceFile(t, home, ".bianbu-agent/plugins/container/apc-plugin.json",
+		`{"name":"local-bundle","description":"Local bundle."}`)
+	writeResourceFile(t, home, ".bianbu-agent/agents/agent-dir/agent.yaml",
+		"agent:\n  name: default-bianbu\n  description: Demo agent.\n")
+
+	document := scanCustom(t, home, "bibit")
+	byName := map[string]customResourceJSON{}
+	for _, item := range document.Items {
+		byName[item.Name] = item
+	}
+	if got := byName["container"]; got.NameEN != "local-bundle" {
+		t.Fatalf("plugin fallback = %+v, want name_en local-bundle", got)
+	}
+	if got := byName["agent-dir"]; got.NameEN != "default-bianbu" {
+		t.Fatalf("agent fallback = %+v, want name_en default-bianbu", got)
+	}
+}
+
 func TestScanCustomSkipsWithReasons(t *testing.T) {
 	home := t.TempDir()
 	// name present, description missing -> below the mainstream minimum.

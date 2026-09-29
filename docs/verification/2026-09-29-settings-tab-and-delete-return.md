@@ -80,8 +80,10 @@ dpkg-buildpackage -us -uc -b -a riscv64 -d
 
 | 产物 | sha256 | 说明 |
 | --- | --- | --- |
-| `bibit-agenthub-plugin_0.3.6_all.deb` | `af4da9478066ef006e86eeaad115d75a973fe7e704830f521919b884bdcb1396` | `Depends: bibit-agenthub-cli (= 0.3.6), agent-power-manager` |
-| `bibit-agenthub-cli_0.3.6_riscv64.deb` | `d0a053f52d63c8a709febe1abe7c105cc19b44770845f035ab31f75346f52a6a` | `Architecture: riscv64` |
+| `bibit-agenthub-plugin_0.3.6_all.deb` | `f491201a0740d5f6f913d409a72fce8193f75aa1038dc6d45f9b38936fa214f8` | `Depends: bibit-agenthub-cli (= 0.3.6), agent-power-manager` |
+| `bibit-agenthub-cli_0.3.6_riscv64.deb` | `7b656dc185f9e2beeee943257dc24003f3b00fd6cd76ed9c6c0d35ae1bfa0a57` | `Architecture: riscv64` |
+
+（这两组哈希是**含第 7 节追加修复**的最终构建；修复前的构建为 `af4da947…` / `d0a053f5…`，已作废。插件 deb 哈希变化来自 `src/api/contracts.ts` 的文档注释改动，Provider deb 变化来自兜底实现本身。）
 
 解包核对：
 
@@ -98,6 +100,53 @@ dpkg-buildpackage -us -uc -b -a riscv64 -d
 - **真实 APC 提交**：仍需有效 Key；此前 0.3.4 只跑到用假 Key 被 APC 拒绝 401。
 - **宿主缓存旧 manifest 的收敛**：源码层面已核对空 settings 数组在 `registry.ts`、`trustedPluginLoader`、SDK `registerGroup` 上均为 no-op；板端仍以「重启 GUI 后设置子菜单条目消失」作为验收项。
 
-## 7. 提交状态
+## 7. 追加修复：自定义卡片显示资源声明的名字（同属 0.3.6）
 
-本次改动在验证时仍未提交（`git status` 显示 12 个修改 + 2 个新增 + 2 个删除）。`APC-API.md` 的改动是 2026-09-09 遗留的无关重排，未纳入本次工作。
+用户报告：不符合 v2（缺 `name_zh`/`name_en`）的资源，卡片显示的是目录名而不是文件里的 `name`。根因是扫描器只把权威文件的 `name` 用于最低格式校验，随后丢弃（`parsedAuthority` / `authorityFromFields` 只投影 version/description/展示字段），于是标题链 `name_zh → name_en → name` 落到了身份名（目录名）上。
+
+按确认的方案 B 修复：扫描器在资源未声明 `name_en` 时，把权威文件声明的 `name` 投影到 `name_en`；`name_zh` 仍然优先，已声明的 `name_en` 不被覆盖。目录名保持为身份（APM 调用名），继续用于去重与上传/删除目标解析。三种类型全部覆盖（skill/plugin 用各自的 `name`，agent 用 `agent.name`）。
+
+改动：`provider/internal/provider/custom.go`（`authorityFromFields`）、`dev/custom.ts`（`fieldsToAuthority` 镜像）、`src/api/contracts.ts`（`CustomResourceRecord` 文档）、`provider/internal/provider/custom_test.go`（+2 例）、`dev/custom.test.ts`（+1 例）、`src/AgentHubPage.test.tsx`（+2 例）、README / 开发指南 §10.6.1 / 设计 spec。版本仍为 0.3.6。
+
+### 板端真实数据的端到端核对（本机复刻板端目录）
+
+以板上一模一样的目录布局驱动真实 provider 二进制（riscv64 构建同源），再灌入前端真实解析器与标题解析：
+
+| 目录（身份） | 权威文件声明 | 扫描结果 | 英文宿主标题 | 中文宿主标题 |
+| --- | --- | --- | --- | --- |
+| `skills/vi-coder` | `name: vibe-coder`，无 v2 字段 | `name_en=vibe-coder` | `vibe-coder` | `vibe-coder` |
+| `skills/sing-apm` | `name: using-apm` + `name_zh`/`name_en` | 原样 | `APM Agent Handbook` | `APM 使用手册` |
+| `plugins/container` | `{"name":"local-bundle"}` | `name_en=local-bundle` | `local-bundle` | `local-bundle` |
+| `agents/agent-dir` | `agent.name: default-bianbu` | `name_en=default-bianbu` | `default-bianbu` | `default-bianbu` |
+
+### 板端 10.0.91.51 真实 home 实扫（含修复的 riscv64 二进制，未安装）
+
+```text
+agent  目录=lff-agent      name_zh=-          name_en=lff-agent
+agent  目录=test-agent     name_zh=-          name_en=test-agent
+plugin 目录=space-power    name_zh=-          name_en=spacemit-power
+plugin 目录=spacemit-power name_zh=-          name_en=spacemit-power
+skill  目录=sing-apm       name_zh=APM 使用手册  name_en=APM Agent Handbook
+skill  目录=using-apm      name_zh=APM 使用手册  name_en=APM Agent Handbook
+skill  目录=vi-coder       name_zh=-          name_en=vibe-coder
+skill  目录=vibe-coder     name_zh=-          name_en=vibe-coder
+```
+
+`vi-coder` → `vibe-coder`、`space-power` → `spacemit-power` 就是用户报的那条现象，已在板端修复。注意板上存在成对的目录（`vi-coder`/`vibe-coder`、`sing-apm`/`using-apm`、`space-power`/`spacemit-power`）各自声明同一个名字：这是用户磁盘上的两个独立资源，系列键仍是目录名，因此会显示两张同名卡片——符合"身份是目录、标题是声明名"的语义，不是重复 Bug。
+
+### 反向验证（追加 2 项）
+
+| # | 变异 | 期望失败 | 实测 |
+| --- | --- | --- | --- |
+| 9 | 去掉 Provider 的 `name` 兜底 | 两个新 Provider 用例 | 2 failed ✓ |
+| 10 | 去掉 dev 镜像的 `name` 兜底 | `dev/custom.test.ts` 新用例 | 1 failed / 10 passed ✓ |
+
+### 门禁（含本次追加）
+
+`npm test` 459/459（25 个文件）、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin`、`make -C provider test vet build`（Provider 117 例、probe 10 例）、`--self-test` exit 0、`gofmt -l provider/` 无输出。
+
+注意：`artifacts/agent-hub-0.3.6.bibit-plugin.tgz` 的 sha256 与追加修复前相同（`93b8fd5b…`）——该来源串只由 Provider 扫描结果与 DTO 决定，前端 bundle 未改动，故 deb 需要重新构建（Provider 变了）。
+
+## 8. 提交状态
+
+主体改动（设置标签页 + 删除回列表）已作为 `87ec744` 提交；第 7 节的标题兜底修复作为紧随其后的独立提交跟进。`APC-API.md` 的改动是 2026-09-09 遗留的无关重排，两次提交都未纳入。

@@ -5,6 +5,14 @@ bibit-agenthub-plugin (0.3.6) resolute-porting; urgency=medium
     and reloads the list; a failed delete still keeps the dialog open with the
     reason, and the page returns to the first page so a removed last item cannot
     leave an empty page behind.
+  * Show a hand-installed resource's declared name on its card. The scanner used
+    the authority file's name only for its minimum-format check and then dropped
+    it, so a resource without v2 display fields fell back to the directory it
+    happens to sit in. The declared name is now projected into name_en when the
+    resource declares none (skill/plugin use name, agent uses agent.name), so a V1
+    card shows what its author named it; name_zh still wins on a Chinese host and a
+    declared name_en is never overridden. The directory stays the identity used for
+    de-duplication and for upload/delete targets.
   * Move the APC credential into the Agent Hub page. The plugin no longer
     declares a settings contribution, so Bibit's Settings submenu has no Agent
     Hub entry; the page's first-level tabs are now My Powers / Power market /

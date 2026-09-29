@@ -12,7 +12,7 @@ Bibit Agent Hub 的独立前端插件 + 独立 Go CLI Provider，当前包含：
 
 Agent 选择支持 `bibit`、`codex`、`claude-code`、`hermes-agent`。Hermes 支持 Skill、MCP 和 Plugin 的列表、详情、安装与卸载，`agent` 类型仅支持 Bibit；运行环境中的 APM 需要支持 `--agent=hermes-agent`。
 
-自定义资源扫描范围与各 Agent 的能力一致：目录 `~/.bianbu-agent/{skills,plugins,agents}`（Bibit）、`~/.codex/skills`、`~/.claude/skills`、`~/.hermes/{skills,plugins}`。本期不含 MCP（APM 不为其维护目录，无法扫描），codex / claude-code 的 Plugin 由各自 CLI 管理，也不在扫描范围内。展示只需满足主流最低格式（Skill 的 `SKILL.md` frontmatter 至少有 `name`/`description`；Plugin 清单至少有 `name`；Agent 的 `agent.yaml` 至少有 `agent.name`），不满足的被跳过并在页面上给出 warning；上传仍交给 `apm validate` + `apm submit`，因此上传要求资源满足 Power 格式 v2。
+自定义资源扫描范围与各 Agent 的能力一致：目录 `~/.bianbu-agent/{skills,plugins,agents}`（Bibit）、`~/.codex/skills`、`~/.claude/skills`、`~/.hermes/{skills,plugins}`。本期不含 MCP（APM 不为其维护目录，无法扫描），codex / claude-code 的 Plugin 由各自 CLI 管理，也不在扫描范围内。展示只需满足主流最低格式（Skill 的 `SKILL.md` frontmatter 至少有 `name`/`description`；Plugin 清单至少有 `name`；Agent 的 `agent.yaml` 至少有 `agent.name`），不满足的被跳过并在页面上给出 warning。卡片标题按宿主语言取 `name_zh` → `name_en` → 资源声明的 `name`：v1 资源显示作者声明的名字，而不是它所在的目录名（目录名只是用于去重与上传/删除目标的身份）。上传仍交给 `apm validate` + `apm submit`，因此上传要求资源满足 Power 格式 v2。
 
 本期范围是 v1：installed（APM + 自定义资源）与 market（APC 全量目录）浏览、单版本安装/卸载，以及自定义资源的 APC 上传 / 本地删除（读 30s、写 120s 超时）。下载、job 与文件传输不在本期。
 

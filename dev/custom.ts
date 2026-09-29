@@ -238,7 +238,10 @@ function fieldsToAuthority(fields: Map<string, string>, prefix: string): ParsedA
     description: read('description'),
   }
   const nameZH = read('name_zh')
-  const nameEN = read('name_en')
+  // Mirrors the provider: the authority file's own name is the display fallback,
+  // because the directory is only the APM call name used for identity. Every
+  // type's minimum-format gate has already rejected a blank name.
+  const nameEN = read('name_en') || read('name')
   const descriptionZH = read('description_zh')
   if (nameZH !== '') authority.name_zh = nameZH
   if (nameEN !== '') authority.name_en = nameEN
