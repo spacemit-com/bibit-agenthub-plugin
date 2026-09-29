@@ -82,6 +82,23 @@
   letter-spacing: -.03em;
 }
 
+/* The create-resource entry sits opposite the page title. Its note is a `p`
+   inside the header, so it has to undo the eyebrow treatment above. */
+.agent-hub__create {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  max-width: 420px;
+}
+.agent-hub .agent-hub__create-note {
+  color: var(--hub-muted);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-align: right;
+}
+
 /* Base button surface: :where() zeroes the specificity of the :not() exclusion,
    so the scope-tab reset (border: 0) and every power-filters button override win. */
 .agent-hub button:where(:not(.power-filters__scope)) {

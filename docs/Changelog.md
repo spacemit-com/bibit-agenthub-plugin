@@ -1,5 +1,39 @@
 # Changelog
 
+## 2026-09-29 — Hub 页新增「创建资源」入口，借 using-apm 新建 Power（0.3.10）
+
+分类：新增功能
+
+用户需求：
+
+在 Agent Hub 页面新建一个「创建资源」按钮，点击后跳到 bibit 的新建会话，使用默认 agent，并在文本框中预填好提到 `using-apm` 的提示词；用户补充完需求后自己发送，由 bibit 内置的 `using-apm` skill 完成资源创建。
+
+上游依据与现状（本次实测确认）：
+
+- 宿主动作 `conversation.compose` 定义在 bibit 主线 `0e3d7b4f820f3a75c1ac549f4488c6f2fd45c91d`（`packages/feature-contracts/src/host-actions.ts`、`docs/feature-sdk/host-capabilities.md`），语义保证「一定新建会话、一定不发送」，输入上限 `skills ≤ 100`、`prompt ≤ 16 000`。
+- 该动作在任何已发布的 bi-bit 里都不存在：板端 K3 装的 `bi-bit 0.1.18`、仓库最新 tag `bianbu/0.1.22`、`archive.bianbu.xyz` 上可下载的 0.1.22 实测 `grep -c conversation.compose /usr/bin/bibit-gui` 均为 0。0.1.18 已登记 `host:actions` 能力与 `host:actions` grant 白名单，但动作表只有 `conversation.create`，因此点击后返回 `UNSUPPORTED`。
+
+解决方案或完成结果：
+
+- `src/api/conversationCompose.ts`（新增）：预置草稿按「一句一行」拆成 `CREATE_RESOURCE_PROMPT_LINES`，由页面用插件翻译器逐行渲染后拼成多行文本，中英文各一份；`composeResource` 只做一次 `invoke('conversation.compose', { prompt })`，并把三种结果映射成 `ComposeOutcome`。`UNSUPPORTED` 用插件文案（宿主此时给的是 `Unknown host action: …` 开发者串，不上屏）；`INVALID_INPUT` / `FAILED` 用宿主已经本地化好的 `message`；`cancelled` 是用户自己放弃，不报错。
+- `src/AgentHubPage.tsx`：页头新增「创建资源」按钮。`keep disabled` 而非「点了再报错」：`useFeatureCapability('host:actions')` 为 `undefined` 时按钮 `disabled`，并用 `aria-describedby` 指向一行说明。capability 经 `useRef` 取最新值（宿主每次 render 重建 capability 对象）；`composing` 期间禁用，保证一次点击一次调用；组件卸载后结果丢弃。`retryable` 的拒绝只加一句「请先清空输入框，再重试」，**不自动重试**。
+- 只把 `using-apm` 写进提示词，不挂临时技能 chip：板端 `using-apm` 在 `presets.skills` 里对所有专家固定启用，再挂 chip 是重复；而设备未装该技能时带 `skills` 会让整次调用以 `INVALID_INPUT` 整体失败。
+- `bibit.feature.json`：`requiredHostCapabilities` 增加 `host:actions`，版本升 0.3.10；`debian/agenthub-feature-grants.json`（`debian/rules` 装到 `/etc/bibit/feature-capability-grants.d/agenthub.json`）同步加上 `host:actions`。新增 `src/manifestGrants.test.ts` 双向比对声明与 grant：多声明或少授权都会让入口静默变灰，这条测试是发布前唯一能拦住它的地方。
+- `vendor/` 的四个 `@bibit/feature-*` 从 0.3.0 升到 0.4.0，来源提交 `0e3d7b4`，`package.json` / `package-lock.json` 同步；升级后 `conversation.compose` 的类型与 `FeatureHostActionApiV1` 才存在。对既有 store 路径零行为差异（升级前后均为 337/337）。
+
+相关文件：
+
+- `src/api/conversationCompose.ts`（新增）、`src/api/conversationCompose.test.ts`（新增）、`src/manifestGrants.test.ts`（新增）
+- `src/AgentHubPage.tsx`、`src/AgentHubPage.test.tsx`、`src/agentHubI18n.tsx`、`src/agentHub.css`
+- `bibit.feature.json`、`debian/agenthub-feature-grants.json`、`debian/changelog`、`package.json`、`package-lock.json`、`vendor/*-0.4.0.tgz`
+- `docs/verification/2026-09-28-create-resource-entry.md`（新增）
+
+验证结果或限制：
+
+`npm test` 501/501（27 个文件；功能分支合入前是 357/357，并入主线既有的 custom resources / 设置标签页 / 固定卡片宽度用例后为 501）、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin` 与 `git diff --check` 均通过。五处回滚验证确认新断言不是空转：去掉调用入参里的 `prompt` → 2 项失败；去掉「无能力即禁用」→ 1 项失败；`UNSUPPORTED` 复用宿主串 → 2 项失败；去掉「清空输入框」提示 → 1 项失败；grant 少 `host:actions` → 2 项失败。
+
+限制：**实机 happy path 未验证**。板端 `bi-bit 0.1.18`（及任何已发布版本）未登记 `conversation.compose`，点击只会得到 `UNSUPPORTED`；「新会话打开、技能以 chip 附上、提示词预填、消息列表为空、补字后可发送」以及「首页已有未发送草稿时返回 `FAILED` 且原草稿不被覆盖」需要等平台发布含该动作的 bi-bit（主线 `0e3d7b4` 之后）后执行。本次板端可验证的两条降级路径见 verification 文档。
+
 ## 2026-09-29 — Power 卡片固定宽度，窗口只改列数（0.3.9）
 
 分类：问题修复

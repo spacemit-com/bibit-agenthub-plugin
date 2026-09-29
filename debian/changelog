@@ -1,3 +1,32 @@
+bibit-agenthub-plugin (0.3.10) resolute-porting; urgency=medium
+
+  * Landed on top of 0.3.3-0.3.9 rather than beside them: this branch was cut
+    before that work, which is why this release also carries the SDK vendor
+    bump to 0.4.0 and the Manifest `host:actions` declaration into the line
+    that already has custom resources, the APC Settings tab and the fixed
+    card grid. The store path and the card layout are untouched.
+  * Add a "Create a resource" entry to the Agent Hub page header. It asks the
+    host to open a new conversation with a draft already in the input box
+    (through the registered `conversation.compose` host action), so the built-in
+    using-apm skill can create a Power once the user completes the request and
+    sends it. The action always creates a new conversation and never sends.
+  * The entry degrades instead of guessing: without the `host:actions`
+    capability it stays disabled and says why, and when the host does not know
+    the action it reports that in the plugin's own copy. A retryable refusal
+    (for example a draft already pending on the home page) tells the user to
+    clear the input box; the plugin never retries on its own.
+  * Declare `host:actions` in the Manifest and approve it in the system
+    capability grant. A missing grant shows up as an undefined capability, so
+    the two are now compared by a test before release.
+  * Vendor the Feature SDK at 0.4.0 (bibit commit 0e3d7b4), which is where the
+    `conversation.compose` contract lives. The action is not in any released
+    BiBit yet: on an older host the entry reports "this host version does not
+    support opening a new conversation". The upgraded SDK matches the code with
+    no behavior change on the store path.
+
+ -- liangjunzhao <junzhao.liang@spacemit.com>  Sun, 28 Sep 2026 23:50:00 +0800
+
+
 bibit-agenthub-plugin (0.3.9) resolute-porting; urgency=medium
 
   * Give every Power card one fixed width, so a windowed card is never narrower
