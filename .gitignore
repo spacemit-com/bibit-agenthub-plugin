@@ -16,3 +16,6 @@ debian/*.substvars
 debian/*.deb
 debian/*.buildinfo
 debian/*.changes
+
+# Python bytecode from the offscreen verification probes
+docs/verification/__pycache__/

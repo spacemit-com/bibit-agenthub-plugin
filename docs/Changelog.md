@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-09-29 — Power 卡片固定宽度，窗口只改列数（0.3.9）
+
+分类：问题修复
+
+用户反馈（原文）：
+
+> hub资源卡片会在bibit全凭时比窗口时更宽，窗口时卡片变窄，custom标记和描述会错位。我希望卡片大小固定（按照目前全屏大小），窗口大小变化时仅居中调整每行卡片个数。
+
+第二轮反馈（原文）：
+
+> 根据../bibit的默认窗口大小调整卡片大小，稍微减小卡片宽度，使默认窗口能够一行3个，现在启动是一行2个，两边留了很大的空隙
+
+定位（本机 WebKitGTK 2.52.6 离屏 `WebKit2.WebView` 直接加载 `src/agentHub.css` 与真实卡片标记，并把页面放进真实宿主盒子「窗口 − 15rem 侧栏 − 2px 窗口边框」实测。窗口 → 列数 × 卡片宽度）：1920 → 5 × 276px、1600 → 5 × **232.8px**、1440 → 5 × **200.8px**、1276 → 5 × **170px**、1200（默认窗口）→ 4 × **200px**、1024（最小窗口）→ 4 × **159.5px**、640 → 2 × **282.4px**、400 → 1 × **368px**；同一行里管理态与自定义卡片的 `h2` 顶距是 65px / 60px（窄列时还有 78px）、描述顶距 101px / 96px（窄列时还有 114px）。
+
+- **卡片宽度漂移**：`.agent-hub__grid` 原为 `repeat(5, minmax(0, 1fr))` + 1240/980/720/480px 四个断点改列数。列数固定而轨道是 `1fr`，等于让列宽吸收窗口宽度：窗口化后每张卡片都比全屏窄，断点越密越窄。
+- **custom 标记与描述错位**：管理态卡片的版本槽是原生 `<select>`，继承 14px/1.5，实测盒高 **31px**；自定义态换成静态标签（12px + `3px 8px` 内边距），盒高只有 **26px**。同一行里两种卡片 header 相差 5px，自定义卡片的标题与描述整体上移（实测 `h2` 顶距 65px / 60px、描述顶距 101px / 96px）。
+- 溢出还发生在窄列上：卡片变窄到 219–232px 时，`Custom` 徽标 + 版本槽超出卡片内容盒（实测最多 36px），视觉上叠进描述区。
+- **固定后的第一版卡片（276px）在默认窗口只剩 2 列**：276px 是 1460px 内容列除 5 列的结果，而 BiBit 默认窗口 1200×800 的页面盒只有 958px（1200 − 15rem 侧栏 240px − 2px 窗口边框），扣掉 `clamp(20px, 4vw, 56px)` = 48px 内边距后内容列 862px；3 张 276px 卡片 + 2 个 20px 间距要 868px，差 6px，于是掉到 2 列、两侧各留 144px 空隙。
+
+改动：
+
+- `src/agentHub.css`：`.agent-hub` 新增默认窗口尺寸令牌 `--hub-default-window: 1200px`、`--hub-host-sidebar: 15rem`、`--hub-host-frame: 2px`、`--hub-page-padding: 48px` 与 `--hub-card-gap: 20px`，卡片宽度由它们推导：`--hub-card-width: calc((1200px − 15rem − 2px − 2 × 48px − 3 × 20px) / 3)` = **267.33px**（862px 内容列里 3 张卡片 + 3 个间距刚好占满，实际只用 2 个间距，多出的 20px 作为余量，默认窗口每侧空 10px）；内容列上限仍是 `--hub-content-max: 1460px`，`1460 ≥ 5 × 267.33 + 4 × 20 = 1417`，全屏仍是 5 列。内容列宽规则改用 `var(--hub-content-max)`。`.agent-hub__grid` 改为 `repeat(auto-fill, minmax(min(var(--hub-card-width), 100%), var(--hub-card-width)))` + `justify-content: center` + `gap: var(--hub-card-gap)`；删除 1240/980/720px 三条列数断点与 480px 断点里的列数覆盖，480px 只保留页面内边距与筛选行调整。`.power-card` 补 `grid-template-columns: minmax(0, 1fr)`（隐式列是 `auto`，超长版本号会把卡片顶宽）。`.power-card__version--static` 改为 `display: inline-flex` + `align-items: center` + `justify-content: flex-end` + `min-height: var(--hub-version-height)` + `max-width: 112px` + `overflow: hidden`，与 `<select>` 占同一个盒子。
+- `src/agentHubLayout.test.ts`：新增 4 条 CSS 契约——网格只有一条 `grid-template-columns`（含 `auto-fill` 与 `var(--hub-card-width)`）且 `justify-content: center`；任何 `@media` 块都不得再声明 `.agent-hub__grid` 的列数；`--hub-version-height` 令牌存在且静态版本槽声明 `inline-flex` / `center` / `min-height: var(--hub-version-height)` / `overflow: hidden`；**卡片宽度令牌按算术展开后必须在默认窗口正好排 3 列**（把 `calc()` 里的 `var()` 代入并求值，同时校验内容列的上下界），宽度数字改错会直接失败（14/14 通过）。
+- 文档：`docs/development-and-deployment-guide.md` §7.2 补「卡片宽度由 BiBit 默认窗口推导、窗口只改列数」与「版本槽两种卡片同高」两条规则，标题实测改为固定 229px 盒宽下的结论；§16.4 第 9 步验收改为按 1200×800（3 列）核对卡片恒为 267px、拖动窗口列数变化而宽度不变、Custom 与管理态卡片对齐。新增 `docs/verification/probe-fixed-card-grid.py`（离屏 WebKit2 探针，直接读 `src/agentHub.css`，把页面放进「窗口 − 15rem 侧栏 − 2px 边框」的真实宿主盒子里，`--only shipped` 会做断言：卡片宽度、默认窗口 3 列、标题/描述同一行、header 不溢出、页面不横向滚动；对照列把两处改动就地还原）。
+- 版本：`package.json`、`package-lock.json`、`bibit.feature.json`、`providerVersion`、`debian/changelog`、README 与开发指南统一提升到 `0.3.9`。
+
+验证：探针实测（本机 WebKitGTK 2.52.6，宿主盒子 15rem 侧栏）1920/1600/1512/1440/1360/1300/1276/1200/1150/1100/1024/640/400 全部 `cardW=[267.33]`，列数 5/4/4/3/3/3/3/**3**/2/2/2/2/1，`h2Top=[65]`、`descTop=[101]`、`cardH=[265]`，header 溢出与子元素重叠均为 0，`document.scrollWidth == window.innerWidth`；默认窗口 1200×800 下 3 列、两侧各空 10px（改前 2 列、两侧各空 144px）。`min()` 兜底从 299px 窗口开始生效（300→267.33px、296→264px、260→228px 且页面不横向滚动），远低于目标最小窗口 1024×740。同一探针的对照列复现了上表的宽度漂移、65/60px 行分裂与 36/34/23/5px 溢出。反向验证 4 项：还原网格（`repeat(5, minmax(0, 1fr))` + 断点）→ 2 条契约失败；还原静态版本槽（`display: inline-block`，无 `min-height`）→ 1 条失败；把 `--hub-card-width` 改回全屏的 276px → 新增的「默认窗口必须 3 列」算术契约失败，且探针在 1200×800 报 2 列、两侧各空 144px；恢复后 14/14 通过、探针 exit 0。详见 `docs/verification/2026-09-29-fixed-card-grid.md`。
+
+
 ## 2026-09-29 — 支持块标量 frontmatter，并停止对 APM 已管理资源报跳过（0.3.8）
 
 分类：问题修复

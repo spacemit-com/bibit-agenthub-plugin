@@ -93,6 +93,20 @@ function declared(block: CssBlock, property: string): string[] {
     })
 }
 
+/**
+ * Resolve a `calc()` of `var()` tokens to a number, so a test can check the arithmetic
+ * instead of a literal. Only the operators the stylesheet uses are accepted.
+ */
+function resolveCalc(expression: string, tokens: Record<string, number>): number {
+  const substituted = expression.replace(/var\(\s*(--[\w-]+)\s*\)/g, (_, name: string) => {
+    if (!(name in tokens)) throw new Error(`missing token ${name}`)
+    return String(tokens[name])
+  })
+  const body = substituted.replace(/^calc\(/, '').replace(/\)$/, '')
+  if (!/^[\d\s+\-*/().]+$/.test(body)) throw new Error(`unsupported calc: ${body}`)
+  return Function(`"use strict"; return (${body});`)() as number
+}
+
 describe('Agent Hub layout contract', () => {
   it('makes the page contribution its own scroll container', () => {
     const page = rules('.agent-hub')
@@ -225,5 +239,104 @@ describe('Agent Hub layout contract', () => {
     // The static version label reuses the version slot but drops the control look.
     const staticVersion = rules('.power-card__version--static')
     expect(staticVersion.flatMap((block) => declared(block, 'border-style'))).toContain('dashed')
+  })
+
+  it('gives every card the same fixed width at every window size', () => {
+    // A fixed track plus `auto-fill` is what makes the window change only the column
+    // count: with the old `repeat(N, minmax(0, 1fr))` the track absorbed the window
+    // width, so a windowed card was narrower than a fullscreen one and the Custom badge
+    // and description drifted out of their row. `auto-fill` (not `auto-fit`) keeps the
+    // empty tracks, so the centred grid still starts every row at its left edge.
+    const grid = rules('.agent-hub__grid')
+    const templates = grid.flatMap((block) => declared(block, 'grid-template-columns'))
+    expect(templates).toHaveLength(1)
+    expect(templates[0]).toMatch(/auto-fill/)
+    expect(templates[0]).toContain('var(--hub-card-width)')
+    expect(grid.flatMap((block) => declared(block, 'justify-content'))).toContain('center')
+    expect(grid.flatMap((block) => declared(block, 'gap'))).toContain('var(--hub-card-gap)')
+  })
+
+  it('sizes the fixed card so the host default window shows three columns', () => {
+    // The card is fixed-width, so this derivation is the only thing deciding how many
+    // cards the host's default window (1200x800) shows. If it drifts back above the
+    // three-column budget the page silently returns to two cards with large side gaps;
+    // if it drops too far the four/five-column layouts appear far too early. Kept as
+    // arithmetic over the declared tokens so the number cannot be edited on its own.
+    const page = rules('.agent-hub')
+    const token = (name: string): string => {
+      const values = page.flatMap((block) => declared(block, name))
+      expect(values, name).toHaveLength(1)
+      return values[0]
+    }
+    // The host root font size is the browser default: Bibit only customises
+    // `--font-size-base`, so 15rem of sidebar is 240px.
+    const px = (value: string): number => {
+      const rem = /^(-?[\d.]+)rem$/.exec(value)
+      if (rem) return Number(rem[1]) * 16
+      const abs = /^(-?[\d.]+)px$/.exec(value)
+      if (abs) return Number(abs[1])
+      throw new Error(`unexpected length ${value}`)
+    }
+    const window_ = px(token('--hub-default-window'))
+    const sidebar = px(token('--hub-host-sidebar'))
+    const frame = px(token('--hub-host-frame'))
+    const gap = px(token('--hub-card-gap'))
+    const pagePadding = px(token('--hub-page-padding'))
+
+    // The page padding token must be reachable from the clamp the page actually
+    // declares: `clamp(20px, 4vw, 56px)` at the default window, where `vw` is the
+    // window (not the narrower page box).
+    const padding = rules('.agent-hub').flatMap((block) => declared(block, 'padding'))
+    expect(padding).toHaveLength(1)
+    expect(padding[0]).toContain('clamp(20px')
+    expect(padding[0]).toContain('4vw')
+    expect(padding[0]).toContain('56px')
+    expect(Math.min(Math.max(20, 0.04 * window_), 56)).toBe(pagePadding)
+
+    const content = window_ - sidebar - frame - 2 * pagePadding
+    const width = resolveCalc(token('--hub-card-width'), {
+      '--hub-default-window': window_,
+      '--hub-host-sidebar': sidebar,
+      '--hub-host-frame': frame,
+      '--hub-page-padding': pagePadding,
+      '--hub-card-gap': gap,
+    })
+    const columns = Math.floor((content + gap) / (width + gap))
+    expect(columns).toBe(3)
+    // A row only needs two gaps, so the third one is spare: a small host difference must
+    // not push the default window back to two columns.
+    expect(content - (3 * width + 2 * gap)).toBeGreaterThanOrEqual(10)
+    // …and not so much spare that a fourth column would have fitted anyway.
+    expect(content - (4 * width + 3 * gap)).toBeLessThan(0)
+    // The narrowed card must still fill the widest page column with five columns: the
+    // fullscreen layout is the reference the fixed width was chosen from.
+    const contentMax = px(token('--hub-content-max'))
+    expect(contentMax - (5 * width + 4 * gap)).toBeGreaterThanOrEqual(0)
+    expect(contentMax - (6 * width + 5 * gap)).toBeLessThan(0)
+  })
+
+  it('never changes the column count from a breakpoint again', () => {
+    // Breakpoint column counts would reintroduce a per-breakpoint card width. The
+    // narrow-window fallback may only adjust the page padding and the filter rows.
+    const breakpointGridRules = blocks.filter(
+      (block) => block.conditions.length > 0 && block.selectors.includes('.agent-hub__grid')
+    )
+    expect(breakpointGridRules).toEqual([])
+  })
+
+  it('keeps the version slot one height across managed and custom cards', () => {
+    // A Hub-managed card shows a native <select> (31px at 14px/1.5); the custom card's
+    // static label must fill the same box or the two cards in one row disagree by 5px
+    // and the custom card's title and description sit on a different line.
+    const token = rules('.agent-hub').flatMap((block) => declared(block, '--hub-version-height'))
+    expect(token).toHaveLength(1)
+    const staticVersion = rules('.power-card__version--static')
+    expect(staticVersion.flatMap((block) => declared(block, 'min-height'))).toEqual([
+      'var(--hub-version-height)',
+    ])
+    expect(staticVersion.flatMap((block) => declared(block, 'display'))).toContain('inline-flex')
+    expect(staticVersion.flatMap((block) => declared(block, 'align-items'))).toContain('center')
+    // An extreme version must stay inside the slot instead of drawing over the description.
+    expect(staticVersion.flatMap((block) => declared(block, 'overflow'))).toContain('hidden')
   })
 })

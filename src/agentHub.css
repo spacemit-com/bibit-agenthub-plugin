@@ -5,13 +5,45 @@
   --hub-text: #172033;
   --hub-muted: #687386;
   --hub-border: #dfe4ec;
+  /* ===== Card width, derived from the host's default window =====
+     The card width is fixed, so the host window decides only how many columns fit. It is
+     sized so BiBit's default window shows three cards per row, which is the layout the
+     page is designed around; every wider window then fits more, every narrower one fewer.
+     The budget is the real page box, measured against the host sources:
+       - window     1200x800  (bibit/src-tauri/tauri.linux.conf.json)
+       - sidebar    15rem     (bibit/web-app/.../ui/sidebar.tsx SIDEBAR_WIDTH; its gap div
+                               is in flow even though the rail itself is `fixed`, so it
+                               does take width away from SidebarInset)
+       - shell      2px       (WindowSurfaceShell's 1px border while un-maximized)
+       - page       clamp(20px, 4vw, 56px) = 48px at that window (vw is the window there)
+     -> 1200 - 240 - 2 - 96 = 862px of content column for 3 cards + 2 gaps. Reserving a
+     third gap (a row only needs two) leaves ~20px spare, so a 1px host difference cannot
+     drop the default window back to two columns. */
+  --hub-default-window: 1200px;
+  --hub-host-sidebar: 15rem;
+  --hub-host-frame: 2px;
+  --hub-page-padding: 48px;
+  --hub-card-gap: 20px;
+  --hub-card-width: calc(
+    (var(--hub-default-window) - var(--hub-host-sidebar) - var(--hub-host-frame)
+      - 2 * var(--hub-page-padding) - 3 * var(--hub-card-gap)) / 3
+  );
+  /* The page column is still capped at the width the five-column layout was designed for;
+     at 1460px five cards fit (5 x 267.33 + 4 x 20 = 1417), so fullscreen keeps five. */
+  --hub-content-max: 1460px;
+  /* A Hub-managed card renders its version as a native <select>, which is 31px
+     high at the inherited 14px/1.5 (measured on WebKitGTK 2.52). The static label a
+     custom card shows instead must fill the very same box, or the two cards put
+     their title and description on different lines. */
+  --hub-version-height: 31px;
   box-sizing: border-box;
   /* The host mounts page contributions inside `SidebarProvider` / `SidebarInset`, which
      are `min-h-svh` (min-height only): a percentage height stays indefinite there, so the
      page would just grow with its content and `overflow` would never kick in. Until
      AgentHubPage measures the real box (useLayoutEffect, before paint), size against the
-     window like the host's own `h-svh` pages. The page area is the whole window: the left
-     sidebar is floating (out of flow) and the drag/resize overlays are fixed. */
+     window like the host's own `h-svh` pages. The page box is the window minus the host's
+     in-flow sidebar gap and its shell border; `vw` still resolves against the window
+     itself, which is why the padding clamp below is written in viewport units. */
   height: 100vh;
   height: 100svh;
   overflow-x: hidden;
@@ -23,7 +55,7 @@
 }
 
 .agent-hub *, .agent-hub *::before, .agent-hub *::after { box-sizing: border-box; }
-.agent-hub > :not(.agent-hub-dialog):not(.agent-hub__scroll-thumb) { width: min(100%, 1460px); margin-inline: auto; }
+.agent-hub > :not(.agent-hub-dialog):not(.agent-hub__scroll-thumb) { width: min(100%, var(--hub-content-max)); margin-inline: auto; }
 
 [data-power-type='skill']  { --type: #6d55cf; --type-soft: #f2efff; --type-line: #b8acf0; }
 [data-power-type='plugin'] { --type: #16775c; --type-soft: #eef9f5; --type-line: #a9d8ca; }
@@ -130,19 +162,30 @@
   outline-offset: 2px;
 }
 
-/* ===== Fluid grid and bounded, internally scrollable card regions =====
+/* ===== Fixed-width card grid and bounded, internally scrollable card regions =====
+   Every card is `--hub-card-width` wide at every window size, so the host window only
+   decides how many columns fit (three at BiBit's default window, more when it is wider).
+   The track block stays centred in the content column and `auto-fill` keeps the empty
+   tracks, so each row -- the last, incomplete one included -- starts at the left edge of
+   that block instead of being centred on its own.
+   `minmax(min(var(--hub-card-width), 100%), ...)` is the only case where a card is
+   narrower: below a ~300px page box, i.e. far under BiBit's 1024x740 minimum window,
+   where the card shrinks instead of being clipped away by the page's `overflow-x: hidden`.
    Card height must not follow the description length: lengths in the APC catalog run
    from one line to ~14 lines at this column width. The description keeps a fixed
    3-4 line box and scrolls, so every row keeps the same height at every window size. */
 .agent-hub__grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  justify-content: start;
-  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(min(var(--hub-card-width), 100%), var(--hub-card-width)));
+  justify-content: center;
+  gap: var(--hub-card-gap);
   margin-top: 22px;
 }
 .power-card {
   display: grid;
+  /* An explicit `minmax(0, 1fr)` column: an implicit grid column is `auto`, which a
+     long unbreakable version/tag could push past the card's own width. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto auto auto auto;
   align-content: start;
   min-width: 0;
@@ -156,7 +199,7 @@
 .power-card:hover { transform: translateY(-3px); box-shadow: 0 15px 34px rgb(27 38 61 / 12%); }
 .power-card__header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .power-card__type { color: var(--type); font-size: 11px; font-weight: 850; letter-spacing: .09em; text-transform: uppercase; }
-.power-card__version { max-width: 112px; border: 1px solid var(--type-line); border-radius: 8px; background: rgb(255 255 255 / 78%); color: var(--hub-text); }
+.power-card__version { max-width: 112px; box-sizing: border-box; border: 1px solid var(--type-line); border-radius: 8px; background: rgb(255 255 255 / 78%); color: var(--hub-text); }
 /* A hand-installed resource must be recognizable at a glance: a dashed border, an
    amber accent and a "Custom" badge, which no Hub-managed card ever shows. */
 .power-card[data-source='custom'] {
@@ -177,8 +220,20 @@
   letter-spacing: .08em;
   text-transform: uppercase;
 }
+/* The custom card's version is a static label instead of a control, but it must occupy
+   the same box as the `<select>` a Hub-managed card renders (`--hub-version-height`):
+   otherwise the two header heights differ by 5px and the custom card's title, badges
+   and description all sit on a different line than its neighbours in the same row.
+   `overflow: hidden` keeps an extreme version inside the box instead of over the
+   description below; `text-overflow` cannot ellipsise an inline-flex box, so a version
+   longer than 112px is simply clipped (real versions are ~99px at most). */
 .power-card__version--static {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: var(--hub-version-height);
+  max-width: 112px;
+  overflow: hidden;
   padding: 3px 8px;
   border-style: dashed;
   border-color: #d9a13b;
@@ -216,13 +271,13 @@
 .power-card__notice { margin: 12px 0 0; color: var(--hub-muted); font-size: 12px; }
 .power-card[data-clickable='true'] { cursor: pointer; }
 
-/* ===== Responsive column fallbacks ===== */
-@media (max-width: 1240px) { .agent-hub__grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-@media (max-width: 980px)  { .agent-hub__grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media (max-width: 720px)  { .agent-hub__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 480px)  {
+/* ===== Narrow-window fallback =====
+   The column count is not switched by breakpoints any more: `.agent-hub__grid` holds
+   a fixed card width and `auto-fill` derives the count from the available width, so
+   cards never resize with the window. Only the page padding and the filter rows still
+   need a phone-width adjustment. */
+@media (max-width: 480px) {
   .agent-hub { padding-inline: 14px; }
-  .agent-hub__grid { grid-template-columns: minmax(0, 1fr); }
   .power-filters__filter-row { display: grid; gap: 6px; }
   .power-filters__label { padding-top: 0; }
 }

@@ -1,3 +1,42 @@
+bibit-agenthub-plugin (0.3.9) resolute-porting; urgency=medium
+
+  * Give every Power card one fixed width, so a windowed card is never narrower
+    than a fullscreen one, and only the column count follows the window. The grid
+    used a hard-coded five columns of `1fr` plus breakpoints at 1240/980/720/480px,
+    which let the track absorb the window width: with the host's own 15rem sidebar
+    in the box, the card was 232.8px at a 1600px window, 200.8px at 1440px, 170px
+    at 1276px and 159.5px at 1024px, against 276px fullscreen. The grid now holds a
+    fixed `--hub-card-width` with `repeat(auto-fill, minmax(...))` and centres the
+    track block, so the count still falls 5/4/3/2/1 while the card keeps its size.
+  * Size that fixed card from BiBit's own default window rather than from the page
+    column's 1460px cap. At 1460px five cards of 276px do fit, but the default
+    window (1200x800, src-tauri/tauri.linux.conf.json) leaves the page only
+    1200 - 240px sidebar - 2px shell = 958px, i.e. 862px of content column after
+    the padding, so three 276px cards plus two gaps (868px) missed by 6px and the
+    first window opened with two cards and 144px of empty space on each side. The
+    width is now derived from the host geometry tokens (`--hub-default-window`,
+    `--hub-host-sidebar`, `--hub-host-frame`, `--hub-page-padding`,
+    `--hub-card-gap`) and comes out at 267.33px: three cards fit with ~20px to
+    spare, and five still fit at the 1460px column cap.
+  * Make the version slot one height on both card kinds. A Hub-managed card renders
+    a native select (31px at 14px/1.5) while a hand-installed card renders a static
+    label (26px), so the two headers differed by 5px and the custom card's title and
+    description sat on a different line than its neighbours; the at-narrow-width
+    card also pushed the Custom badge and the version slot past the card's content
+    box by up to 36px. The static label now fills the same 31px slot and clips an
+    over-long version inside it, and every card carries an explicit
+    `grid-template-columns: minmax(0, 1fr)` so an over-long version cannot widen it.
+  * The layout contract test now resolves the card-width `calc()` against the
+    declared tokens and fails if the host default window would no longer show
+    exactly three columns, so the width cannot drift back on its own.
+  * `docs/verification/probe-fixed-card-grid.py` renders the real page inside the
+    host box (window - sidebar - shell border) and the real card markup offscreen in
+    WebKit2 to measure the widths, the column counts and the header alignment;
+    `--only shipped` asserts them, including the three columns at the default
+    window.
+
+ -- liangjunzhao <junzhao.liang@spacemit.com>  Tue, 29 Sep 2026 16:30:00 +0800
+
 bibit-agenthub-plugin (0.3.8) resolute-porting; urgency=medium
 
   * Read block scalar frontmatter and stop warning about Powers the APM

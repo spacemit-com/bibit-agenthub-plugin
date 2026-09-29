@@ -6,7 +6,7 @@
 
 | 项目 | 当前版本 |
 | --- | --- |
-| Agent Hub 插件 | `0.3.8` |
+| Agent Hub 插件 | `0.3.9` |
 | `manifestSchemaVersion` | `1` |
 | `sdkApiVersion` | `1` |
 | `@bibit/feature-contracts` | `0.3.0` |
@@ -222,7 +222,7 @@ src/
   "manifestSchemaVersion": 1,
   "sdkApiVersion": 1,
   "id": "agent-hub",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "owner": "agent-hub-team",
   "display": {
     "titleKey": "agent-hub:title",
@@ -411,11 +411,13 @@ Local Preview 使用 `?lang=zh-CN` 打开中文界面，`dev/main.tsx` 右上角
 
 规则：
 
-- 页面根元素必须用**视口单位**给高度，而不是百分比：`.agent-hub` 用 `height: 100svh`（`100vh` 兜底），再 `overflow-y: auto`；宿主自己的全高页面（如设置路由的 `h-svh`）就是这么做的。页面区域等于整个窗口：左侧栏是 floating（浮动、脱离文档流），拖拽与缩放热区都是 `fixed`，不会偏移这个盒子；
+- 页面根元素必须用**视口单位**给高度，而不是百分比：`.agent-hub` 用 `height: 100svh`（`100vh` 兜底），再 `overflow-y: auto`；宿主自己的全高页面（如设置路由的 `h-svh`）就是这么做的。**页面的宽度盒不是整个窗口**：`Sidebar` 的侧栏本体是 `fixed`，但同一个组件里还有一个 `h-svh w-(--sidebar-width)` 的「占位」div 留在文档流里（`hidden md:block`，`md` 以下侧栏变成浮层 Sheet），`SidebarInset` 又是 `flex-1`，所以页面盒 = 窗口 − 15rem 侧栏 − 未最大化时窗口外框的 2px 边框；卡片宽度就是按这个盒子算的（见下一条与 §7.2 的令牌）；
 - 视口单位只是兜底：`AgentHubPage` 用 `useLayoutEffect`（绘制前）量出真实可用高度 `window.innerHeight - rect.top` 写成内联 `height`，并在窗口 resize 时重算，这样不依赖“页面区域正好等于窗口”这个假设；
 - 一页最多 20 张卡片（`POWER_PAGE_SIZE` 由契约锁定为 20），所以列表长度必须由页面滚动兜住，分页控件用 `position: sticky; bottom: 0` 常驻窗口底部；
+- **卡片宽度由 BiBit 默认窗口推导，窗口只改变列数**：`.agent-hub` 用令牌声明宿主几何 `--hub-default-window: 1200px`（`bibit/src-tauri/tauri.linux.conf.json`）、`--hub-host-sidebar: 15rem`（`SIDEBAR_WIDTH`，即 240px）、`--hub-host-frame: 2px`（未最大化时窗口外框的 1px 边框 × 2）、`--hub-page-padding: 48px`（该窗口下 `clamp(20px, 4vw, 56px)` 的取值）与列间距 `--hub-card-gap: 20px`，并由此推导卡片宽度 `--hub-card-width: calc((1200px − 15rem − 2px − 2 × 48px − 3 × 20px) / 3)` = **267.33px**：默认窗口的页面盒 = 1200 − 240 − 2 = 958px，减去两侧 48px 内边距后内容列 862px，3 张卡片 + 2 个间距只要 842px，余下 20px 就是「默认窗口一律 3 列」的余量（实测两侧各空 10px）；内容列上限 `--hub-content-max: 1460px` 不动，`1460 ≥ 5 × 267.33 + 4 × 20 = 1417`，所以全屏仍然 5 列。**这两处数字是绑定的**：改成 276px（旧的「全屏 5 列尺寸」）时默认窗口只剩 2 列、两侧各空 144px，正是用户第二轮反馈的现象；`src/agentHubLayout.test.ts` 会把 `calc()` 展开后断言默认窗口必须正好 3 列。`.agent-hub__grid` 用 `repeat(auto-fill, minmax(min(var(--hub-card-width), 100%), var(--hub-card-width)))` + `justify-content: center`：窗口变窄只减少列数，卡片宽度不变；`auto-fill` 保留空轨道，所以网格块整体居中而每一行（含不满的最后一行）都从该块左缘开始排列；**不再有按断点改列数的 `@media` 规则**。`min()` 只在窗口窄于一张卡片（内容列 < 267px，即窗口约 <300px，远低于目标最小窗口 1024×740）时生效，那时卡片降到可用宽度而不是被 `overflow-x: hidden` 裁掉（实测 300px 窗口仍是 267.33px，299px 起才开始降）。回归前卡片宽度会随窗口漂移（本机实测 1600→232.8px、1440→200.8px、1276→170px、1024→159.5px、400→368px），这也是 custom 卡片错位的成因之一；
+- 卡片右上角的版本槽**两种卡片必须同高**：Hub 管理的卡片渲染原生 `<select>`（继承 14px/1.5，WebKitGTK 2.52 实测盒高 31px，记为 `--hub-version-height`），自定义卡片渲染静态标签；`.power-card__version--static` 因此用 `display: inline-flex` + `align-items: center` + `min-height: var(--hub-version-height)` + `max-width: 112px` + `overflow: hidden` 占满同一个盒子。少了这条，自定义卡片的 header 会比管理态矮 5px，其标题与描述整体上移，与同行卡片错位；`overflow: hidden` 让极长版本留在槽内（`text-overflow` 对 inline-flex 盒无效，只做裁切；真实数据最长约 99px）；
 - 卡片高度不能跟着描述长度走：APC 目录里的描述从 1 行到 14 行都有，`.power-card__description` 是固定 5 行（`7.5em`，行高 21px）的无边框滚动区，`overflow-x: hidden` 且长词换行，完整描述在详情弹窗里看；
-- 卡片标题（Power 名字）**不换行**：`.power-card h2` 固定 `height/line-height: 26px`（所有卡片的标题行等高，卡片网格才能对齐）、`white-space: nowrap` + `text-overflow: ellipsis`，字号由 `src/useFittedFontSize.ts` 在 19px（上限）与 13px（下限）之间按“文本自然宽度 / 盒子宽度”线性反解——一行文本的宽度与字号成正比，所以量一次就够；`ResizeObserver` + `window.resize` 负责换列数/窗口尺寸时重算，`clientWidth` 为 0（jsdom 或尚未排版）时保持样式表里的 19px。开发板实测：真实目录里最长的 `foo-before-summary`（19px 下 193px）在最窄的 182px 列里是 17.5px，其余名字（最长 `markdown-maker` 165px）都保持 19px 满号，即真实数据在任何断点都能完整显示；只有极端长名字会落到 13px 下限并被省略号截断；
+- 卡片标题（Power 名字）**不换行**：`.power-card h2` 固定 `height/line-height: 26px`（所有卡片的标题行等高，卡片网格才能对齐）、`white-space: nowrap` + `text-overflow: ellipsis`，字号由 `src/useFittedFontSize.ts` 在 19px（上限）与 13px（下限）之间按“文本自然宽度 / 盒子宽度”线性反解——一行文本的宽度与字号成正比，所以量一次就够；`ResizeObserver` + `window.resize` 负责列数变化时重算，`clientWidth` 为 0（jsdom 或尚未排版）时保持样式表里的 19px。卡片宽度固定为 267.33px 后，标题盒内宽恒为 229px，开发板实测真实目录里最长的 `foo-before-summary`（19px 下 193px）与 `markdown-maker`（165px）在任何窗口都完整显示且保持满号 19px；构造出的超长名字才会落到 13px 下限并被省略号截断；
 - 滚动条统一成“静止时不显示、滚动时显示位置”，但**不能靠 CSS 改平台滚动条**（下面 7.2.1 是开发板上实测结论），而是由插件隐藏原生滚动条（`scrollbar-width: none`，这是插件能设的属性）并在滚动区内画一个 `<ScrollThumb>`：按 `client/scroll` 比例算长度与位置、8px 圆角 `#bcc5d3`、`pointer-events: none`，滚动时显示、停止 1s 后淡出；页面大滚动条、卡片描述区、卡片标签行、筛选标签行、详情弹窗内容区都是这一套，`ScrollThumb` 的 `targetRef` 必须指向它所在的那个滚动容器；
 - 换了查询（翻页、范围、Agent、类型、tags）后要把页面滚动位置归零；
 - `src/agentHubLayout.test.ts` 以文本级契约守住以上几条（jsdom 没有排版引擎，这是唯一的自动化防线），`src/AgentHubPage.test.tsx` 守住量高与回顶两条行为。
@@ -1033,16 +1035,16 @@ npm run build:plugin
 产物：
 
 ```text
-artifacts/agent-hub-0.3.8.bibit-plugin.tgz
+artifacts/agent-hub-0.3.9.bibit-plugin.tgz
 ```
 
 检查：
 
 ```bash
-tar -tzf artifacts/agent-hub-0.3.8.bibit-plugin.tgz
-tar -xOf artifacts/agent-hub-0.3.8.bibit-plugin.tgz plugin.json
-tar -xOf artifacts/agent-hub-0.3.8.bibit-plugin.tgz plugin.sig
-sha256sum artifacts/agent-hub-0.3.8.bibit-plugin.tgz
+tar -tzf artifacts/agent-hub-0.3.9.bibit-plugin.tgz
+tar -xOf artifacts/agent-hub-0.3.9.bibit-plugin.tgz plugin.json
+tar -xOf artifacts/agent-hub-0.3.9.bibit-plugin.tgz plugin.sig
+sha256sum artifacts/agent-hub-0.3.9.bibit-plugin.tgz
 ```
 
 归档必须包含：
@@ -1093,7 +1095,7 @@ Settings > Extensions > Trusted plugins
 选择：
 
 ```text
-artifacts/agent-hub-0.3.8.bibit-plugin.tgz
+artifacts/agent-hub-0.3.9.bibit-plugin.tgz
 ```
 
 Bibit 会验签、校验 hash、安装、激活并刷新 Feature Registry。确认主导航出现 Agent Hub，设置子菜单也出现 Agent Hub。
@@ -1119,7 +1121,7 @@ Agent Hub 插件 deb 应安装：
 
 ```bash
 sudo install -Dm0644 \
-  artifacts/agent-hub-0.3.8.bibit-plugin.tgz \
+  artifacts/agent-hub-0.3.9.bibit-plugin.tgz \
   /usr/lib/bibit/plugins/agent-hub.bibit-plugin.tgz
 sudo install -Dm0644 \
   deploy/agenthub-feature-grants.example.json \
@@ -1202,7 +1204,7 @@ dpkg-buildpackage -us -uc -b
 K3DEB1 的 Release 部署必须使用正式签名、且 `keyId` 已进入目标 Bibit 内置信任库的 bundle：
 
 ```bash
-export SIGNED_AGENT_HUB_BUNDLE=/absolute/path/agent-hub-0.3.8.bibit-plugin.tgz
+export SIGNED_AGENT_HUB_BUNDLE=/absolute/path/agent-hub-0.3.9.bibit-plugin.tgz
 test -f "$SIGNED_AGENT_HUB_BUNDLE"
 tar -xOf "$SIGNED_AGENT_HUB_BUNDLE" plugin.json
 tar -xOf "$SIGNED_AGENT_HUB_BUNDLE" plugin.sig
@@ -1296,7 +1298,7 @@ npm run build:plugin
 
 - 目标 Bibit 信任正式 `keyId`；
 - 系统目录只有预期 Agent Hub bundle；
-- Bibit 插件管理页显示 `agent-hub@0.3.8` 已激活；
+- Bibit 插件管理页显示 `agent-hub@0.3.9` 已激活；
 - 主导航出现 Agent Hub；
 - 设置子菜单**不再**出现 Agent Hub（插件已不声明 settings contribution）；
 - Agent Hub 页面一级标签为「我的 Power / Power 市场 / 设置」；
@@ -1328,7 +1330,7 @@ Store service version
 7. 把 Bibit 系统语言切成中文，确认主导航、设置子菜单标题、页面文案与操作提示变为中文，且切换瞬间列表不重新请求、详情弹窗不关闭；
 8. 切回英文，确认文案回到英文；
    - 对同一条测试 Power 分别用 V1（只有 `name`/`description`）与 V2（带 `name_zh`/`name_en`/`description_zh`）记录验收：V2 记录在中文下显示 `name_zh`/`description_zh`、英文下显示 `name_en`/`description`；V1 记录两种语言都回退到 `name`/`description`；两种情况下的安装、卸载与详情请求参数都仍是 canonical `name`。注意 apm `list --json` 与 APC 目录尚未输出展示字段，需用能返回这些字段的夹具或临时 Store 服务构造；
-9. 在默认窗口（1200×800）与最小窗口（1024×740）下打开 Power 市场：卡片等高、描述在无边框框内可上下滚动、分页控件常驻可见，向下滚动能到达第 20 张卡片；翻页或切换类型后列表回到顶部，没有横向滚动条；
+9. 在**默认窗口（1200×800）**打开 Power 市场：应正好一行 **3 张卡片**、两侧余量各约 10px（而不是 2 张卡片 + 两侧各 144px 的大空隙）；卡片宽度 267.33px、卡片等高、描述在无边框框内可上下滚动、分页控件常驻可见，向下滚动能到达第 20 张卡片；把窗口从 1024 拖到 1920 再拖回，卡片宽度始终不变、只有一行里的卡片个数变化（1024→2 列、1200→3 列、1440→3 列、1600→4 列、1920→5 列），网格整体居中且不满的最后一行从左侧排列；`Custom` 卡片与管理态卡片在同一行时标题与描述对齐（版本槽同为 31px 高）；翻页或切换类型后列表回到顶部，没有横向滚动条；
 10. 切到页面的「设置」标签页：确认目录的 Type/Tags 筛选消失、面板只显示 APC API Key，且该切换没有产生新的 `powers.list.v1` 请求；
 11. 输入一个 APC Key 并保存，确认状态变为「已配置」，输入框被清空且页面任何位置都不回显该 Key；切回「我的 Power」再切回「设置」，确认重新读取后仍是「已配置」；
 12. 点「清除已保存的 Key」并保存，确认状态回到「未配置」；重启 Bibit 和 Store 服务，再次确认该状态；
