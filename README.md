@@ -6,6 +6,7 @@ Bibit Agent Hub 的独立前端插件 + 独立 Go CLI Provider，当前包含：
 - Power 详情弹窗（描述、tags、Agent 归属、版本选择）与安装/卸载闭环；
 - 「我的 Power」里除 APM 清单外，还展示手动安装到各 Agent 目录下的自定义资源（卡片带 `Custom` 标记），并在弹窗内提供 APC 上传与本地删除；
 - 页面「设置」标签页（APC API Key 列表：输入后保存、以 `头****尾` 遮蔽显示、每行独立启用/删除、仅一个启用；不再有独立的设置子页面）；
+- 明暗主题跟随宿主：所有颜色以 `light-dark()` 成对声明，由继承的 `color-scheme` 取值，不用 `.dark` 后代选择器（宿主样式隔离会让它永不匹配）；自定义资源用玫红强调色，与 MCP 的橙色分开；
 - 卸载与自定义资源删除都需弹窗内二次确认（设置页的 Key 删除不需要），确认成功后回到 Hub 列表；
 - `service:store` Host API 接入（`powers.list.v1` / `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` / `powers.custom.list.v1` / `powers.upload.v1` / `powers.delete.v1` + `settings.get.v2` / `settings.keys.add.v1` / `settings.keys.delete.v1` / `settings.keys.enable.v1`）；
 - 独立 Feature Dev Host 与共享的前端数据层（解析、过滤、聚合、分页、facets、snapshot 判断、共享安装状态）；

@@ -1,5 +1,57 @@
 # Changelog
 
+## 2026-09-30 — 跟随宿主明暗主题 + 自定义资源改用独立色相（0.3.15）
+
+分类：缺陷修复 / 体验优化
+
+用户需求：
+
+> hub 页面不能跟随系统变成深色模式，请修复。
+> 并且自定义资源的颜色应与 MCP 颜色区分，目前比较相近。
+
+### 一、深色模式不生效
+
+原因：`src/agentHub.css` 里的颜色**全是明色字面量**（`--hub-bg: #f5f6f8`、`--hub-surface: #ffffff`、按钮 `#fff`、状态块 `#eef3fb` 等 60 余处），也不读 `color-scheme`。宿主切主题时给 `<html>` 加 `class="dark"` 并在 `.dark` 上把 `color-scheme` 切成 `dark`，插件对此没有任何响应，所以整个页面停在明色。
+
+修法：**每个颜色都改成 `light-dark(浅色, 深色)` 成对声明**，由继承来的 `color-scheme` 取值。
+
+为什么不是 `.dark .agent-hub { ... }`——这是本次最值得记下的结论：
+
+- 宿主用 `trustedPluginStyles.ts` 的 `isolatePluginStyles` 把插件选择器统一重写为 `:where(<插件根元素>) <原选择器>`；
+- 于是 `.dark .agent-hub` 变成 `:where(bibit-agent-hub-page-home) .dark .agent-hub`，它要求 `.dark` 是插件根的**后代**；
+- 而 `.dark` 在 `<html>` 上，是插件根的**祖先**——这条规则永远不可能匹配。用仓库里的真实算法跑过一遍验证。
+
+`light-dark()` 与 `prefers-color-scheme` 的取舍：宿主的主题是权威值（Linux 走 XDG Desktop Portal，加上用户显式选择与 Tauri 广播），可与 `prefers-color-scheme` 不一致；插件自己去读 `matchMedia` 则是第二套真值来源。`color-scheme` 是可继承属性、`light-dark()` 直接读它、宿主隔离只给选择器加前缀不碰声明值，所以 `light-dark()` 既准确又不需要插件复制切换逻辑（`bibit-plugin build` 产出的 CSS 里 58 个 `light-dark()` 全部保留）。
+
+深色取值不是另配一套，而是**从明色那一支推导**：保持色相、提高明度直到对深色表面达到 4.5:1。语义色（状态、错误、安装/卸载、品牌按钮、Agent 菜单、阴影、弹窗遮罩、自绘滚动条）也全部 token 化，规则体里不再有裸字面量。宿主不声明 `color-scheme` 时 `light-dark()` 按 `normal` 解析、取浅色分支，等于回到改动前的观感，因此对老宿主是安全降级。
+
+### 二、自定义资源与 MCP 撞色
+
+自定义资源原本用琥珀 `#d9a13b`，与 MCP 的橙 `#a95e16`：
+
+| 对比 | 改动前 | 改动后 |
+| --- | --- | --- |
+| 强调色 OKLCH 色相距离 | 21° | 73°（最近邻居 skill 也有 57°） |
+| 卡片填充色 ΔE | **0.7**（几乎同色） | 3.2 |
+| 徽标/边框 vs MCP 卡边 | 8–12° | 40°+ |
+
+改用**玫红家族（OKLCH H 345）**：`--hub-custom` / `--hub-custom-soft` / `--hub-custom-line` / `--hub-custom-badge-*` / `--hub-custom-chip-bg`，明暗各一对。识别手段仍是自定义卡片独有的**虚线边框 + `Custom` 徽标**，色相只负责不再撞车。
+
+相关文件：
+
+- `src/agentHub.css`：颜色 token 全面改为 `light-dark()` 成对声明；新增中性/语义 token（`--hub-control-*`、`--hub-label`、`--hub-caption`、`--hub-thumb`、`--hub-focus`、`--hub-backdrop`、`--hub-shadow*`、`--hub-version-chip`、`--hub-status-*`、`--hub-error-*`、`--hub-install-*`、`--hub-uninstall-*`、`--hub-scope*`、`--hub-option-*`、`--hub-custom*`）；四个 type 色系改为成对值
+- `src/agentHubLayout.test.ts`：新增 3 条契约——(1) 所有颜色型 token 必须成对声明、任何规则体不得残留裸颜色字面量（剥掉 `light-dark(...)` 后检查），唯一豁免 `--hub-on-primary`；(2) 自定义色相与四个 type 色相均相距 40° 以上、明暗两支色相一致；(3) 禁止琥珀色字面量回归
+- `docs/verification/probe-dark-mode.py`（新增）：离屏 WebKitGTK 在 `light` 与 `color-scheme: dark` 两态各渲染一次，读回 `getComputedStyle` 与 `::backdrop`，断言表面翻转、正文对比度 ≥ 4.5:1、自定义与 MCP 的徽标/卡边/卡填充色相差 ≥ 40°
+- `docs/development-and-deployment-guide.md`：新增 §7.2.1（主题机制与三种写法的取舍表）、§7.2.2（自定义色相必须与 MCP 分开），原滚动条小节顺延为 §7.2.3；§19 记录「板端实机深色外观尚未验收」
+- `docs/verification/2026-09-30-dark-mode-and-custom-accent.md`（新增验证记录）
+- `README.md`、`package.json`、`package-lock.json`、`bibit.feature.json`、`debian/changelog`：版本 0.3.15
+
+验证结果或限制：
+
+`npm test` 530/533（28 个文件；新增 3 条用例，唯一失败的 `dev/sources.test.ts` 3 条 `readMarket` 为基线问题）、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin`（`artifacts/agent-hub-0.3.15.bibit-plugin.tgz`，sha256 `a4835e38…`）、`make -C provider test vet build`、`gofmt -l`、`git diff --check` 均通过。探针 `probe-dark-mode.py --only shipped` 在 1600/1200/1024 三个窗口上 PASS：深色下页面背景 `rgb(18,18,18)`、正文 `rgb(250,250,250)`（对比度 17.95）、状态块与分页按钮与设置输入框全部翻转、`::backdrop` 从 `rgba(17,24,39,.42)` 翻成 `rgba(0,0,0,.62)`。变异验证 4 处：把某个 token 改回明色字面量（布局用例失败）、把自定义色相改回琥珀（布局用例 + 探针同时失败）、把页面背景钉成明色（探针失败并报出对比度 1.04）。
+
+限制：**板端实机深色外观尚未验收**，本次深色证据来自离屏 WebKitGTK（2.52.6）；宿主若不声明 `color-scheme`，页面仍是明色（这是刻意的降级，不是缺陷）。
+
 ## 2026-09-30 — 标签筛选由并集改为交集（0.3.14）
 
 分类：行为调整

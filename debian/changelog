@@ -1,3 +1,34 @@
+bibit-agenthub-plugin (0.3.15) resolute-porting; urgency=medium
+
+  * Make the page follow the host's light/dark theme. Every colour was a
+    light-only literal, so the page stayed light while the rest of BiBit turned
+    dark. Each colour is now a `light-dark()` pair, resolved from the inherited
+    `color-scheme` the host flips on <html> together with its `dark` class.
+  * A `.dark .agent-hub { ... }` block is not an option here, and this is worth
+    recording: the host rewrites every plugin selector to
+    `:where(<plugin-root>) <selector>`, so `.dark .agent-hub` becomes
+    `:where(<plugin-root>) .dark .agent-hub` -- which needs `.dark` to be a
+    *descendant* of the plugin root, while on <html> it is an ancestor. The pair
+    survives the isolation and the bundle untouched (58 of them in the shipped
+    CSS). A host that never declares `color-scheme` resolves `normal` and gets
+    the light value, so the change degrades to the previous appearance.
+  * Move the hand-installed resource accent off amber. It sat 21 degrees of OKLCH
+    hue from MCP's orange and the two card fills were 0.7 ΔE apart, so a Custom
+    badge next to an MCP chip read as one colour. The custom family is now rose
+    (OKLCH H 345): 73 degrees from MCP, 57 from its nearest neighbour, and its
+    fill is 3.2 ΔE from MCP's. The dashed border and the Custom badge still carry
+    the meaning.
+  * Dark values are derived from the light ones rather than picked separately:
+    same hue, lightness raised until the accent clears 4.5:1 on the dark surface.
+    Semantic surfaces (status, error, install/uninstall, the brand button, the
+    agent menu, shadows, the dialog backdrop and the scroll thumb) are tokens
+    too, so no rule body carries a bare literal any more.
+  * No protocol, DTO, Provider or packaging change: this release is CSS plus the
+    two contract tests and the WebKitGTK probe that check it.
+
+ -- liangjunzhao <junzhao.liang@spacemit.com>  Wed, 30 Sep 2026 17:05:00 +0800
+
+
 bibit-agenthub-plugin (0.3.14) resolute-porting; urgency=medium
 
   * Change the catalog tag filter from a union to an intersection: a version

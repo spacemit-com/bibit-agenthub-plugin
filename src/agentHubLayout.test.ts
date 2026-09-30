@@ -121,6 +121,46 @@ describe('Agent Hub layout contract', () => {
     ).toBe(true)
   })
 
+  it('themes every colour from the host signal instead of a light-only literal', () => {
+    // The page painted light-only literals, so it stayed light while the host
+    // switched to dark. `color-scheme` is inherited and `light-dark()` reads it, and
+    // the host's style isolation only prefixes selectors, so a pair resolves from the
+    // host's own signal. The alternative, a `.dark .agent-hub { ... }` block, cannot
+    // work: the isolation rewrites it to `:where(<plugin-root>) .dark .agent-hub`,
+    // where `.dark` would have to be a descendant of the plugin root, and on <html>
+    // it is an ancestor.
+    const page = rules('.agent-hub')
+    const tokens = page.flatMap((block) => block.body.match(/--[\w-]+:/g) ?? [])
+    expect(tokens.length).toBeGreaterThan(20)
+    for (const declaration of page.flatMap((block) => block.body.split(';'))) {
+      const match = /^\s*(--[\w-]+):\s*(.+?)\s*$/.exec(declaration)
+      if (!match) continue
+      const [, name, value] = match
+      // Widths, radii and the card arithmetic are numbers, not colours.
+      if (!/light-dark\(|#[0-9a-f]{3,8}|rgb/.test(value)) continue
+      // The one deliberate single value: white on the brand blue clears 4.5:1 in
+      // both themes, so a pair would only be noise. Anything else must be a pair.
+      if (name === '--hub-on-primary') continue
+      expect(`${name}=${value}`).toMatch(/light-dark\(/)
+    }
+    // No bare colour may sit in a rule body: it would freeze one theme.
+    const bareLiteral = /(?<!light-dark\()\s(?:#[0-9a-f]{3,8}\b|rgba?\()/i
+    const offenders = blocks
+      .filter((block) => !block.selectors.includes('.agent-hub'))
+      .map((block) => ({ selector: block.selectors.join(', '), body: block.body }))
+      .filter(({ body }) => {
+        // Strip every light-dark(...) pair first, so only bare literals remain.
+        let stripped = body
+        let guard = 0
+        while (stripped.includes('light-dark(') && guard < 200) {
+          stripped = stripped.replace(/light-dark\([^()]*(?:\([^()]*\)[^()]*)*\)/, '')
+          guard += 1
+        }
+        return bareLiteral.test(` ${stripped}`)
+      })
+    expect(offenders).toEqual([])
+  })
+
   it('keeps the card height independent of the description length', () => {
     expect(rules('.power-card').flatMap((block) => declared(block, 'min-height'))).toEqual([])
 
@@ -253,6 +293,44 @@ describe('Agent Hub layout contract', () => {
     // The static version label reuses the version slot but drops the control look.
     const staticVersion = rules('.power-card__version--static')
     expect(staticVersion.flatMap((block) => declared(block, 'border-style'))).toContain('dashed')
+  })
+
+  it('gives the custom accent a hue of its own, away from every Power type', () => {
+    // The accent shipped as amber, 21 degrees of OKLCH hue from MCP's orange, and the
+    // two card fills came out within 0.7 ΔE of each other -- a Custom badge next to an
+    // MCP chip read as the same colour. The declaration only has to keep a hue that is
+    // not the MCP or skill family; the exact value is a design choice.
+    const custom = rules('.agent-hub').flatMap((block) => declared(block, '--hub-custom'))
+    expect(custom).toHaveLength(1)
+    const [light, dark] = custom[0].match(/light-dark\(\s*(#[0-9a-f]{6})\s*,\s*(#[0-9a-f]{6})\s*\)/)?.slice(1) ?? []
+    expect(light).toBeTruthy()
+    expect(dark).toBeTruthy()
+
+    const hue = (hex: string) => {
+      const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+      const [max, min] = [Math.max(r, g, b), Math.min(r, g, b)]
+      if (max === min) return 0
+      const raw = max === r ? (g - b) / (max - min) : max === g ? 2 + (b - r) / (max - min) : 4 + (r - g) / (max - min)
+      return ((raw * 60) % 360 + 360) % 360
+    }
+    const gap = (a: number, b: number) => Math.min(Math.abs(a - b), 360 - Math.abs(a - b))
+    // The four type accents, as shipped, measured the same way (HSV hue, since that
+    // is what the check above computes).
+    const typeHues = [251.8, 163.3, 29.4, 215.3]
+    for (const hex of [light, dark]) {
+      const own = hue(hex)
+      const nearest = Math.min(...typeHues.map((type) => gap(own, type)))
+      expect(nearest).toBeGreaterThan(40)
+    }
+    // And the two themes agree on the hue, so the token is one accent family.
+    expect(gap(hue(light), hue(dark))).toBeLessThan(10)
+  })
+
+  it('moves the custom card and badge off the amber literals', () => {
+    // A regression guard for the exact values a previous build hard-coded.
+    for (const block of blocks) {
+      expect(block.body).not.toMatch(/#d9a13b|#fdf6e6|#fdf1d8|#fffaf0|#8a5a06/i)
+    }
   })
 
   it('gives every card the same fixed width at every window size', () => {

@@ -434,11 +434,36 @@ Local Preview 使用 `?lang=zh-CN` 打开中文界面，`dev/main.tsx` 右上角
 - 卡片右上角的版本槽**两种卡片必须同高**：Hub 管理的卡片渲染原生 `<select>`（继承 14px/1.5，WebKitGTK 2.52 实测盒高 31px，记为 `--hub-version-height`），自定义卡片渲染静态标签；`.power-card__version--static` 因此用 `display: inline-flex` + `align-items: center` + `min-height: var(--hub-version-height)` + `max-width: 112px` + `overflow: hidden` 占满同一个盒子。少了这条，自定义卡片的 header 会比管理态矮 5px，其标题与描述整体上移，与同行卡片错位；`overflow: hidden` 让极长版本留在槽内（`text-overflow` 对 inline-flex 盒无效，只做裁切；真实数据最长约 99px）；
 - 卡片高度不能跟着描述长度走：APC 目录里的描述从 1 行到 14 行都有，`.power-card__description` 是固定 5 行（`7.5em`，行高 21px）的无边框滚动区，`overflow-x: hidden` 且长词换行，完整描述在详情弹窗里看；
 - 卡片标题（Power 名字）**不换行**：`.power-card h2` 固定 `height/line-height: 26px`（所有卡片的标题行等高，卡片网格才能对齐）、`white-space: nowrap` + `text-overflow: ellipsis`，字号由 `src/useFittedFontSize.ts` 在 19px（上限）与 13px（下限）之间按“文本自然宽度 / 盒子宽度”线性反解——一行文本的宽度与字号成正比，所以量一次就够；`ResizeObserver` + `window.resize` 负责列数变化时重算，`clientWidth` 为 0（jsdom 或尚未排版）时保持样式表里的 19px。卡片宽度固定为 267.33px 后，标题盒内宽恒为 229px，开发板实测真实目录里最长的 `foo-before-summary`（19px 下 193px）与 `markdown-maker`（165px）在任何窗口都完整显示且保持满号 19px；构造出的超长名字才会落到 13px 下限并被省略号截断；
-- 滚动条统一成“静止时不显示、滚动时显示位置”，但**不能靠 CSS 改平台滚动条**（下面 7.2.1 是开发板上实测结论），而是由插件隐藏原生滚动条（`scrollbar-width: none`，这是插件能设的属性）并在滚动区内画一个 `<ScrollThumb>`：按 `client/scroll` 比例算长度与位置、8px 圆角 `#bcc5d3`、`pointer-events: none`，滚动时显示、停止 1s 后淡出；页面大滚动条、卡片描述区、卡片标签行、筛选标签行、详情弹窗内容区都是这一套，`ScrollThumb` 的 `targetRef` 必须指向它所在的那个滚动容器；
+- 滚动条统一成“静止时不显示、滚动时显示位置”，但**不能靠 CSS 改平台滚动条**（下面 7.2.3 是开发板上实测结论），而是由插件隐藏原生滚动条（`scrollbar-width: none`，这是插件能设的属性）并在滚动区内画一个 `<ScrollThumb>`：按 `client/scroll` 比例算长度与位置、8px 圆角（颜色取 `--hub-thumb`，明暗各一档）、`pointer-events: none`，滚动时显示、停止 1s 后淡出；页面大滚动条、卡片描述区、卡片标签行、筛选标签行、详情弹窗内容区都是这一套，`ScrollThumb` 的 `targetRef` 必须指向它所在的那个滚动容器；
 - 换了查询（翻页、范围、Agent、类型、tags）后要把页面滚动位置归零；
 - `src/agentHubLayout.test.ts` 以文本级契约守住以上几条（jsdom 没有排版引擎，这是唯一的自动化防线），`src/AgentHubPage.test.tsx` 守住量高与回顶两条行为。
 
-#### 7.2.1 为什么不能用 CSS 控制滚动条（WebKitGTK 2.52 实测）
+#### 7.2.1 跟随宿主明暗主题（`light-dark()`，不是 `.dark` 后代选择器）
+
+宿主切换主题时做的是**两件事**：给 `<html>` 加 `class="dark"`（`web-app/src/providers/ThemeProvider.tsx` 的 `document.documentElement.classList.toggle('dark', isDark)`），并在 `.dark` 上把 `color-scheme` 切成 `dark`（`web-app/src/index.css`）。`<html>` 上的 `class` 因此**不在插件根节点内部**，这一点决定了插件只能用哪种写法：
+
+| 写法 | 结果 |
+| --- | --- |
+| `--x: light-dark(a, b)`，由继承来的 `color-scheme` 决定取哪一支 | ✅ 正确。`color-scheme` 是可继承属性，`light-dark()` 读它，插件根节点天然继承 `<html>` 的值；宿主样式隔离只给选择器**加前缀**，不碰声明值，所以 `light-dark()` 原样穿过隔离与打包（已核对：`bibit-plugin build` 产出的 `dist/agent-hub-plugin.css` 里 58 个 `light-dark()` 全部保留） |
+| `.dark .agent-hub { ... }` | ❌ 永不生效。宿主把插件样式重写为 `:where(<plugin-root>) <原选择器>`（`trustedPluginStyles.ts` 的 `isolatePluginStyles`），于是这条变成 `:where(<plugin-root>) .dark .agent-hub`——它要求 `.dark` 是插件根的**后代**，而实际上 `.dark` 在 `<html>` 上、是祖先。用真实算法跑过：`.dark .agent-hub` → `:where(bibit-agent-hub-page-home) .dark .agent-hub` |
+| `@media (prefers-color-scheme: dark)` | ⚠️ 只在宿主自己跟随系统时凑巧正确。宿主的主题是**权威值**（Linux 走 XDG Desktop Portal 的 `color-scheme`，还有用户显式选择与 Tauri 广播），与 `prefers-color-scheme` 可以不一致（用户手动选深色而系统是浅色时就会错） |
+| 插件自己读 `matchMedia` 并加 class | ❌ 另一套真值来源，必然与宿主不同步，还要在插件根上写 `color-scheme`（等于覆盖宿主 token） |
+
+因此约定是：
+
+- **所有颜色都写成 `light-dark(浅色, 深色)` 成对声明**，集中在 `.agent-hub` 的 token 段（`--hub-bg`、`--hub-surface`、`--hub-text`、`--hub-muted`、`--hub-border`、四个语义色系、四个 type 色系等）。浅色一支就是明色主题下原样的设计值；深色一支按「保持色相、提高明度直到对深色表面达到 4.5:1」推导；
+- **不得在任何规则体里写裸颜色字面量**。写一个 `#fff` 就等于把那个元素钉死在明色主题；`src/agentHubLayout.test.ts` 会把每个 `light-dark(...)` 剥掉后检查剩余字面量为空，并断言所有颜色型 token 都是成对声明；
+- 唯一允许的单值 token 是 `--hub-on-primary`（品牌蓝上的白字，两种主题下分别是 5.81:1 / 6.61:1，成对声明只是噪声），测试里显式豁免；
+- 语义色也走 token：`--hub-status-*`、`--hub-error-*`、`--hub-install-*`、`--hub-uninstall-*`、`--hub-scope*`、`--hub-option-*`、`--hub-shadow*`、`--hub-backdrop`、`--hub-version-chip`。渐变、阴影与 `::backdrop` 里的 `light-dark()` 都已实测生效（`::backdrop` 既能直接写，也能读自定义属性）；
+- 宿主若不设置 `color-scheme`，`light-dark()` 按 `normal` 解析，取**浅色**一支——也就是本插件 0.3.14 之前的行为，因此对老宿主是安全的降级，不是坏掉。
+
+验证方式：`docs/verification/probe-dark-mode.py` 用离屏 WebKitGTK 把同一份页面在 `light` 与 `color-scheme: dark` 两种状态下各渲染一次，读回 `getComputedStyle` 与 `::backdrop` 的颜色，断言表面色确实翻转、正文对比度 ≥ 4.5:1、且自定义资源的色相与 MCP 至少差 40°（见 §7.2.2）。
+
+#### 7.2.2 自定义资源的色相必须与 MCP 分开
+
+自定义资源（`data-source="custom"`）原先用琥珀色 `#d9a13b` 作为强调色。它和 MCP 的橙色 `#a95e16` 在 OKLCH 色相上只差 **21°**，而且两张卡片的填充色（custom `#fdf6e6` 与 mcp `#fff6eb`）只差 **0.7 ΔE** ——并排看几乎是同一种颜色，用户因此反馈“自定义资源的颜色应与 MCP 区分”。现在自定义资源改用玫红家族（OKLCH 色相 **345°**）：离 MCP 73°、离最近的邻居（skill 的紫）57°；填充色与 MCP 的差 3.2 ΔE。色相只是“别再撞色”，识别手段仍然是自定义卡片独有的**虚线边框 + `Custom` 徽标**。`src/agentHubLayout.test.ts` 会断言该 token 的色相与四个 type 色相均相距 40° 以上、明暗两支色相一致，并禁止琥珀色字面量回归；探针在两种主题下都比较徽标、卡片边框与卡片填充。
+
+#### 7.2.3 为什么不能用 CSS 控制滚动条（WebKitGTK 2.52 实测）
 
 在开发板（`bianbu@10.0.91.51`，WebKitGTK 2.52.0 + GTK 3.24，Yaru 主题，`gtk-overlay-scrolling=True`）上用一个离屏 `WebKit2.WebView` 渲染探针页面、直接读快照像素得到：
 
@@ -1519,6 +1544,7 @@ CLI 模式检查 Registry 是否为 `version: 2`、`transport: stdio`、固定�
 - 自动化测试使用 Vitest 覆盖 DTO、dev transport、客户端、组件与页面行为（`src/api/contracts.test.ts` 等与源文件同目录）；
 - 「设置」标签页的样式使用 `.agent-hub*` 命名空间内的独立 CSS，不依赖 `@bibit/feature-ui` 的 Settings Shell（插件已不声明 settings contribution）；
 
+- 明暗主题由宿主的 `color-scheme` 驱动，插件的每个颜色都是 `light-dark()` 成对声明（§7.2.1）；深色一支是推导出来的，**板端实机深色外观尚未验收**，本次证据是离屏 WebKitGTK 探针 `docs/verification/probe-dark-mode.py`；
 - 中英文由插件自带词典（`src/agentHubI18n.tsx`）提供，跟随宿主 `language`，目前只有 `en` 与 `zh-CN` 两种；新增语言需要同时扩展 `agentHubChinese`/`agentHubLocales` 与 `bibit.feature.json` 的 `contributions.locales`；
 - 宿主 `language` 传入组件自 `bi-bit` 0.1.4 起；更早的宿主不传该值时页面固定为英文；
 - 插件属于公司可信内部代码，不是不可信代码沙箱；
