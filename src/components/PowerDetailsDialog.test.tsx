@@ -356,6 +356,30 @@ describe('PowerDetailsDialog', () => {
     expect(document.querySelector('.agent-hub-dialog__confirm')?.getAttribute('role')).toBe('alertdialog')
   })
 
+  it('shows the agent type as Expert in the badge and the confirmations', async () => {
+    const user = userEvent.setup()
+    const agentSeries: PowerSeries = {
+      type: 'agent',
+      name: 'reviewer',
+      versions: [{ version: 'v1.0.0', description: 'Agent reviewer.', tags: [] }],
+    }
+    render(
+      <PowerDetailsDialog
+        {...props}
+        series={agentSeries}
+        installation={{
+          status: 'ready',
+          records: [{ agent: 'bibit', type: 'agent', name: 'reviewer', version: 'v1.0.0', description: '', tags: [] }],
+        }}
+      />
+    )
+
+    expect(document.querySelector('.agent-hub-dialog__type')?.textContent).toBe('Expert')
+
+    await user.click(screen.getByRole('button', { name: 'Uninstall' }))
+    expect(screen.getByText('Removes Expert "reviewer" for bibit.')).toBeTruthy()
+  })
+
   it('cancels the uninstall confirmation without calling the handler', async () => {
     const user = userEvent.setup()
     const onUninstall = vi.fn()

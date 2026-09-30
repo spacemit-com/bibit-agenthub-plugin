@@ -1,3 +1,21 @@
+bibit-agenthub-plugin (0.3.12) resolute-porting; urgency=medium
+
+  * Rename the page's front-end copy to the capabilities vocabulary, with no
+    protocol, Provider or DTO change. The page title, the sidebar menu entry and
+    the manifest fallback all read "Capabilities" / 能力中心 instead of
+    "Agent Hub"; the first-level tabs read "My Capabilities" / 我的能力 and
+    "Capability Market" / 能力市场; and the create entry reads
+    "Create" / 创建.
+  * Drop the "INTERNAL CATALOG" / 内部目录 eyebrow above the title, along with
+    its dictionary entry and the header paragraph rule that only served it.
+  * Show the catalog's `agent` Power type as "Expert" everywhere it reaches the
+    user: the Type filter button, the card and dialog badges, and the
+    uninstall/delete confirmation sentences. The wire value, `data-power-type`,
+    `POWER_TYPES` and every request keep the canonical `agent`, so the label is
+    a display-only mapping rather than a protocol change.
+
+ -- liangjunzhao <junzhao.liang@spacemit.com>  Wed, 30 Sep 2026 10:20:00 +0800
+
 bibit-agenthub-plugin (0.3.11) resolute-porting; urgency=medium
 
   * Add a manual-refresh entry to the Agent Hub page header: an icon-only

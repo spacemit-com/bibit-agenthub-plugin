@@ -1,5 +1,16 @@
 import type { AgentHubLanguage } from './agentHubI18n'
-import type { PowerSeries, PowerVersion } from './api/contracts'
+import type { PowerSeries, PowerType, PowerVersion } from './api/contracts'
+
+/**
+ * Resolves the label a Power's type is shown under. The wire value stays the
+ * canonical `agent` for every request, key and comparison; only the copy differs,
+ * so the catalog's `agent` type reads as `Expert` in the filter row, on the card
+ * and dialog badges and inside the uninstall/delete sentences. The other types
+ * are already the words the UI wants, so they are returned unchanged.
+ */
+export function resolvePowerTypeLabel(type: PowerType): string {
+  return type === 'agent' ? 'Expert' : type
+}
 
 /**
  * Resolves the user-facing Power title from the resource-format-v2 display names,

@@ -1,5 +1,36 @@
 # Changelog
 
+## 2026-09-30 — 文案改为「能力中心 / 能力市场」并去掉页头眉标（0.3.12）
+
+分类：体验优化（纯前端文案）
+
+用户需求：
+
+仅更改前端文本：创建资源 → 创建；AgentHub title → 能力中心/Capabilities；我的 Power → 我的能力；Power 市场 → 能力市场；Type 标签中的 Agent → Expert；另外删掉页面顶部的 INTERNAL CATALOG 字样。
+
+解决方案或完成结果：
+
+- **创建入口**：`src/AgentHubPage.tsx` 的按钮文案由 `t('Create a resource')` 改键为 `t('Create')`，词典 `'Create': '创建'`。入口的行为、能力降级与 `aria-describedby` 关联都没动。
+- **标题三处一致**：页内 `h1` 由硬编码 `Agent Hub` 改为 `t('Capabilities')`（中文「能力中心」）；Bibit 侧边栏菜单名 `agentHubLocales.en.title` / `['zh-CN'].title` 由 `Agent Hub` 改为 `Capabilities` / `能力中心`；`bibit.feature.json` 的 `display.fallbackTitle` 同步改为 `Capabilities`，宿主解析不到 locale 时也不会回落到旧名。
+- **一级页签**：`'My Powers'` → `'My Capabilities': '我的能力'`，`'Power market'` → `'Capability Market': '能力市场'`，只改字典键与组件里的 `t(...)` 实参，`PowerScope`（`installed` / `market`）等 wire 值与 `PowerTab` 联合类型不变。
+- **Type 的 agent 显示为 Expert**：新增 `src/displayFields.ts` 的 `resolvePowerTypeLabel(type)`，把 `agent` 映射为 `Expert`、其余原样返回，并接到四处面向用户的渲染——Type 篩选按钮、卡片徽标（`PowerCard`）、详情弹窗徽标与卸载/删除确认句的 `{type}`（`PowerDetailsDialog`）、自定义资源跳过 warning 的 `{type}`（`powerCatalogClient`）、删除成功句的 `{type}`（`AgentHubPage`）。这是**展示层映射**：`POWER_TYPES`、`data-power-type`、`powers.list.v1` / `install` / `uninstall` / `delete` 的 `type` 参数、APM 解析与去重键全部保持规范的 `agent`。卡片与弹窗徽标带 `text-transform: uppercase`，渲染为 `EXPERT`，与同行的 `SKILL` / `PLUGIN` / `MCP` 一致；篩选按钮是 `capitalize`，渲染为 `Expert`。
+- **眉标移除**：页头 `<p>{t('INTERNAL CATALOG')}</p>` 整段删除，词典条目与只服务于它的 `.agent-hub header p` 规则一并删除；`h1` 的 `margin` 由 `4px 0 0` 回到 `0`，`.agent-hub__create-note` 补 `margin: 0`（原先由那条 `header p` 规则提供），保证不可用说明段落没有浏览器默认外边距。
+- **无协议 / DTO / Provider 改动**：不触碰 `src/api/contracts.ts`、`dev/main.tsx`、Provider；`bibit.feature.json` 只升版本号与改 `fallbackTitle`，capability 不变。
+
+相关文件：
+
+- `src/agentHubI18n.tsx`（词典改键与菜单名）、`src/AgentHubPage.tsx`（页头与删除句）、`src/components/PowerFilters.tsx`、`src/components/PowerCard.tsx`、`src/components/PowerDetailsDialog.tsx`、`src/api/powerCatalogClient.ts`、`src/displayFields.ts`（新增 `resolvePowerTypeLabel`）
+- `src/agentHub.css`（删除眉标规则、`h1` 与说明段落 margin 收口）
+- `src/displayFields.test.ts`、`src/components/PowerFilters.test.tsx`、`src/components/PowerCard.test.tsx`、`src/components/PowerDetailsDialog.test.tsx`、`src/AgentHubPage.test.tsx`（同步改键并新增 4 条 Expert 断言）
+- `docs/verification/2026-09-30-capabilities-copy.md`（新增）
+- `package.json`、`package-lock.json`、`bibit.feature.json`、`debian/changelog`
+
+验证结果或限制：
+
+`npm test` 506/509（27 个文件；`src` 下 23 个文件 463/463 全通过；**唯一失败文件是 `dev/sources.test.ts` 的 3 条 `readMarket` 用例，基线即失败**——jsdom 把全局 `URL` 换成不继承 `node:url` `URL` 的实现，`http.get(url, options, cb)` 把它当 options，`git stash` 后同样失败，与本次改动无关）、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin`（`artifacts/agent-hub-0.3.12.bibit-plugin.tgz`，sha256 `6796aa46…`）与 `git diff --check` 均通过。
+
+限制：本次是纯文案与字典键改名，**未做真机截图与离屏探针验证**（没有布局或尺寸改动；删眉标后页头的左右分布与创建入口列不变，说明段落的 `margin: 0` 是补齐原先由 `header p` 提供的值）。`docs/`（`README.md`、开发指南、`docs/superpowers/**`）与历史 `debian/changelog` 条目里仍保留旧的「我的 Power / Power 市场 / 创建资源 / INTERNAL CATALOG」措辞，它们是历史规格与变更记录，本次有意未改。
+
 ## 2026-09-29 — Hub 页新增手动刷新按钮（0.3.11）
 
 分类：新增功能

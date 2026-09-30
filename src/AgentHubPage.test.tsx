@@ -345,7 +345,7 @@ describe('AgentHubPage', () => {
     renderPage(hostApi)
     await screen.findByRole('heading', { name: 'code-review' })
 
-    await user.click(screen.getByRole('button', { name: 'Power market' }))
+    await user.click(screen.getByRole('button', { name: 'Capability Market' }))
     await screen.findByRole('heading', { name: 'market-translate' })
 
     const marketCalls = calls.filter((call) => wireParamsOf(call).scope === 'market')
@@ -368,7 +368,7 @@ describe('AgentHubPage', () => {
     await screen.findByRole('heading', { name: 'skill-20' })
     expect(pageNumber()).toBe('2')
 
-    await user.hover(screen.getByRole('button', { name: 'My Powers' }))
+    await user.hover(screen.getByRole('button', { name: 'My Capabilities' }))
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'codex' }))
 
     await waitFor(() => {
@@ -484,14 +484,14 @@ describe('AgentHubPage', () => {
     renderPage(hostApi)
     await screen.findByRole('heading', { name: 'code-review' })
 
-    await user.hover(screen.getByRole('button', { name: 'My Powers' }))
+    await user.hover(screen.getByRole('button', { name: 'My Capabilities' }))
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'codex' }))
     await waitFor(() => expect(lastListParams().agent).toBe('codex'))
 
-    await user.click(screen.getByRole('button', { name: 'Power market' }))
+    await user.click(screen.getByRole('button', { name: 'Capability Market' }))
     await waitFor(() => expect(lastListParams().scope).toBe('market'))
 
-    await user.click(screen.getByRole('button', { name: 'My Powers' }))
+    await user.click(screen.getByRole('button', { name: 'My Capabilities' }))
     await waitFor(() => {
       const last = lastListParams()
       expect(last.scope).toBe('installed')
@@ -575,7 +575,7 @@ describe('AgentHubPage', () => {
     renderPage(hostApi)
     await screen.findByRole('heading', { name: 'code-review' })
 
-    await user.click(screen.getByRole('button', { name: 'Power market' }))
+    await user.click(screen.getByRole('button', { name: 'Capability Market' }))
     await screen.findByRole('heading', { name: 'market-00' })
 
     await user.click(screen.getByRole('button', { name: 'Next page' }))
@@ -601,7 +601,7 @@ describe('AgentHubPage', () => {
     renderPage(hostApi)
     await screen.findByRole('heading', { name: 'code-review' })
 
-    await user.click(screen.getByRole('button', { name: 'Power market' }))
+    await user.click(screen.getByRole('button', { name: 'Capability Market' }))
     await waitFor(() => expect(marketRequests).toBe(1))
 
     // Focusing the window while the market catalog is downloading must not abort
@@ -628,7 +628,7 @@ describe('AgentHubPage', () => {
     // Refresh sits to the left of the create entry, in the same header row.
     expect(within(header).getAllByRole('button').map((button) => button.textContent)).toEqual([
       '↻',
-      'Create a resource',
+      'Create',
     ])
 
     const listCalls = () => calls.filter((call) => call.operationId === 'powers.list.v1')
@@ -660,7 +660,7 @@ describe('AgentHubPage', () => {
     // re-read a list it does not show. Returning to a catalog tab brings it back.
     expect(screen.queryByRole('button', { name: 'Refresh' })).toBeNull()
 
-    await user.click(screen.getByRole('button', { name: 'My Powers' }))
+    await user.click(screen.getByRole('button', { name: 'My Capabilities' }))
     expect(await screen.findByRole('heading', { name: 'code-review' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Refresh' })).toBeTruthy()
   })
@@ -682,7 +682,7 @@ describe('AgentHubPage', () => {
     renderPage(hostApi)
     await screen.findByRole('heading', { name: 'code-review' })
 
-    await user.click(screen.getByRole('button', { name: 'Power market' }))
+    await user.click(screen.getByRole('button', { name: 'Capability Market' }))
     await waitFor(() => expect(marketRequests).toBe(1))
 
     // Refreshing mid-read would abort and re-issue it, which is the spurious
@@ -799,20 +799,22 @@ describe('AgentHubPage', () => {
     const view = renderLocalizedPage(hostApi, 'en')
 
     await screen.findByRole('heading', { name: 'code-review' })
-    expect(screen.getByText('INTERNAL CATALOG')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'My Powers' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Power market' })).toBeTruthy()
+    // The page title is the only header copy: the old INTERNAL CATALOG eyebrow is gone.
+    expect(screen.getByRole('heading', { name: 'Capabilities' })).toBeTruthy()
+    expect(screen.queryByText('INTERNAL CATALOG')).toBeNull()
+    expect(screen.getByRole('button', { name: 'My Capabilities' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Capability Market' })).toBeTruthy()
     expect(screen.getByRole('spinbutton', { name: 'Page number' })).toBeTruthy()
     expect(screen.getByText('of 1')).toBeTruthy()
 
     rerenderLocalizedPage(view, hostApi, 'zh-CN')
 
-    expect(screen.getByText('内部目录')).toBeTruthy()
-    expect(screen.getByRole('button', { name: '我的 Power' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Power 市场' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: '能力中心' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '我的能力' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '能力市场' })).toBeTruthy()
     expect(screen.getByRole('spinbutton', { name: '页码' })).toBeTruthy()
     expect(screen.getByText('/ 1 页')).toBeTruthy()
-    expect(screen.queryByText('INTERNAL CATALOG')).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Capabilities' })).toBeNull()
   })
 
   it('renders the localized display name of an installed Power', async () => {
@@ -838,7 +840,7 @@ describe('AgentHubPage', () => {
     renderLocalizedPage(hostApi, 'zh-CN')
     await screen.findByText('没有可用的 Power。')
 
-    await user.click(screen.getByRole('button', { name: 'Power 市场' }))
+    await user.click(screen.getByRole('button', { name: '能力市场' }))
 
     expect(await screen.findByRole('heading', { name: '翻译助手' })).toBeTruthy()
     expect(screen.getByText('翻译文本。')).toBeTruthy()
@@ -873,7 +875,7 @@ describe('AgentHubPage', () => {
     })
     const view = renderLocalizedPage(hostApi, 'en')
 
-    await user.click(screen.getByRole('button', { name: 'Power market' }))
+    await user.click(screen.getByRole('button', { name: 'Capability Market' }))
     await screen.findByRole('heading', { name: 'market-translate' })
     await user.click(screen.getByRole('heading', { name: 'market-translate' }))
     const dialog = within(document.querySelector('dialog') as HTMLElement)
@@ -918,7 +920,7 @@ describe('AgentHubPage', () => {
     renderPage(hostApi)
 
     await waitFor(() => expect(installedResolvers).toHaveLength(1))
-    await user.click(screen.getByRole('button', { name: 'Power market' }))
+    await user.click(screen.getByRole('button', { name: 'Capability Market' }))
     await waitFor(() => expect(marketResolvers).toHaveLength(1))
 
     marketResolvers[0](await marketData())
@@ -944,7 +946,7 @@ describe('AgentHubPage', () => {
     renderPage(hostApi)
     await screen.findByText('No Powers are available.')
 
-    await user.hover(screen.getByRole('button', { name: 'My Powers' }))
+    await user.hover(screen.getByRole('button', { name: 'My Capabilities' }))
 
     expect(screen.getByRole('menuitemradio', { name: 'bibit' })).toBeTruthy()
     expect(screen.getByRole('menuitemradio', { name: 'codex' })).toBeTruthy()
@@ -997,7 +999,7 @@ describe('AgentHubPage', () => {
     render(<Shell />)
     await screen.findByRole('heading', { name: 'code-review' })
 
-    await user.click(screen.getByRole('button', { name: 'Power market' }))
+    await user.click(screen.getByRole('button', { name: 'Capability Market' }))
     await screen.findByRole('heading', { name: 'market-translate' })
 
     // A host re-render mid-request must not abort and re-issue the market read.
@@ -1037,7 +1039,7 @@ describe('AgentHubPage', () => {
         throw new Error('unexpected op ' + input.operationId)
       })
       renderPage(hostApi)
-      await user.click(screen.getByRole('button', { name: 'Power market' }))
+      await user.click(screen.getByRole('button', { name: 'Capability Market' }))
       await screen.findByRole('heading', { name: 'market-translate' })
 
       await user.selectOptions(screen.getByLabelText('Version'), 'v1.0.0')
@@ -1073,7 +1075,7 @@ describe('AgentHubPage', () => {
         throw new Error('unexpected op ' + input.operationId)
       })
       renderPage(hostApi)
-      await user.click(screen.getByRole('button', { name: 'Power market' }))
+      await user.click(screen.getByRole('button', { name: 'Capability Market' }))
       await screen.findByRole('heading', { name: 'market-translate' })
 
       await user.click(screen.getByRole('heading', { name: 'market-translate' }))
@@ -1198,7 +1200,7 @@ describe('AgentHubPage', () => {
         throw new Error('unexpected op ' + input.operationId)
       })
       renderPage(hostApi)
-      await user.click(screen.getByRole('button', { name: 'Power market' }))
+      await user.click(screen.getByRole('button', { name: 'Capability Market' }))
       await screen.findByRole('heading', { name: 'market-translate' })
 
       await user.click(screen.getByRole('heading', { name: 'market-translate' }))
@@ -1238,7 +1240,7 @@ describe('AgentHubPage', () => {
       expect((dialog.getByLabelText('Agent') as HTMLSelectElement).disabled).toBe(true)
       await user.click(dialog.getByRole('button', { name: 'Close' }))
 
-      await user.click(screen.getByRole('button', { name: 'Power market' }))
+      await user.click(screen.getByRole('button', { name: 'Capability Market' }))
       await screen.findByRole('heading', { name: 'market-translate' })
       expect(screen.queryByRole('button', { name: 'Install' })).toBeNull()
 
@@ -1573,7 +1575,7 @@ describe('AgentHubPage settings tab', () => {
     expect((screen.getByLabelText('APC API Key') as HTMLInputElement).value).toBe('')
 
     const listCallsBefore = calls.filter((call) => call.operationId === 'powers.list.v1').length
-    await user.click(screen.getByRole('button', { name: 'My Powers' }))
+    await user.click(screen.getByRole('button', { name: 'My Capabilities' }))
 
     expect(await screen.findByRole('heading', { name: 'code-review' })).toBeTruthy()
     expect(screen.getByRole('group', { name: 'Type' })).toBeTruthy()
@@ -1587,7 +1589,7 @@ describe('AgentHubPage settings tab', () => {
 
 describe('create-resource entry (host:actions)', () => {
   const draft = CREATE_RESOURCE_PROMPT_LINES.join('\n')
-  const createButton = () => screen.getByRole('button', { name: 'Create a resource' })
+  const createButton = () => screen.getByRole('button', { name: 'Create' })
 
   it('asks the host to compose a new conversation with the preset draft', async () => {
     const user = userEvent.setup()

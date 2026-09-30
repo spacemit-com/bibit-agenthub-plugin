@@ -17,6 +17,7 @@ import {
 } from './api/contracts'
 import { ScrollThumb } from './ScrollThumb'
 import { useAgentHubI18n, type TranslatableText } from './agentHubI18n'
+import { resolvePowerTypeLabel } from './displayFields'
 import { listPowers } from './api/powerCatalogClient'
 import { deleteCustomResource, submissionIdFrom, uploadCustomResource } from './api/customResources'
 import {
@@ -617,6 +618,9 @@ export function AgentHubPage(_: FeaturePageProps) {
   const deleteDialog = () => {
     if (!dialog || !store) return
     const target = { type: dialog.type, name: dialog.name }
+    // The write keeps the canonical type; only the sentence shown to the user
+    // swaps the catalog's `agent` type for its `Expert` label.
+    const messageValues = { type: resolvePowerTypeLabel(dialog.type), name: dialog.name }
     void runCustomAction(
       'delete',
       dialog,
@@ -625,7 +629,7 @@ export function AgentHubPage(_: FeaturePageProps) {
         await deleteCustomResource(store, { agent: dialogAgent, ...target }, signal)
         // The page closes the dialog instead of showing this, so the text only
         // documents the outcome of the write it just performed.
-        return { text: 'Deleted {type} "{name}".', values: target }
+        return { text: 'Deleted {type} "{name}".', values: messageValues }
       },
       { closeOnSuccess: true }
     )
@@ -636,7 +640,7 @@ export function AgentHubPage(_: FeaturePageProps) {
   }
 
   const facets = view.status === 'ready' ? view.data.facets : { agents: [], tags: [] }
-  // The Agent menu lives on the My Powers tab, so it lists Agents only there.
+  // The Agent menu lives on the My Capabilities tab, so it lists Agents only there.
   const agents = tab === 'installed' ? INSTALLED_AGENTS : []
   const totalPages =
     view.status === 'ready' ? Math.max(1, Math.ceil(view.data.total / POWER_PAGE_SIZE)) : 1
@@ -670,7 +674,7 @@ export function AgentHubPage(_: FeaturePageProps) {
     <main className="agent-hub" ref={pageScrollRef}>
       <ScrollThumb targetRef={pageScrollRef} />
       <header>
-        <div><p>{t('INTERNAL CATALOG')}</p><h1>Agent Hub</h1></div>
+        <div><h1>{t('Capabilities')}</h1></div>
         <div className="agent-hub__create">
           {/* The two header actions share one row, refresh on the left. The refresh
               entry is a catalog action: the Settings tab reads its own settings
@@ -697,7 +701,7 @@ export function AgentHubPage(_: FeaturePageProps) {
               aria-describedby={actions ? undefined : 'agent-hub-create-unavailable'}
               onClick={createResource}
             >
-              {t('Create a resource')}
+              {t('Create')}
             </button>
           </div>
           {!actions && (

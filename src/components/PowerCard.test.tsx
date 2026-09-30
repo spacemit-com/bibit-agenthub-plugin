@@ -107,6 +107,23 @@ describe('PowerCard', () => {
     expect(screen.getByRole('heading', { name: 'code-review' })).toBeTruthy()
   })
 
+  it('labels an agent-type series as Expert while keeping the wire type on the card', () => {
+    const { container } = render(
+      <AgentHubI18nProvider language="en">
+        <PowerCard
+          series={{ ...series, type: 'agent', name: 'reviewer' }}
+          selectedVersion="v2.0.0"
+          onVersionChange={vi.fn()}
+          busy={false}
+        />
+      </AgentHubI18nProvider>
+    )
+
+    expect(container.querySelector('.power-card__type')?.textContent).toBe('Expert')
+    // The canonical type still drives the card's type tokens and every request.
+    expect(container.querySelector('.power-card')?.getAttribute('data-power-type')).toBe('agent')
+  })
+
   it('shows the Chinese display name and description for a Chinese host', () => {
     renderLocalized('zh-CN')
 

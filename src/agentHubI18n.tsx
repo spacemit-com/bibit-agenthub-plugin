@@ -30,12 +30,13 @@ export type AgentHubTranslate = (
  * exactly as they appear in the components and in the api layer, so a missing
  * entry degrades to the English source instead of an empty label.
  *
- * Product names (Agent Hub, Power, Agent, bibit) stay untranslated. Entries
- * that already existed in Chinese before i18n keep their original wording.
+ * Product names (Power, Agent, bibit) stay untranslated, and `Capabilities` is
+ * the page's own title rather than a product name. Entries that already existed
+ * in Chinese before i18n keep their original wording.
  */
 const zh: Readonly<Record<string, string>> = {
-  // ---- Agent Hub page ----
-  'INTERNAL CATALOG': '内部目录',
+  // ---- page header ----
+  'Capabilities': '能力中心',
   'Loading Powers…': '正在加载 Power…',
   'Retry': '重试',
   'Refresh': '刷新',
@@ -59,7 +60,7 @@ const zh: Readonly<Record<string, string>> = {
   'Diagnostic ID: {diagnosticId}': '诊断 ID：{diagnosticId}',
 
   // ---- create-resource entry (host:actions) ----
-  'Create a resource': '创建资源',
+  'Create': '创建',
   'Opening a new conversation is unavailable because this host does not provide it.':
     '当前宿主未提供发起会话的能力，入口不可用。',
   'This host version does not support opening a new conversation.':
@@ -78,8 +79,8 @@ const zh: Readonly<Record<string, string>> = {
   // ---- filters and cards ----
   'Scope': '范围',
   'Agent': 'Agent',
-  'My Powers': '我的 Power',
-  'Power market': 'Power 市场',
+  'My Capabilities': '我的能力',
+  'Capability Market': '能力市场',
   'Type': '类型',
   'Tags': '标签',
   'Version': '版本',
@@ -105,7 +106,7 @@ const zh: Readonly<Record<string, string>> = {
   'Page': '第',
   'of {total}': '/ {total} 页',
 
-  // ---- settings tab (in-page, next to My Powers / Power market) ----
+  // ---- settings tab (in-page, next to My Capabilities / Capability Market) ----
   'Settings': '设置',
   'Save settings': '保存设置',
   'Loading settings…': '正在加载设置…',
@@ -205,11 +206,11 @@ export const agentHubChinese: Readonly<Record<string, string>> = zh
  */
 export const agentHubLocales = {
   en: {
-    title: 'Agent Hub',
+    title: 'Capabilities',
     description: 'Browse and manage Agent packages',
   },
   'zh-CN': {
-    title: 'Agent Hub',
+    title: '能力中心',
     description: '浏览和管理 Agent 包',
   },
 } as const

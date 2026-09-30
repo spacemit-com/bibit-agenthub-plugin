@@ -44,15 +44,15 @@ describe('PowerFilters', () => {
       </AgentHubI18nProvider>
     )
     const view = render(filters('en'))
-    expect(screen.getByRole('button', { name: 'My Powers' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Power market' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'My Capabilities' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Capability Market' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy()
     expect(screen.getByText('Type')).toBeTruthy()
     expect(screen.getByText('Tags')).toBeTruthy()
 
     view.rerender(filters('zh-CN'))
-    expect(screen.getByRole('button', { name: '我的 Power' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Power 市场' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '我的能力' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '能力市场' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '设置' })).toBeTruthy()
     expect(screen.getByText('类型')).toBeTruthy()
     expect(screen.getByText('标签')).toBeTruthy()
@@ -76,11 +76,11 @@ describe('PowerFilters', () => {
     expect(screen.queryByText('Tags')).toBeNull()
     expect(screen.queryByRole('group', { name: 'Type' })).toBeNull()
     // The tab row itself stays, so the user can come back to the catalog.
-    expect(screen.getByRole('button', { name: 'My Powers' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'My Capabilities' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Settings' }).getAttribute('aria-pressed')).toBe('true')
   })
 
-  it('opens the Agent menu from My Powers and marks the current Agent', async () => {
+  it('opens the Agent menu from My Capabilities and marks the current Agent', async () => {
     const user = userEvent.setup()
     renderFilters()
 
@@ -88,7 +88,7 @@ describe('PowerFilters', () => {
     expect(document.querySelector('.power-filters__panel')).toBeTruthy()
     expect(document.querySelector('.power-filters__tags')).toBeTruthy()
 
-    const trigger = screen.getByRole('button', { name: 'My Powers' })
+    const trigger = screen.getByRole('button', { name: 'My Capabilities' })
     expect(trigger.getAttribute('aria-expanded')).toBe('false')
 
     await user.hover(trigger)
@@ -106,7 +106,7 @@ describe('PowerFilters', () => {
     const user = userEvent.setup()
     const props = renderFilters()
 
-    await user.click(screen.getByRole('button', { name: 'My Powers' }))
+    await user.click(screen.getByRole('button', { name: 'My Capabilities' }))
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'atlas' }))
 
     expect(props.onAgentChange).toHaveBeenCalledWith('atlas')
@@ -118,7 +118,7 @@ describe('PowerFilters', () => {
     const user = userEvent.setup()
     const props = renderFilters({ tab: 'market' })
 
-    await user.hover(screen.getByRole('button', { name: 'My Powers' }))
+    await user.hover(screen.getByRole('button', { name: 'My Capabilities' }))
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'atlas' }))
 
     expect(props.onTabChange).toHaveBeenCalledWith('installed')
@@ -128,7 +128,7 @@ describe('PowerFilters', () => {
   it('opens the Agent menu with ArrowDown and restores focus with Escape', async () => {
     const user = userEvent.setup()
     renderFilters()
-    const trigger = screen.getByRole('button', { name: 'My Powers' })
+    const trigger = screen.getByRole('button', { name: 'My Capabilities' })
 
     trigger.focus()
     await user.keyboard('{ArrowDown}')
@@ -162,9 +162,9 @@ describe('PowerFilters', () => {
     const user = userEvent.setup()
     renderFilters()
 
-    await user.click(screen.getByRole('button', { name: 'My Powers' }))
+    await user.click(screen.getByRole('button', { name: 'My Capabilities' }))
     act(() => {
-      screen.getByRole('button', { name: 'Power market' }).focus()
+      screen.getByRole('button', { name: 'Capability Market' }).focus()
     })
 
     expect(screen.queryByRole('menu', { name: 'Agent' })).toBeNull()
@@ -176,7 +176,9 @@ describe('PowerFilters', () => {
 
     const typeGroup = screen.getByRole('group', { name: 'Type' })
     const typeButtons = within(typeGroup).getAllByRole('button')
-    expect(typeButtons.map((button) => button.textContent)).toEqual(['skill', 'plugin', 'mcp', 'agent'])
+    // The catalog's `agent` type is labeled `Expert` in the UI, but the wire value
+    // and `data-power-type` stay canonical.
+    expect(typeButtons.map((button) => button.textContent)).toEqual(['skill', 'plugin', 'mcp', 'Expert'])
     expect(screen.queryByRole('button', { name: 'all' })).toBeNull()
 
     const currentType = screen.getByRole('button', { name: 'skill' })
@@ -185,6 +187,9 @@ describe('PowerFilters', () => {
 
     await user.click(screen.getByRole('button', { name: 'mcp' }))
     expect(props.onTypeChange).toHaveBeenCalledWith('mcp')
+
+    await user.click(screen.getByRole('button', { name: 'Expert' }))
+    expect(props.onTypeChange).toHaveBeenLastCalledWith('agent')
   })
 
   it('toggles tags via buttons and reports them sorted and unique', async () => {

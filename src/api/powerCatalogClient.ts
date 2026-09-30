@@ -20,6 +20,7 @@ import {
 } from './apm'
 import { listCustomResources } from './customResources'
 import { getInstallationStore } from './installationStore'
+import { resolvePowerTypeLabel } from '../displayFields'
 
 type CacheEntry = { kind: 'market'; snapshot: string; records: PowerRecord[] }
 
@@ -102,7 +103,11 @@ function customSkippedWarnings(
         entry.reason === 'missing-authority-file'
           ? 'Skipped {type} "{name}": {expected} is missing.'
           : 'Skipped {type} "{name}": its {expected} does not meet the minimum format.',
-      values: { type: entry.type, name: entry.name, expected: entry.expected },
+      values: {
+        type: resolvePowerTypeLabel(entry.type),
+        name: entry.name,
+        expected: entry.expected,
+      },
     }))
 }
 

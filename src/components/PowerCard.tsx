@@ -2,7 +2,7 @@ import { useRef } from 'react'
 import { ScrollThumb } from '../ScrollThumb'
 import { useFittedFontSize } from '../useFittedFontSize'
 import { useAgentHubI18n, useAgentHubLanguage, type TranslatableText } from '../agentHubI18n'
-import { resolvePowerDescription, resolvePowerTitle } from '../displayFields'
+import { resolvePowerDescription, resolvePowerTitle, resolvePowerTypeLabel } from '../displayFields'
 import type { PowerSeries } from '../api/contracts'
 
 export interface PowerCardProps {
@@ -52,7 +52,7 @@ export function PowerCard({
       onClick={openDetails}
     >
       <div className="power-card__header">
-        <span className="power-card__type">{series.type}</span>
+        <span className="power-card__type">{resolvePowerTypeLabel(series.type)}</span>
         {custom && <span className="power-card__badge">{t('Custom')}</span>}
         {custom ? (
           <span className="power-card__version power-card__version--static" data-testid="power-card-version">

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ScrollThumb } from '../ScrollThumb'
 import { useAgentHubI18n, useAgentHubLanguage, type TranslatableText } from '../agentHubI18n'
-import { resolvePowerDescription, resolvePowerTitle } from '../displayFields'
+import { resolvePowerDescription, resolvePowerTitle, resolvePowerTypeLabel } from '../displayFields'
 import { INSTALLED_AGENTS, type PowerSeries } from '../api/contracts'
 import type { ActiveMutation, InstallationState } from '../api/installationStore'
 
@@ -160,7 +160,7 @@ export function PowerDetailsDialog({
       <div className="agent-hub-dialog__body" ref={bodyRef}>
         <header className="agent-hub-dialog__header">
           <div>
-            <span className="agent-hub-dialog__type">{series.type}</span>
+            <span className="agent-hub-dialog__type">{resolvePowerTypeLabel(series.type)}</span>
             {custom && <span className="power-card__badge">{t('Custom')}</span>}
             <h2>{title}</h2>
           </div>
@@ -334,7 +334,7 @@ export function PowerDetailsDialog({
               <p>{t('Delete this resource?')}</p>
               <p className="agent-hub-dialog__hint">
                 {t('Removes the local {type} "{name}" for {agent}. This cannot be undone.', {
-                  type: series.type,
+                  type: resolvePowerTypeLabel(series.type),
                   name: series.name,
                   agent,
                 })}
@@ -383,7 +383,7 @@ export function PowerDetailsDialog({
               <p>{t('Uninstall this Power?')}</p>
               <p className="agent-hub-dialog__hint">
                 {t('Removes {type} "{name}" for {agent}.', {
-                  type: series.type,
+                  type: resolvePowerTypeLabel(series.type),
                   name: series.name,
                   agent,
                 })}

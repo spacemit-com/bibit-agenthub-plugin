@@ -2,11 +2,11 @@
   "manifestSchemaVersion": 1,
   "sdkApiVersion": 1,
   "id": "agent-hub",
-  "version": "0.3.11",
+  "version": "0.3.12",
   "owner": "agent-hub-team",
   "display": {
     "titleKey": "agent-hub:title",
-    "fallbackTitle": "Agent Hub",
+    "fallbackTitle": "Capabilities",
     "iconKey": "store",
     "descriptionKey": "agent-hub:description",
     "fallbackDescription": "Browse and manage Agent packages"

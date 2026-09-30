@@ -1,6 +1,7 @@
 import { useRef, useState, type FocusEvent, type KeyboardEvent } from 'react'
 import { ScrollThumb } from '../ScrollThumb'
 import { useAgentHubI18n } from '../agentHubI18n'
+import { resolvePowerTypeLabel } from '../displayFields'
 import { POWER_TYPES, type PowerScope, type PowerType } from '../api/contracts'
 
 /**
@@ -116,7 +117,7 @@ export function PowerFilters({
               }
             }}
           >
-            {t('My Powers')} <span aria-hidden="true">⌄</span>
+            {t('My Capabilities')} <span aria-hidden="true">⌄</span>
           </button>
           {agentMenuOpen && agents.length > 0 && (
             <div className="power-filters__agent-menu" role="menu" aria-label={t('Agent')}>
@@ -146,7 +147,7 @@ export function PowerFilters({
           aria-pressed={tab === 'market'}
           onClick={() => tab !== 'market' && onTabChange('market')}
         >
-          {t('Power market')}
+          {t('Capability Market')}
         </button>
         <button
           type="button"
@@ -172,7 +173,7 @@ export function PowerFilters({
                 aria-pressed={value === type}
                 onClick={() => value !== type && onTypeChange(value)}
               >
-                {value}
+                {resolvePowerTypeLabel(value)}
               </button>
             ))}
           </div>
