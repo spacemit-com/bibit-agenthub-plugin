@@ -638,7 +638,7 @@ interface ListPowersInput {
   scope: PowerScope
   agent?: string          // 仅 installed 必填；market 必须省略
   type: PowerType
-  tags: string[]          // 0–20 个 canonical tag，字典序排序且唯一，多项 OR
+  tags: string[]          // 0–20 个 canonical tag，字典序排序且唯一，多项 AND（交集）
   page: number            // 从 1 开始
   pageSize: 20            // v1 固定
   snapshot?: string       // page=1 省略；page>1 必填并等于上一页结果 snapshot
@@ -851,7 +851,7 @@ apm list --installed --agent=<selected> --json
 - stdout 非法 UTF-8 → `unavailable`；超 4 MiB → `resource_exhausted`；
 - 不透传 CLI stderr、物理路径、环境变量、堆栈或命令内部错误。
 
-前端 Agent 菜单固定为 bibit / codex / claude-code / hermes-agent 四个选项（`claude-code` 即 apm 中 Claude 的 id），由插件常量提供，不依赖 `facets.agents` 做发现；每次请求只解析所选 agent 的返回。`listJson` 由前端数据层用 `parseApmInstalledList` 解析为 `APMPowerRecord[]`，再经 `buildInstalledPowersResult` 完成 type/tags 过滤、按 type/name 聚合、去重、分页与 facets——这些聚合只存在于前端 `src/api/`，Provider 与 dev transport 不复制。
+前端 Agent 菜单固定为 bibit / codex / claude-code / hermes-agent 四个选项（`claude-code` 即 apm 中 Claude 的 id），由插件常量提供，不依赖 `facets.agents` 做发现；每次请求只解析所选 agent 的返回。`listJson` 由前端数据层用 `parseApmInstalledList` 解析为 `APMPowerRecord[]`，再经 `buildInstalledPowersResult` 完成 type 过滤与 tag AND（交集）过滤、按 type/name 聚合、去重、分页与 facets——这些聚合只存在于前端 `src/api/`，Provider 与 dev transport 不复制。
 
 ### 10.5 Power 详情与安装/卸载（APM CLI）
 
@@ -971,7 +971,7 @@ Go Provider 每次请求先 `GET {base}/resources/version`；`catalog_sha256` �
 {scope:"market", status:"data", snapshot:"<sha256>", catalogJson:"{...}"}
 ```
 
-APC 全量约束：只调用 `resources/version` 与 `resources`，不调用 `resources/list` 或 `resources/tags`；类型过滤、tag OR 过滤、系列聚合、分页与 facets 全在前端 `buildPowersResult` 完成。前端在解析 `catalogJson` 前先用 Web Crypto 对原始 UTF-8 字节计算 SHA-256 并与 `snapshot` 比对（`src/api/catalogIntegrity.ts`），不一致抛可重试 `unavailable` 且不写入缓存。默认 base 为 `https://developer.bianbu.xyz/api-server/apc/api/v1`；HTTP 客户端使用系统受信 CA，重定向 ≤5 跳且禁止 https→http 降级，无跳过 TLS 校验的开关。
+APC 全量约束：只调用 `resources/version` 与 `resources`，不调用 `resources/list` 或 `resources/tags`；类型过滤、tag AND 过滤、系列聚合、分页与 facets 全在前端 `buildPowersResult` 完成。前端在解析 `catalogJson` 前先用 Web Crypto 对原始 UTF-8 字节计算 SHA-256 并与 `snapshot` 比对（`src/api/catalogIntegrity.ts`），不一致抛可重试 `unavailable` 且不写入缓存。默认 base 为 `https://developer.bianbu.xyz/api-server/apc/api/v1`；HTTP 客户端使用系统受信 CA，重定向 ≤5 跳且禁止 https→http 降级，无跳过 TLS 校验的开关。
 
 ### 10.8 部署与发布前置项
 
@@ -1032,7 +1032,7 @@ APC Base URL 默认测试环境 `https://developer.bianbu.xyz/api-server/apc/api
 - 默认进入“我的 Power / Bibit / skill”，第 1 页显示最多 20 张系列卡，翻页显示“第 X / Y 页”；
 - “Power 市场”隐藏 Agent 层，Agent 层固定显示 bibit / codex / claude-code / hermes-agent 四个选项；
 - 切换 Agent / 类型会清空失效 tags 并回到第 1 页；
-- 选择多个 tag 时按 OR 过滤，tag 清单随上层筛选刷新；
+- 选择多个 tag 时按 AND（交集）过滤：选得越多结果越窄，只保留同时带有全部所选 tag 的版本；tag 清单随上层筛选刷新；
 - 同一系列切换版本时 description 与 tags 同步变化；
 - 选择未安装任何 Power 的 Agent 时，页面显示空内容（No Powers are available.）；
 - 切换语言后当前列表、筛选、分页与已打开的详情弹窗保持不变，只替换文案，且不重新请求 `powers.list.v1`；
@@ -1412,10 +1412,11 @@ Store service version
 11. 输入一个 APC Key 并点「保存 Key」：确认列表出现 `头****尾` 的行、输入框被清空、页面任何位置都不回显该 Key，且该行因是第一条而处于「已启用」；再保存第二条，确认新行是「未启用」而第一条仍是「已启用」；
 12. 点第二条的「启用」：确认启用手到第二条、第一条变回未启用（任何时刻只有一行启用），然后上传一次自定义资源，确认 apm 拿到的是第二条 Key；
 13. 点当前启用行的「删除」（**单击即删，无二次确认**）：确认该行消失、剩下的行是「未启用」，再上传一次确认返回未配置；点剩下那行的「启用」后可再次上传；切回「我的 Power」再切回「设置」并重启 Bibit 与 Store 服务，确认列表与启用状态都持久化；
-13. 在「我的 Power」打开一个**已安装**的 Power 详情：点「卸载」只展开确认（此时 Store 未收到 `powers.uninstall.v1`），点「取消」不产生请求；再点「卸载」→「确认卸载」，确认请求参数为 `{agent,type,name}`，且**卸载成功后弹窗关闭、回到列表、卡片消失**；
-14. 制造一次卸载失败（例如让 `apm uninstall` 返回非零、且目标仍在清单里）：确认弹窗**保持打开**并显示失败文案（仍安装着某个版本时显示 `The command failed; version … is still installed.`）；
-15. 安装一条 Power：确认安装**不需要**二次确认、成功后弹窗**保持打开**并显示 `Installation complete.`；
-16. 保存 Store 服务按 `requestId` 关联的请求日志、Bibit 日志、页面截图和最终设置读取结果。
+14. tag 交集：用一份「A 带 `x`+`y`、B 只带 `x`」的夹具，先点 `x` 确认 A 与 B 都在；再点 `y`，确认 B 消失、只留 A（**选得越多结果越窄**），且 tag 按钮本身没有跟着变少；取消 `y` 后 B 回来；再选一个任何版本都不带的 tag，确认显示空列表而不是报错；
+15. 在「我的 Power」打开一个**已安装**的 Power 详情：点「卸载」只展开确认（此时 Store 未收到 `powers.uninstall.v1`），点「取消」不产生请求；再点「卸载」→「确认卸载」，确认请求参数为 `{agent,type,name}`，且**卸载成功后弹窗关闭、回到列表、卡片消失**；
+16. 制造一次卸载失败（例如让 `apm uninstall` 返回非零、且目标仍在清单里）：确认弹窗**保持打开**并显示失败文案（仍安装着某个版本时显示 `The command failed; version … is still installed.`）；
+17. 安装一条 Power：确认安装**不需要**二次确认、成功后弹窗**保持打开**并显示 `Installation complete.`；
+18. 保存 Store 服务按 `requestId` 关联的请求日志、Bibit 日志、页面截图和最终设置读取结果。
 
 入口可见、端口可达或 Dev Host Mock 成功都不算真实端到端接通。
 
@@ -1428,6 +1429,10 @@ Store service version
 ### 设置标签页出现两个滚动条或高度异常
 
 `.agent-hub` 是页面唯一的滚动容器，`AgentHubSettingsPanel` 不得声明 `overflow-y`、`height`、`max-height`。`src/agentHubLayout.test.ts` 会捕获这类回归。
+
+### 选了多个 tag 后列表空了
+
+0.3.14 起 tag 筛选是**交集**：只有同时带有全部已选 tag 的版本会留下，因此若两个 tag 从未同时出现在任何版本上，结果就是空的（这是交集的定义，不是缺陷）。tag 按钮（facets）仍取当前 type 的全量集合、不随选择收窄，所以取消其中一个 tag 即可回到非空结果。另注意 tag 是版本级字段：一个系列若只有部分版本带全部已选 tag，系列会保留但 `versions` 里只留下匹配的那些。
 
 ### 升级后 Bibit 设置子菜单里仍有「Agent Hub 设置」
 

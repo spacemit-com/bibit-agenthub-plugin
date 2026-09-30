@@ -1,6 +1,9 @@
 # APC Power 展示页面与系列级资源接口设计
 
 - Status：Approved for implementation
+- 修订：tag 多选语义已由 **OR 改为 AND（交集）**（0.3.14）。下文提到「多项使用 OR」
+  的条目是当时的原始决策，已被现行为覆盖；以 `src/api/apm.ts` 的 `buildPowersResult`
+  与 `docs/development-and-deployment-guide.md` 为准。
 - Date：2026-08-27
 - Repositories：bibit-agenthub-plugin、../apc
 

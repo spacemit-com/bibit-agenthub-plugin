@@ -531,32 +531,50 @@ describe('AgentHubPage', () => {
     expect(screen.getByRole('button', { name: 'plugin' }).getAttribute('aria-pressed')).toBe('true')
   })
 
-  it('selects tags in sorted OR order', async () => {
+  it('selects tags in sorted order and narrows the list', async () => {
     const user = userEvent.setup()
     const list = JSON.stringify([
       {
         agent: 'bibit',
         type: 'skill',
-        name: 'code-review',
+        name: 'both',
         version: 'v1.0.0',
         description: '',
-        tags: ['alpha', 'beta', 'gamma'],
+        tags: ['alpha', 'beta'],
+      },
+      {
+        agent: 'bibit',
+        type: 'skill',
+        name: 'alpha-only',
+        version: 'v1.0.0',
+        description: '',
+        tags: ['alpha'],
       },
     ])
     const { hostApi } = makeStoreHost(() => installedData(list))
     renderPage(hostApi)
-    await screen.findByRole('heading', { name: 'code-review' })
+    await screen.findByRole('heading', { name: 'alpha-only' })
+    await screen.findByRole('heading', { name: 'both' })
 
+    // One tag keeps every series that carries it.
     await user.click(screen.getByRole('button', { name: 'beta' }))
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'beta' }).getAttribute('aria-pressed')).toBe('true')
     )
+    expect(await screen.findByRole('heading', { name: 'both' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'alpha-only' })).toBeNull()
+
     await user.click(screen.getByRole('button', { name: 'alpha' }))
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'alpha' }).getAttribute('aria-pressed')).toBe('true')
       expect(screen.getByRole('button', { name: 'beta' }).getAttribute('aria-pressed')).toBe('true')
     })
+    // Intersection: the second tag narrows the result instead of broadening it.
+    // `alpha-only` carries just one of the two selected tags, so it drops out
+    // while `both` survives.
+    expect(await screen.findByRole('heading', { name: 'both' })).toBeTruthy()
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'alpha-only' })).toBeNull())
   })
 
   it('resets to page 1 and drops the snapshot on reset_required', async () => {

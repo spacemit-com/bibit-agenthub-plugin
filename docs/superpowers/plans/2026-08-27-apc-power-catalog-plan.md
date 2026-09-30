@@ -1,5 +1,10 @@
 # APC Power Catalog Implementation Plan
 
+> **Tag semantics revision (0.3.14):** multi-tag selection is now **AND
+> (intersection)** — a version must carry every selected tag. The "OR" wording
+> below is the original plan; the live rule is `buildPowersResult` in
+> `src/api/apm.ts`.
+>
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (- [ ]) syntax for tracking.
 
 **Goal:** Build the Agent Hub Power catalog prototype with one Store DTO for installed and market data, and revise APC public discovery contracts to return series-level pages with tag filtering.

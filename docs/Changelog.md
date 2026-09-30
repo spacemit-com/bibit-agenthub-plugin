@@ -1,5 +1,42 @@
 # Changelog
 
+## 2026-09-30 — 标签筛选由并集改为交集（0.3.14）
+
+分类：行为调整
+
+用户需求：
+
+> hub 页面中的标签 tag 筛选逻辑从并集改成交集。
+
+改动前：选中多个 tag 时取**并集**——只要版本带有其中任意一个 tag 就会被列出，因此选得越多结果越多。
+
+改动后：取**交集**——版本必须同时带有全部已选 tag 才会被列出，选得越多结果越窄；不选任何 tag 仍然是「不过滤」。
+
+解决方案或完成结果：
+
+- 改动点只有一处：`src/api/apm.ts` 的 `buildPowersResult`，把 `record.tags.some(tag => query.tags.includes(tag))` 改成 `query.tags.every(tag => record.tags.includes(tag))`。installed 与 market 走的是同一个函数（`powerCatalogClient` 的 market 分支也调用它），所以两个数据范围自动一致，不存在只改一边的风险。
+- 过滤仍然作用在**精确版本**上、在系列聚合之前：tag 是版本级字段，所以「v2 带全部已选 tag、v1 只带其中一个」的系列会保留，但只留下 v2 这一个版本；`versions` 里不会混进不匹配的版本。
+- 协议不变：`powers.list.v1` 的入参仍是排序去重、最多 20 项的 `tags`，wire 信封与 Provider 都不动，因此这次改动不需要新的 operation、不需要动 `debian/` 里的 grant 与 Registry。
+- facets 语义不变：`facets.tags` 仍取当前 type 的全量去重集合、不受已选 tag 影响。这一点在交集语义下更重要——如果 facets 也跟着收窄，用户就再也点不回其它 tag 了。
+- 清空选择回到「不过滤」：新规则只有在选到第二个 tag 之后才会与旧行为产生差异。
+
+相关文件：
+
+- `src/api/apm.ts`：`buildPowersResult` 的 tag 谓词与文档注释
+- `src/api/apm.test.ts`：新增 2 条用例（多 tag 只有全中才列出；同一系列按版本分别过滤）
+- `src/api/powerCatalogClient.test.ts`：新增 1 条 market 侧的交集用例（两条 tag 的结果是并集的真子集）
+- `src/AgentHubPage.test.tsx`：原「selects tags in sorted OR order」用例改写为「selects tags in sorted order and narrows the list」，断言第二个 tag 让只带一个 tag 的卡片消失
+- `docs/development-and-deployment-guide.md`：DTO 注释、market 全量约束、冒烟清单三处 OR → AND（交集）
+- `docs/superpowers/specs/2026-08-27-apc-power-catalog-design.md`、`docs/superpowers/plans/2026-08-27-apc-power-catalog-plan.md`、`docs/superpowers/specs/2026-09-07-go-provider-design.md`：加「tag 语义已由 OR 改为 AND」的修订说明，历史条目保持原样
+- `package.json`、`package-lock.json`、`bibit.feature.json`、`debian/changelog`：版本 0.3.14
+- `docs/verification/2026-09-30-tag-intersection.md`（新增验证记录）
+
+验证结果或限制：
+
+`npm test` 524/527（28 个文件；新增 3 条用例，唯一失败的 `dev/sources.test.ts` 3 条 `readMarket` 为基线问题）、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin`（`artifacts/agent-hub-0.3.14.bibit-plugin.tgz`，sha256 `8acc14f3…`）、`git diff --check` 均通过；Provider 未改动，`make -C provider test vet build` 与 `--self-test` 仍通过。变异验证：把谓词改回并集，`apm.test.ts` 2 条、`powerCatalogClient.test.ts` 1 条、`AgentHubPage.test.tsx` 1 条同时失败，说明新断言确实锁住了交集语义。
+
+限制：交集语义下，如果两个 tag 从未同时出现在任何版本上，结果会是空列表（页面显示「没有可用的 Power」）。这是交集的定义，不是缺陷；facets 保持全量，所以用户可以取消其中一个 tag 回到非空结果。
+
 ## 2026-09-30 — 设置标签页改为 APC Key 列表，可增删与单独启用（0.3.13）
 
 分类：新增功能 / 交互调整

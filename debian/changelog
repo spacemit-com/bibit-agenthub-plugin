@@ -1,3 +1,25 @@
+bibit-agenthub-plugin (0.3.14) resolute-porting; urgency=medium
+
+  * Change the catalog tag filter from a union to an intersection: a version
+    matches only when it carries every selected tag, so selecting more tags
+    narrows the list instead of widening it. Previously two selected tags
+    returned everything tagged with either one.
+  * The change is one predicate in `buildPowersResult` (`src/api/apm.ts`), which
+    both scopes share, so installed and market behave identically. Tags stay
+    per-version and the filter still runs on exact versions before the series
+    grouping: of a series whose v2 carries both selected tags and whose v1
+    carries only one, the series stays and only the matching version does.
+  * No protocol change: `powers.list.v1` still projects `tags` as a sorted,
+    unique, at most 20 entries list, the wire envelope is untouched and the
+    Provider is untouched. Facets keep describing the whole type, so the tag
+    buttons do not disappear as the selection narrows the list.
+  * An empty selection still means "no tag filter", and unselecting back to
+    empty restores the full list, so the new rule only ever applies from the
+    second selected tag onwards.
+
+ -- liangjunzhao <junzhao.liang@spacemit.com>  Wed, 30 Sep 2026 14:40:00 +0800
+
+
 bibit-agenthub-plugin (0.3.13) resolute-porting; urgency=medium
 
   * Turn the Settings tab's single APC credential into a saved-key list. The

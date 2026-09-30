@@ -204,10 +204,11 @@ function firstDisplayName(
 
 /**
  * Shared series aggregation + closed-DTO result assembly for a set of normalized
- * records. Filters by type, then by tag OR on exact versions, groups into series,
- * sorts versions SemVer-descending, paginates 20 series per page, and derives
- * `facets.tags` from the selected type's full record set (ignoring tag selection).
- * `facets.agents` is always `[]` because agent discovery is not performed.
+ * records. Filters by type, then by tag AND on exact versions (a version must
+ * carry every selected tag), groups into series, sorts versions SemVer-descending,
+ * paginates 20 series per page, and derives `facets.tags` from the selected type's
+ * full record set (ignoring tag selection). `facets.agents` is always `[]` because
+ * agent discovery is not performed.
  *
  * Display fields stay display-only: `name_zh`/`name_en` are hoisted to the series
  * so the title does not flicker when the selected version changes, while
@@ -227,7 +228,9 @@ export function buildPowersResult(
   const filtered = records.filter((record) => {
     if (record.type !== query.type) return false
     if (query.tags.length === 0) return true
-    return record.tags.some((tag) => query.tags.includes(tag))
+    // Intersection: selecting more tags narrows the list, so a version only
+    // matches when it carries every selected tag.
+    return query.tags.every((tag) => record.tags.includes(tag))
   })
 
   const groups = new Map<string, PowerRecord[]>()

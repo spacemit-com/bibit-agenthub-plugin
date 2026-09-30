@@ -253,6 +253,32 @@ describe('listPowers', () => {
     expect(calls[1].params).toEqual({ scope: 'market', knownSnapshot: snapshot })
   })
 
+  it('applies tag intersection to the market catalog', async () => {
+    // The market path funnels through the same `buildPowersResult`, so the AND
+    // rule has to hold there too: two tags must not behave like either one.
+    const catalog = JSON.stringify({
+      skills: {
+        items: [
+          { name: 'both', version: 'v1.0.0', description: '', tags: ['alpha', 'beta'] },
+          { name: 'alpha-only', version: 'v1.0.0', description: '', tags: ['alpha'] },
+          { name: 'beta-only', version: 'v1.0.0', description: '', tags: ['beta'] },
+        ],
+      },
+    })
+    const snapshot = await sha256(catalog)
+    const { service } = makeService(() => ({ scope: 'market', status: 'data', snapshot, catalogJson: catalog }))
+
+    const one = await listPowers(service, { ...marketInput, tags: ['alpha'] }, signal())
+    expect(one.status).toBe('ready')
+    if (one.status !== 'ready') return
+    expect(one.items.map((series) => series.name)).toEqual(['alpha-only', 'both'])
+
+    const two = await listPowers(service, { ...marketInput, tags: ['alpha', 'beta'] }, signal())
+    expect(two.status).toBe('ready')
+    if (two.status !== 'ready') return
+    expect(two.items.map((series) => series.name)).toEqual(['both'])
+  })
+
   it('keeps the installed cache isolated per agent', async () => {
     const { service, calls } = makeService((_index, input) =>
       input.operationId === 'powers.custom.list.v1'

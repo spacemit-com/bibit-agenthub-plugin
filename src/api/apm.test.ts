@@ -163,8 +163,49 @@ describe('buildInstalledPowersResult', () => {
     expect(result.status).toBe('ready')
     if (result.status !== 'ready') return
     expect(result.facets.tags).toEqual(['drop', 'keep', 'other'])
-    // tag OR filter applies to items, not facets: only 'a' carries the selected tag
+    // The tag filter applies to items, not facets: only 'a' carries the selected tag
     expect(result.items.map((s) => s.name)).toEqual(['a'])
+  })
+
+  it('matches a version only when it carries every selected tag', () => {
+    // Intersection, not union: adding a tag narrows the list. A version tagged
+    // with just one of the selected tags must drop out.
+    const records = [
+      record({ agent: 'bibit', type: 'skill', name: 'both', version: 'v1.0.0', tags: ['alpha', 'beta'] }),
+      record({ agent: 'bibit', type: 'skill', name: 'alpha-only', version: 'v1.0.0', tags: ['alpha'] }),
+      record({ agent: 'bibit', type: 'skill', name: 'beta-only', version: 'v1.0.0', tags: ['beta'] }),
+      record({ agent: 'bibit', type: 'skill', name: 'neither', version: 'v1.0.0', tags: ['gamma'] }),
+    ]
+
+    const one = buildInstalledPowersResult(query({ tags: ['alpha'] }), records)
+    expect(one.status).toBe('ready')
+    if (one.status !== 'ready') return
+    expect(one.items.map((s) => s.name)).toEqual(['alpha-only', 'both'])
+
+    const two = buildInstalledPowersResult(query({ tags: ['alpha', 'beta'] }), records)
+    expect(two.status).toBe('ready')
+    if (two.status !== 'ready') return
+    expect(two.items.map((s) => s.name)).toEqual(['both'])
+
+    const none = buildInstalledPowersResult(query({ tags: ['alpha', 'beta', 'gamma'] }), records)
+    expect(none.status).toBe('ready')
+    if (none.status !== 'ready') return
+    expect(none.items).toEqual([])
+    expect(none.total).toBe(0)
+  })
+
+  it('filters versions of one series independently, then keeps the matching ones', () => {
+    // Tags live on the version, so the filter runs on exact versions before the
+    // series grouping: v2 carries `beta` and survives, v1 carries only `alpha`
+    // and does not, and the series stays because at least one version matched.
+    const result = buildInstalledPowersResult(query({ tags: ['alpha', 'beta'] }), [
+      record({ agent: 'bibit', type: 'skill', name: 'demo', version: 'v2.0.0', tags: ['alpha', 'beta'] }),
+      record({ agent: 'bibit', type: 'skill', name: 'demo', version: 'v1.0.0', tags: ['alpha'] }),
+    ])
+    expect(result.status).toBe('ready')
+    if (result.status !== 'ready') return
+    expect(result.items.map((s) => s.name)).toEqual(['demo'])
+    expect(result.items[0].versions.map((v) => v.version)).toEqual(['v2.0.0'])
   })
 
   it('paginates 20 series per page', () => {
