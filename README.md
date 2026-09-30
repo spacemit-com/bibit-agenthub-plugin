@@ -5,9 +5,9 @@ Bibit Agent Hub 的独立前端插件 + 独立 Go CLI Provider，当前包含：
 - Bibit 主侧边栏中的 Agent Hub 页面（一级标签：我的 Power / Power 市场 / 设置）；
 - Power 详情弹窗（描述、tags、Agent 归属、版本选择）与安装/卸载闭环；
 - 「我的 Power」里除 APM 清单外，还展示手动安装到各 Agent 目录下的自定义资源（卡片带 `Custom` 标记），并在弹窗内提供 APC 上传与本地删除；
-- 页面「设置」标签页（APC API Key 的配置状态、写入与清除；不再有独立的设置子页面）；
-- 卸载与自定义资源删除都需弹窗内二次确认，确认成功后回到 Hub 列表；
-- `service:store` Host API 接入（`powers.list.v1` / `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` / `powers.custom.list.v1` / `powers.upload.v1` / `powers.delete.v1` + `settings.get.v1`/`settings.update.v1`）；
+- 页面「设置」标签页（APC API Key 列表：输入后保存、以 `头****尾` 遮蔽显示、每行独立启用/删除、仅一个启用；不再有独立的设置子页面）；
+- 卸载与自定义资源删除都需弹窗内二次确认（设置页的 Key 删除不需要），确认成功后回到 Hub 列表；
+- `service:store` Host API 接入（`powers.list.v1` / `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` / `powers.custom.list.v1` / `powers.upload.v1` / `powers.delete.v1` + `settings.get.v2` / `settings.keys.add.v1` / `settings.keys.delete.v1` / `settings.keys.enable.v1`）；
 - 独立 Feature Dev Host 与共享的前端数据层（解析、过滤、聚合、分页、facets、snapshot 判断、共享安装状态）；
 - 纯 Go 标准库 CLI Provider（仅 Provider Protocol v1，`bibit-agenthub`）。
 
@@ -60,7 +60,7 @@ bibit-agenthub-plugin (all)  -> plugin bundle + capability grant
 bibit-agenthub-cli    (any)  -> /usr/libexec/bibit/bibit-agenthub + Provider Registry
 ```
 
-CLI 包通过 `/etc/bibit/external-services.d/agenthub.json`（Registry `version: 2`，`protocolVersions: [1]`，managed stdio）接入宿主；Provider 始终协商协议 v1。`settings.update.v1` 的 `apiKey` 走 Registry 的 `credentialParameters` 声明，密钥只经环境变量 `APC_API_KEY` 传给 `apm submit`，落盘在 `settings.json`（0600，原子写入，拒绝对符号链接写入），接口只返回 `hasApiKey`。
+CLI 包通过 `/etc/bibit/external-services.d/agenthub.json`（Registry `version: 2`，`protocolVersions: [1]`，managed stdio）接入宿主；Provider 始终协商协议 v1。`settings.keys.add.v1` 的 `apiKey` 走 Registry 的 `credentialParameters` 声明，密钥只经环境变量 `APC_API_KEY` 传给 `apm submit`，落盘在 `settings.json`（0600，原子写入，拒绝对符号链接写入），接口只回传遮蔽预览 `头****尾` 与 `enabled`，Key 本身永不出现在结果里。`settings.json` 现在保存一组 Key（schemaVersion 2），其中至多一条 `enabled`；0.3.11 及更早的单 Key 文件会在读取时升级为「一条已启用记录」。
 
 ## cache-on-check
 

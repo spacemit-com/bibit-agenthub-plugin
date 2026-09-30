@@ -1,6 +1,8 @@
 package provider
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -10,48 +12,67 @@ import (
 )
 
 // Agent Hub settings are owned by the provider because the feature host only
-// forwards operations: the plugin cannot read or write files, so the value that
-// must survive a page reload (the APC API key) has to live behind
-// `settings.get.v1` / `settings.update.v1`.
+// forwards operations: the plugin cannot read or write files, so the APC API
+// keys have to live behind the `settings.*` operations.
 //
-// The file is deliberately tiny and human-repairable: three fields, strict
-// validation, 0600 and an atomic replace. `apiKey` is written to disk but never
-// returned by `get`; the view only reports whether one is configured.
+// The file is deliberately tiny and human-repairable: strict validation, 0600
+// and an atomic replace. Keys are written to disk but never returned by `get`:
+// the view carries a masked preview instead, so a compromised renderer cannot
+// read a credential back out. At most one key is enabled at a time, and that key
+// is the one the upload path uses.
+//
+// schemaVersion 1 stored a single `apiKey` string. Version 2 stores a list; a v1
+// file is migrated on read (the single key becomes the enabled entry) and
+// rewritten as v2 on the next write, so an existing installation keeps its
+// credential.
 
 const (
-	settingsSchemaVersion = 1
+	settingsSchemaVersion = 2
 	settingsFileName      = "settings.json"
 	maxSettingsBytes      = 64 << 10
 	maxAPIKeyBytes        = 512
+	// maxAPIKeys bounds the list so a runaway page cannot grow the file without
+	// limit; it is far above any human bookkeeping need.
+	maxAPIKeys = 50
 
 	minRefreshMinutes = 5
 	maxRefreshMinutes = 120
 )
 
-// Settings is the persisted document. SchemaVersion is written so a future
-// migration can tell which shape it is reading.
+// StoredAPIKey is one saved APC credential. ID is the stable handle the page
+// uses to enable or delete the entry; Key is the secret and never leaves the
+// provider.
+type StoredAPIKey struct {
+	ID      string `json:"id"`
+	Key     string `json:"key"`
+	Enabled bool   `json:"enabled,omitempty"`
+}
+
+// Settings is the persisted document. SchemaVersion is written so a migration
+// can tell which shape it is reading. APIKey is the v1 field: it is read for
+// migration and never written again (`omitempty` keeps it out of a v2 file).
 type Settings struct {
-	SchemaVersion    int    `json:"schemaVersion"`
-	ShowExperimental bool   `json:"showExperimental"`
-	RefreshMinutes   int    `json:"refreshMinutes"`
-	APIKey           string `json:"apiKey,omitempty"`
+	SchemaVersion    int            `json:"schemaVersion"`
+	ShowExperimental bool           `json:"showExperimental"`
+	RefreshMinutes   int            `json:"refreshMinutes"`
+	APIKeys          []StoredAPIKey `json:"apiKeys,omitempty"`
+	APIKey           string         `json:"apiKey,omitempty"`
 }
 
-// SettingsUpdate is the validated `settings.update.v1` input. APIKey is a
-// pointer so an omitted field means "keep the stored key" while an empty string
-// means "clear it"; the host forwards JSON, so the distinction is observable.
-type SettingsUpdate struct {
-	ShowExperimental bool    `json:"showExperimental"`
-	RefreshMinutes   int     `json:"refreshMinutes"`
-	APIKey           *string `json:"apiKey,omitempty"`
+// SettingsKeyView is one row of the Settings tab: enough to recognise a key and
+// act on it, never enough to reconstruct it.
+type SettingsKeyView struct {
+	ID      string `json:"id"`
+	Preview string `json:"preview"`
+	Enabled bool   `json:"enabled"`
 }
 
-// SettingsView is what the page is allowed to see: the key is reduced to a
-// boolean, so a compromised renderer cannot read the credential back out.
+// SettingsView is what the page is allowed to see. There is no `hasApiKey`
+// any more: the list itself says how many keys exist and which one is enabled.
 type SettingsView struct {
-	ShowExperimental bool `json:"showExperimental"`
-	RefreshMinutes   int  `json:"refreshMinutes"`
-	HasAPIKey        bool `json:"hasApiKey"`
+	ShowExperimental bool              `json:"showExperimental"`
+	RefreshMinutes   int               `json:"refreshMinutes"`
+	Keys             []SettingsKeyView `json:"keys"`
 }
 
 func defaultSettings() Settings {
@@ -110,10 +131,39 @@ func ReadSettings(cfg Config) (Settings, error) {
 	if err := json.Unmarshal(data, &settings); err != nil {
 		return Settings{}, newProviderError("unavailable")
 	}
+	settings, err = migrateSettings(settings)
+	if err != nil {
+		return Settings{}, err
+	}
 	if err := validateSettings(&settings); err != nil {
 		return Settings{}, newProviderError("unavailable")
 	}
 	return settings, nil
+}
+
+// migrateSettings upgrades a v1 document in memory. In the one-key world that key
+// became the single enabled entry. A zero schemaVersion is the shape older
+// builds wrote before the field existed.
+func migrateSettings(settings Settings) (Settings, error) {
+	if settings.SchemaVersion == settingsSchemaVersion {
+		return settings, nil
+	}
+	if settings.SchemaVersion != 0 && settings.SchemaVersion != 1 {
+		return settings, nil
+	}
+	next := Settings{
+		SchemaVersion:    settingsSchemaVersion,
+		ShowExperimental: settings.ShowExperimental,
+		RefreshMinutes:   settings.RefreshMinutes,
+	}
+	if settings.APIKey != "" {
+		id, err := newAPIKeyID()
+		if err != nil {
+			return Settings{}, err
+		}
+		next.APIKeys = []StoredAPIKey{{ID: id, Key: settings.APIKey, Enabled: true}}
+	}
+	return next, nil
 }
 
 func validateSettings(settings *Settings) error {
@@ -126,15 +176,43 @@ func validateSettings(settings *Settings) error {
 	if settings.RefreshMinutes < minRefreshMinutes || settings.RefreshMinutes > maxRefreshMinutes {
 		return errors.New("settings: refreshMinutes out of range")
 	}
-	if err := validateAPIKey(settings.APIKey); err != nil {
-		return err
+	// A v2 document never carries the v1 field; reading one means a migration
+	// failed and writing it back would resurrect a two-source-of-truth file.
+	if settings.APIKey != "" {
+		return errors.New("settings: apiKey is a v1 field")
+	}
+	if len(settings.APIKeys) > maxAPIKeys {
+		return errors.New("settings: too many apiKeys")
+	}
+	seen := make(map[string]bool, len(settings.APIKeys))
+	enabled := 0
+	for _, entry := range settings.APIKeys {
+		if !isAPIKeyID(entry.ID) {
+			return errors.New("settings: apiKey id must be a hex token")
+		}
+		if seen[entry.ID] {
+			return errors.New("settings: duplicate apiKey id")
+		}
+		seen[entry.ID] = true
+		if entry.Key == "" {
+			return errors.New("settings: apiKey must be a non-empty string")
+		}
+		if err := validateAPIKey(entry.Key); err != nil {
+			return err
+		}
+		if entry.Enabled {
+			enabled++
+		}
+	}
+	if enabled > 1 {
+		return errors.New("settings: at most one apiKey may be enabled")
 	}
 	return nil
 }
 
-// validateAPIKey accepts an empty key (clearing) and otherwise requires a
-// printable ASCII token: it is passed verbatim as an environment value to apm,
-// so control characters, NUL and newlines must never reach the child.
+// validateAPIKey requires a printable ASCII token: it is passed verbatim as an
+// environment value to apm, so control characters, NUL and newlines must never
+// reach the child. The empty string is the caller's "nothing to validate" case.
 func validateAPIKey(key string) error {
 	if key == "" {
 		return nil
@@ -154,22 +232,62 @@ func isPrintableASCII(value string) bool {
 	return true
 }
 
-// ApplySettingsUpdate validates one update against the stored settings and
-// returns the document to persist.
-func ApplySettingsUpdate(current Settings, update SettingsUpdate) (Settings, error) {
-	next := Settings{
-		SchemaVersion:    settingsSchemaVersion,
-		ShowExperimental: update.ShowExperimental,
-		RefreshMinutes:   update.RefreshMinutes,
-		APIKey:           current.APIKey,
+// isAPIKeyID accepts the generated hex handle. It is the only shape the page can
+// send back, so no free-form identifier ever reaches the file.
+func isAPIKeyID(id string) bool {
+	if len(id) != 32 {
+		return false
 	}
-	if update.APIKey != nil {
-		next.APIKey = *update.APIKey
+	for i := 0; i < len(id); i++ {
+		c := id[i]
+		if (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') {
+			continue
+		}
+		return false
 	}
-	if err := validateSettings(&next); err != nil {
-		return Settings{}, newProviderError("incompatible")
+	return true
+}
+
+// newAPIKeyID draws a random 128-bit handle.
+func newAPIKeyID() (string, error) {
+	var raw [16]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", newProviderError("unknown")
 	}
-	return next, nil
+	return hex.EncodeToString(raw[:]), nil
+}
+
+// MaskAPIKey is the only shape of a stored credential that may leave the
+// provider: a head, a fixed `****` run and a tail. The fixed run keeps the
+// preview distinguishable from the key itself even for a very short key.
+func MaskAPIKey(key string) string {
+	if key == "" {
+		return ""
+	}
+	if len(key) <= 8 {
+		head := len(key)
+		if head > 2 {
+			head = 2
+		}
+		return key[:head] + "****"
+	}
+	return key[:4] + "****" + key[len(key)-4:]
+}
+
+func settingsView(settings Settings) SettingsView {
+	keys := make([]SettingsKeyView, 0, len(settings.APIKeys))
+	for _, entry := range settings.APIKeys {
+		keys = append(keys, SettingsKeyView{
+			ID:      entry.ID,
+			Preview: MaskAPIKey(entry.Key),
+			Enabled: entry.Enabled,
+		})
+	}
+	return SettingsView{
+		ShowExperimental: settings.ShowExperimental,
+		RefreshMinutes:   settings.RefreshMinutes,
+		Keys:             keys,
+	}
 }
 
 // WriteSettings atomically replaces the settings file with 0600 permissions.
@@ -227,50 +345,117 @@ func WriteSettings(cfg Config, settings Settings) error {
 	return nil
 }
 
-// GetSettings implements `settings.get.v1`.
+// GetSettings implements `settings.get.v2`: the keys are reduced to masked
+// previews, so the page can list and manage them without ever holding one.
 func GetSettings(cfg Config) (SettingsView, error) {
 	settings, err := ReadSettings(cfg)
 	if err != nil {
 		return SettingsView{}, err
 	}
-	return SettingsView{
-		ShowExperimental: settings.ShowExperimental,
-		RefreshMinutes:   settings.RefreshMinutes,
-		HasAPIKey:        settings.APIKey != "",
-	}, nil
+	return settingsView(settings), nil
 }
 
-// UpdateSettings implements `settings.update.v1`: it returns the same view as
-// `get`, so the page can refresh its "configured / not configured" state from
-// the write result without a second round trip.
-func UpdateSettings(cfg Config, update SettingsUpdate) (SettingsView, error) {
+// AddSettingsKey implements `settings.keys.add.v1`. The first saved key is
+// enabled, because an empty list has nothing to fall back on; every later key
+// arrives disabled so adding one never silently switches the credential the
+// upload path is using.
+func AddSettingsKey(cfg Config, apiKey string) (SettingsView, error) {
+	if apiKey == "" || validateAPIKey(apiKey) != nil {
+		return SettingsView{}, newProviderError("incompatible")
+	}
 	current, err := ReadSettings(cfg)
 	if err != nil {
 		return SettingsView{}, err
 	}
-	next, err := ApplySettingsUpdate(current, update)
+	for _, entry := range current.APIKeys {
+		if entry.Key == apiKey {
+			return SettingsView{}, newProviderError("incompatible")
+		}
+	}
+	if len(current.APIKeys) >= maxAPIKeys {
+		return SettingsView{}, newProviderError("incompatible")
+	}
+	id, err := newAPIKeyID()
 	if err != nil {
 		return SettingsView{}, err
 	}
+	next := current
+	next.APIKeys = append(append([]StoredAPIKey{}, current.APIKeys...),
+		StoredAPIKey{ID: id, Key: apiKey, Enabled: len(current.APIKeys) == 0})
+	next.APIKey = ""
 	if err := WriteSettings(cfg, next); err != nil {
 		return SettingsView{}, err
 	}
-	return SettingsView{
-		ShowExperimental: next.ShowExperimental,
-		RefreshMinutes:   next.RefreshMinutes,
-		HasAPIKey:        next.APIKey != "",
-	}, nil
+	return settingsView(next), nil
 }
 
-// SettingsAPIKey returns the stored APC API key for the upload operation. It is
+// DeleteSettingsKey implements `settings.keys.delete.v1`. Deleting the enabled
+// key leaves the remaining keys disabled rather than promoting one: which key
+// the upload path uses next is the user's decision.
+func DeleteSettingsKey(cfg Config, id string) (SettingsView, error) {
+	current, err := ReadSettings(cfg)
+	if err != nil {
+		return SettingsView{}, err
+	}
+	index := -1
+	for i, entry := range current.APIKeys {
+		if entry.ID == id {
+			index = i
+			break
+		}
+	}
+	if index < 0 {
+		return SettingsView{}, newProviderError("incompatible")
+	}
+	next := current
+	next.APIKeys = append(append([]StoredAPIKey{}, current.APIKeys[:index]...), current.APIKeys[index+1:]...)
+	next.APIKey = ""
+	if err := WriteSettings(cfg, next); err != nil {
+		return SettingsView{}, err
+	}
+	return settingsView(next), nil
+}
+
+// EnableSettingsKey implements `settings.keys.enable.v1`: the named key becomes
+// the only enabled one, so the upload path always has exactly one credential.
+func EnableSettingsKey(cfg Config, id string) (SettingsView, error) {
+	current, err := ReadSettings(cfg)
+	if err != nil {
+		return SettingsView{}, err
+	}
+	found := false
+	next := current
+	next.APIKeys = make([]StoredAPIKey, len(current.APIKeys))
+	for i, entry := range current.APIKeys {
+		if entry.ID == id {
+			found = true
+			entry.Enabled = true
+		} else {
+			entry.Enabled = false
+		}
+		next.APIKeys[i] = entry
+	}
+	if !found {
+		return SettingsView{}, newProviderError("incompatible")
+	}
+	next.APIKey = ""
+	if err := WriteSettings(cfg, next); err != nil {
+		return SettingsView{}, err
+	}
+	return settingsView(next), nil
+}
+
+// SettingsAPIKey returns the enabled APC API key for the upload operation. It is
 // never logged and never included in an operation result.
 func SettingsAPIKey(cfg Config) (string, error) {
 	settings, err := ReadSettings(cfg)
 	if err != nil {
 		return "", err
 	}
-	if settings.APIKey == "" {
-		return "", newProviderError("unauthorized")
+	for _, entry := range settings.APIKeys {
+		if entry.Enabled {
+			return entry.Key, nil
+		}
 	}
-	return settings.APIKey, nil
+	return "", newProviderError("unauthorized")
 }

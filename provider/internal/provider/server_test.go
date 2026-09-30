@@ -83,8 +83,10 @@ func TestInitializeV1ResultShape(t *testing.T) {
 		"powers.custom.list.v1",
 		"powers.upload.v1",
 		"powers.delete.v1",
-		"settings.get.v1",
-		"settings.update.v1",
+		"settings.get.v2",
+		"settings.keys.add.v1",
+		"settings.keys.delete.v1",
+		"settings.keys.enable.v1",
 	}
 	if len(result.Operations) != len(want) {
 		t.Fatalf("operations = %v, want %v", result.Operations, want)
@@ -544,10 +546,12 @@ func TestOperationInputValidation(t *testing.T) {
 		{"upload escape name", "powers.upload.v1", `{"agent":"bibit","type":"skill","name":"../escape","message":"ok"}`},
 		{"delete carries version", "powers.delete.v1", `{"agent":"bibit","type":"skill","name":"demo","version":"v1.0.0"}`},
 		{"delete escape name", "powers.delete.v1", `{"agent":"bibit","type":"skill","name":".."}`},
-		{"settings get with payload", "settings.get.v1", `{"scope":"installed"}`},
-		{"settings update bad minutes", "settings.update.v1", `{"showExperimental":false,"refreshMinutes":1}`},
-		{"settings update unknown field", "settings.update.v1", `{"refreshMinutes":15,"theme":"dark"}`},
-		{"settings update bad key type", "settings.update.v1", `{"refreshMinutes":15,"apiKey":5}`},
+		{"settings get with payload", "settings.get.v2", `{"scope":"installed"}`},
+		{"settings add blank key", "settings.keys.add.v1", `{"apiKey":""}`},
+		{"settings add unknown field", "settings.keys.add.v1", `{"apiKey":"k","theme":"dark"}`},
+		{"settings add bad key type", "settings.keys.add.v1", `{"apiKey":5}`},
+		{"settings delete bad id", "settings.keys.delete.v1", `{"id":"../escape"}`},
+		{"settings enable missing id", "settings.keys.enable.v1", `{}`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -578,8 +582,14 @@ func TestCustomResourceInvokeDispatch(t *testing.T) {
 		case operationPowersDelete:
 			return DeleteResult{Status: "deleted"}, nil
 		case operationSettingsGet:
-			return SettingsView{RefreshMinutes: 15, HasAPIKey: true}, nil
-		case operationSettingsUpdate:
+			return SettingsView{RefreshMinutes: 15, Keys: []SettingsKeyView{{
+				ID:      "0123456789abcdef0123456789abcdef",
+				Preview: "apc-****-one",
+				Enabled: true,
+			}}}, nil
+		case operationSettingsKeyAdd:
+			return SettingsView{RefreshMinutes: 15}, nil
+		case operationSettingsKeyDelete, operationSettingsKeyEnable:
 			return SettingsView{ShowExperimental: true, RefreshMinutes: 45}, nil
 		default:
 			return nil, newProviderError("incompatible")
@@ -589,15 +599,16 @@ func TestCustomResourceInvokeDispatch(t *testing.T) {
 		`{"jsonrpc":"2.0","id":"custom","method":"bibit.invoke","params":{"serviceId":"store","operationId":"powers.custom.list.v1","params":{"agent":"codex"},"timeoutMs":30000}}` + "\n" +
 		`{"jsonrpc":"2.0","id":"upload","method":"bibit.invoke","params":{"serviceId":"store","operationId":"powers.upload.v1","params":{"agent":"bibit","type":"skill","name":"demo","message":"publish it"},"timeoutMs":120000}}` + "\n" +
 		`{"jsonrpc":"2.0","id":"delete","method":"bibit.invoke","params":{"serviceId":"store","operationId":"powers.delete.v1","params":{"agent":"bibit","type":"skill","name":"demo"},"timeoutMs":120000}}` + "\n" +
-		`{"jsonrpc":"2.0","id":"settings-get","method":"bibit.invoke","params":{"serviceId":"store","operationId":"settings.get.v1","params":{},"timeoutMs":30000}}` + "\n" +
-		`{"jsonrpc":"2.0","id":"settings-update","method":"bibit.invoke","params":{"serviceId":"store","operationId":"settings.update.v1","params":{"showExperimental":true,"refreshMinutes":45,"apiKey":"k"},"timeoutMs":30000}}` + "\n"
+		`{"jsonrpc":"2.0","id":"settings-get","method":"bibit.invoke","params":{"serviceId":"store","operationId":"settings.get.v2","params":{},"timeoutMs":30000}}` + "\n" +
+		`{"jsonrpc":"2.0","id":"settings-add","method":"bibit.invoke","params":{"serviceId":"store","operationId":"settings.keys.add.v1","params":{"apiKey":"apc-key-two"},"timeoutMs":30000}}` + "\n" +
+		`{"jsonrpc":"2.0","id":"settings-enable","method":"bibit.invoke","params":{"serviceId":"store","operationId":"settings.keys.enable.v1","params":{"id":"0123456789abcdef0123456789abcdef"},"timeoutMs":30000}}` + "\n"
 	out, err := runInput(input, invoke)
 	if err != nil {
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimSpace(out), "\n")
-	if len(lines) != 6 {
-		t.Fatalf("expected 6 responses, got %d", len(lines))
+	if len(lines) != 7 {
+		t.Fatalf("expected 7 responses, got %d", len(lines))
 	}
 	for _, line := range lines[1:] {
 		if response := parseResponse(t, line); response.Error != nil {
@@ -614,9 +625,12 @@ func TestCustomResourceInvokeDispatch(t *testing.T) {
 	if del := seen[operationPowersDelete]; del.Target == nil || del.Target.Name != "demo" {
 		t.Fatalf("delete request not decoded: %+v", del)
 	}
-	if update := seen[operationSettingsUpdate]; update.Settings == nil || update.Settings.APIKey == nil ||
-		*update.Settings.APIKey != "k" || update.Settings.RefreshMinutes != 45 {
-		t.Fatalf("settings update not decoded: %+v", update)
+	if add := seen[operationSettingsKeyAdd]; add.SettingsKey == nil || *add.SettingsKey != "apc-key-two" {
+		t.Fatalf("settings key add not decoded: %+v", add)
+	}
+	if enable := seen[operationSettingsKeyEnable]; enable.SettingsKeyID == nil ||
+		*enable.SettingsKeyID != "0123456789abcdef0123456789abcdef" {
+		t.Fatalf("settings key enable not decoded: %+v", enable)
 	}
 }
 

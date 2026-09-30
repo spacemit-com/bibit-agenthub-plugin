@@ -91,7 +91,10 @@ type OperationRequest struct {
 	Install     *InstallInput
 	Upload      *UploadInput
 	CustomList  *CustomListInput
-	Settings    *SettingsUpdate
+	// SettingsKey carries the settings.keys.add.v1 credential; SettingsKeyID
+	// carries the {id} of the delete and enable operations.
+	SettingsKey   *string
+	SettingsKeyID *string
 }
 
 // InvokeFunc resolves a validated OperationRequest into an operation-specific

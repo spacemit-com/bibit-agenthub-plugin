@@ -491,8 +491,17 @@
 .agent-hub-settings-panel__credential-head strong { font-size: 15px; }
 .agent-hub-settings-panel__credential-head span { color: #65718a; }
 .agent-hub-settings-panel__credential small { color: #65718a; }
-.agent-hub-settings-panel__credential input[type='password'] {
+/* One row: the field takes the space, the Save key action stays next to it. */
+.agent-hub-settings-panel__credential-add {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.agent-hub-settings-panel__credential-add input[type='password'] {
+  flex: 1 1 auto;
   width: min(100%, 420px);
+  min-width: 0;
   padding: 9px 12px;
   border: 1px solid #c9d0dc;
   border-radius: 8px;
@@ -500,11 +509,51 @@
   color: var(--hub-text);
   font: inherit;
 }
-.agent-hub-settings-panel__credential-actions {
+.agent-hub-settings-panel__credential-add button {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 0 16px;
+  border-color: #4264a7;
+  background: #4264a7;
+  color: #fff;
+}
+.agent-hub-settings-panel__keys {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.agent-hub-settings-panel__key {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--hub-border);
+  border-radius: 8px;
+  background: #fff;
+}
+.agent-hub-settings-panel__key[data-enabled='true'] {
+  border-color: #4264a7;
+  box-shadow: inset 3px 0 0 #4264a7;
+}
+.agent-hub-settings-panel__key-preview {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.agent-hub-settings-panel__key-state {
+  flex: 0 0 auto;
+  color: #65718a;
+  font-size: 12px;
+}
+.agent-hub-settings-panel__key-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+  margin-left: auto;
 }
 .agent-hub-settings-panel footer {
   display: flex;

@@ -38,7 +38,8 @@ type probeReport struct {
 	Status          string `json:"status,omitempty"`
 	ExitCode        *int   `json:"exitCode,omitempty"`
 	Snapshot        string `json:"snapshot,omitempty"`
-	HasAPIKey       bool   `json:"hasApiKey,omitempty"`
+	HasEnabledKey   bool   `json:"hasEnabledKey,omitempty"`
+	KeyCount        int    `json:"keyCount,omitempty"`
 	RPCBytes        int    `json:"rpcBytes"`
 	RawBytes        int    `json:"rawBytes"`
 	RemainingBytes  int    `json:"remainingBytes"`
@@ -67,7 +68,7 @@ func parseFlags(args []string) (probeFlags, error) {
 	fs := flag.NewFlagSet("provider-probe", flag.ContinueOnError)
 	var flags probeFlags
 	fs.StringVar(&flags.executable, "executable", "", "provider executable path (required)")
-	fs.StringVar(&flags.operation, "operation", "", "operation id: powers.inspect.v1|powers.install.v1|powers.uninstall.v1|settings.get.v1 (empty = list)")
+	fs.StringVar(&flags.operation, "operation", "", "operation id: powers.inspect.v1|powers.install.v1|powers.uninstall.v1|settings.get.v2 (empty = list)")
 	fs.StringVar(&flags.scope, "scope", "market", "list wire scope: market|installed|custom")
 	fs.StringVar(&flags.agent, "agent", "bibit", "target agent id")
 	fs.StringVar(&flags.knownSnapshot, "known-snapshot", "", "market known snapshot")
@@ -111,10 +112,10 @@ func validateFlags(flags probeFlags) error {
 			return errors.New("--name and --type are required for powers.uninstall.v1")
 		}
 		return nil
-	case "settings.get.v1":
+	case "settings.get.v2":
 		return nil
 	default:
-		return fmt.Errorf("--operation must be powers.inspect.v1, powers.install.v1, powers.uninstall.v1 or settings.get.v1, got %q", flags.operation)
+		return fmt.Errorf("--operation must be powers.inspect.v1, powers.install.v1, powers.uninstall.v1 or settings.get.v2, got %q", flags.operation)
 	}
 }
 
@@ -209,7 +210,7 @@ func buildInvoke(flags probeFlags) (operationID, wireInput string, timeoutMs int
 		return flags.operation, fmt.Sprintf("{\"agent\":%q,\"type\":%q,\"name\":%q,\"version\":%q}", flags.agent, flags.powerType, flags.name, flags.version), 120000
 	case "powers.uninstall.v1":
 		return flags.operation, fmt.Sprintf("{\"agent\":%q,\"type\":%q,\"name\":%q}", flags.agent, flags.powerType, flags.name), 120000
-	case "settings.get.v1":
+	case "settings.get.v2":
 		return flags.operation, `{}`, 30000
 	default:
 		return "powers.list.v1", buildWireInput(flags), 30000
@@ -361,18 +362,25 @@ func fillInvokeReport(line []byte, id string, operationID string, report *probeR
 		}
 		report.Status = result.Status
 		report.RawBytes = len(result.ItemsJSON)
-	case "settings.get.v1":
+	case "settings.get.v2":
 		var result struct {
 			ShowExperimental bool `json:"showExperimental"`
 			RefreshMinutes   int  `json:"refreshMinutes"`
-			HasAPIKey        bool `json:"hasApiKey"`
+			Keys             []struct {
+				ID      string `json:"id"`
+				Preview string `json:"preview"`
+				Enabled bool   `json:"enabled"`
+			} `json:"keys"`
 		}
 		if err := json.Unmarshal(response.Result, &result); err != nil {
 			return errors.New("invalid settings result")
 		}
 		report.Status = "data"
-		if result.HasAPIKey {
-			report.HasAPIKey = true
+		report.KeyCount = len(result.Keys)
+		for _, key := range result.Keys {
+			if key.Enabled {
+				report.HasEnabledKey = true
+			}
 		}
 	default:
 		return fmt.Errorf("unexpected operation %q", operationID)

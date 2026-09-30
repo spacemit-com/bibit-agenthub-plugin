@@ -200,9 +200,9 @@ func selfTestOperations() error {
 	return nil
 }
 
-// selfTestCustomResources drives the three custom-resource operations plus both
-// settings operations through the server with an in-memory fixture, and asserts
-// their closed result shapes and that no path or credential is leaked.
+// selfTestCustomResources drives the three custom-resource operations plus the
+// four settings operations through the server with an in-memory fixture, and
+// asserts their closed result shapes and that no path or credential is leaked.
 func selfTestCustomResources() error {
 	fixture := func(_ context.Context, req OperationRequest) (any, error) {
 		switch req.OperationID {
@@ -222,12 +222,28 @@ func selfTestCustomResources() error {
 			}
 			return DeleteResult{Status: "deleted"}, nil
 		case operationSettingsGet:
-			return SettingsView{ShowExperimental: false, RefreshMinutes: 15, HasAPIKey: true}, nil
-		case operationSettingsUpdate:
-			if req.Settings == nil || req.Settings.RefreshMinutes != 30 {
+			return SettingsView{
+				ShowExperimental: false,
+				RefreshMinutes:   15,
+				Keys: []SettingsKeyView{
+					{ID: "0123456789abcdef0123456789abcdef", Preview: "apc-****-key1", Enabled: true},
+				},
+			}, nil
+		case operationSettingsKeyAdd:
+			if req.SettingsKey == nil || *req.SettingsKey != "apc-key-two" {
 				return nil, newProviderError("incompatible")
 			}
-			return SettingsView{ShowExperimental: true, RefreshMinutes: 30, HasAPIKey: false}, nil
+			return SettingsView{RefreshMinutes: 15}, nil
+		case operationSettingsKeyDelete:
+			if req.SettingsKeyID == nil || *req.SettingsKeyID != "0123456789abcdef0123456789abcdef" {
+				return nil, newProviderError("incompatible")
+			}
+			return SettingsView{RefreshMinutes: 15}, nil
+		case operationSettingsKeyEnable:
+			if req.SettingsKeyID == nil || *req.SettingsKeyID != "0123456789abcdef0123456789abcdef" {
+				return nil, newProviderError("incompatible")
+			}
+			return SettingsView{RefreshMinutes: 15}, nil
 		default:
 			return nil, newProviderError("incompatible")
 		}
@@ -236,15 +252,17 @@ func selfTestCustomResources() error {
 		"{\"jsonrpc\":\"2.0\",\"id\":\"self-custom\",\"method\":\"bibit.invoke\",\"params\":{\"serviceId\":\"store\",\"operationId\":\"powers.custom.list.v1\",\"params\":{\"agent\":\"bibit\"},\"timeoutMs\":30000}}\n" +
 		"{\"jsonrpc\":\"2.0\",\"id\":\"self-upload\",\"method\":\"bibit.invoke\",\"params\":{\"serviceId\":\"store\",\"operationId\":\"powers.upload.v1\",\"params\":{\"agent\":\"bibit\",\"type\":\"skill\",\"name\":\"demo\",\"message\":\"publish demo\"},\"timeoutMs\":120000}}\n" +
 		"{\"jsonrpc\":\"2.0\",\"id\":\"self-delete\",\"method\":\"bibit.invoke\",\"params\":{\"serviceId\":\"store\",\"operationId\":\"powers.delete.v1\",\"params\":{\"agent\":\"bibit\",\"type\":\"skill\",\"name\":\"demo\"},\"timeoutMs\":120000}}\n" +
-		"{\"jsonrpc\":\"2.0\",\"id\":\"self-settings-get\",\"method\":\"bibit.invoke\",\"params\":{\"serviceId\":\"store\",\"operationId\":\"settings.get.v1\",\"params\":{},\"timeoutMs\":30000}}\n" +
-		"{\"jsonrpc\":\"2.0\",\"id\":\"self-settings-update\",\"method\":\"bibit.invoke\",\"params\":{\"serviceId\":\"store\",\"operationId\":\"settings.update.v1\",\"params\":{\"showExperimental\":true,\"refreshMinutes\":30},\"timeoutMs\":30000}}\n"
+		"{\"jsonrpc\":\"2.0\",\"id\":\"self-settings-get\",\"method\":\"bibit.invoke\",\"params\":{\"serviceId\":\"store\",\"operationId\":\"settings.get.v2\",\"params\":{},\"timeoutMs\":30000}}\n" +
+		"{\"jsonrpc\":\"2.0\",\"id\":\"self-settings-add\",\"method\":\"bibit.invoke\",\"params\":{\"serviceId\":\"store\",\"operationId\":\"settings.keys.add.v1\",\"params\":{\"apiKey\":\"apc-key-two\"},\"timeoutMs\":30000}}\n" +
+		"{\"jsonrpc\":\"2.0\",\"id\":\"self-settings-delete\",\"method\":\"bibit.invoke\",\"params\":{\"serviceId\":\"store\",\"operationId\":\"settings.keys.delete.v1\",\"params\":{\"id\":\"0123456789abcdef0123456789abcdef\"},\"timeoutMs\":30000}}\n" +
+		"{\"jsonrpc\":\"2.0\",\"id\":\"self-settings-enable\",\"method\":\"bibit.invoke\",\"params\":{\"serviceId\":\"store\",\"operationId\":\"settings.keys.enable.v1\",\"params\":{\"id\":\"0123456789abcdef0123456789abcdef\"},\"timeoutMs\":30000}}\n"
 	var out bytes.Buffer
 	if err := Serve(context.Background(), strings.NewReader(input), &out, fixture); err != nil {
 		return err
 	}
 	lines := splitResponseLines(out.String())
-	if len(lines) != 6 {
-		return fmt.Errorf("expected 6 responses, got %d", len(lines))
+	if len(lines) != 8 {
+		return fmt.Errorf("expected 8 responses, got %d", len(lines))
 	}
 	shapes := []struct {
 		index     int
@@ -254,8 +272,10 @@ func selfTestCustomResources() error {
 		{1, []string{"scope", "status", "itemsJson"}, []string{"items", "paths", "path"}},
 		{2, []string{"status", "exitCode", "stage"}, []string{"stderr", "apiKey", "path"}},
 		{3, []string{"status"}, []string{"path", "stdout", "stderr"}},
-		{4, []string{"showExperimental", "refreshMinutes", "hasApiKey"}, []string{"apiKey"}},
-		{5, []string{"showExperimental", "refreshMinutes", "hasApiKey"}, []string{"apiKey"}},
+		{4, []string{"showExperimental", "refreshMinutes", "keys"}, []string{"apiKey", "hasApiKey", "key"}},
+		{5, []string{"showExperimental", "refreshMinutes", "keys"}, []string{"apiKey", "hasApiKey", "key"}},
+		{6, []string{"showExperimental", "refreshMinutes", "keys"}, []string{"apiKey", "hasApiKey", "key"}},
+		{7, []string{"showExperimental", "refreshMinutes", "keys"}, []string{"apiKey", "hasApiKey", "key"}},
 	}
 	for _, shape := range shapes {
 		resp, err := parseSelfTestResponse(lines[shape.index])

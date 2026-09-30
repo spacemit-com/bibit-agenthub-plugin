@@ -183,11 +183,21 @@ func NewInvoker(cfg Config, client *http.Client) InvokeFunc {
 			return DeleteCustomResource(cfg, *req.Target)
 		case operationSettingsGet:
 			return GetSettings(cfg)
-		case operationSettingsUpdate:
-			if req.Settings == nil {
+		case operationSettingsKeyAdd:
+			if req.SettingsKey == nil {
 				return nil, newProviderError("incompatible")
 			}
-			return UpdateSettings(cfg, *req.Settings)
+			return AddSettingsKey(cfg, *req.SettingsKey)
+		case operationSettingsKeyDelete:
+			if req.SettingsKeyID == nil {
+				return nil, newProviderError("incompatible")
+			}
+			return DeleteSettingsKey(cfg, *req.SettingsKeyID)
+		case operationSettingsKeyEnable:
+			if req.SettingsKeyID == nil {
+				return nil, newProviderError("incompatible")
+			}
+			return EnableSettingsKey(cfg, *req.SettingsKeyID)
 		default:
 			return nil, newProviderError("incompatible")
 		}

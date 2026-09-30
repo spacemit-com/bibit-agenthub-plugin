@@ -8,7 +8,8 @@ import (
 	"testing"
 )
 
-// uploadConfig builds a config with an installed resource and a stored key.
+// uploadConfig builds a config with an installed resource and one stored,
+// enabled key.
 func uploadConfig(t *testing.T, home, apmPath, key string) Config {
 	t.Helper()
 	cfg := Config{APMPath: apmPath, UserHome: home, DataDir: filepath.Join(home, "state")}
@@ -16,7 +17,7 @@ func uploadConfig(t *testing.T, home, apmPath, key string) Config {
 		if err := WriteSettings(cfg, Settings{
 			SchemaVersion:  settingsSchemaVersion,
 			RefreshMinutes: 15,
-			APIKey:         key,
+			APIKeys:        []StoredAPIKey{{ID: "0123456789abcdef0123456789abcdef", Key: key, Enabled: true}},
 		}); err != nil {
 			t.Fatal(err)
 		}

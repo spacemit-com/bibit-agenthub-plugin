@@ -7,7 +7,7 @@ AgentHub UI -> Feature SDK -> Bibit external-service gateway
             -> Provider Protocol v1 -> AgentHub CLI (Go)
 ```
 
-CLI 是纯 Go 标准库实现（`provider/` 独立 module），只声明 Provider Protocol v1 与九个 operation：`powers.list.v1` / `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` / `powers.custom.list.v1` / `powers.upload.v1` / `powers.delete.v1` / `settings.get.v1` / `settings.update.v1`。下载、job 与文件传输不在本期 CLI 范围内。
+CLI 是纯 Go 标准库实现（`provider/` 独立 module），只声明 Provider Protocol v1 与十一个 operation：`powers.list.v1` / `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` / `powers.custom.list.v1` / `powers.upload.v1` / `powers.delete.v1` / `settings.get.v2` / `settings.keys.add.v1` / `settings.keys.delete.v1` / `settings.keys.enable.v1`。下载、job 与文件传输不在本期 CLI 范围内。
 
 ## 1. 系统入口与进程约束
 
@@ -39,7 +39,7 @@ Provider 从 stdin 读取 UTF-8 NDJSON，stdout 只输出完整单行 JSON-RPC 2
 支持传输的 Provider 返回：
 
 ```json
-{"jsonrpc":"2.0","id":"session:initialize","result":{"protocolVersion":1,"providerVersion":"0.3.9","capabilities":{"invoke":true},"operations":["powers.list.v1","powers.inspect.v1","powers.install.v1","powers.uninstall.v1","powers.custom.list.v1","powers.upload.v1","powers.delete.v1","settings.get.v1","settings.update.v1"]}}
+{"jsonrpc":"2.0","id":"session:initialize","result":{"protocolVersion":1,"providerVersion":"0.3.13","capabilities":{"invoke":true},"operations":["powers.list.v1","powers.inspect.v1","powers.install.v1","powers.uninstall.v1","powers.custom.list.v1","powers.upload.v1","powers.delete.v1","settings.get.v2","settings.keys.add.v1","settings.keys.delete.v1","settings.keys.enable.v1"]}}
 ```
 
 初始化前拒绝 `bibit.invoke`。Provider 只声明 `invoke`，不声明 v2 的 `jobs`/`cancellation`/`maxConcurrentJobs`。`bibit.shutdown` 通知结束会话，`bibit.cancel`（v2 保留字）在 v1 会话中被忽略。
@@ -212,21 +212,24 @@ apm submit   <resolvedPath> --type=skill --message=<message>
 {status:"deleted"}
 ```
 
-### 3.8 settings.get.v1 / settings.update.v1
+### 3.8 settings.get.v2 / settings.keys.add.v1 / settings.keys.delete.v1 / settings.keys.enable.v1
 
 ```json
-{"jsonrpc":"2.0","id":"req-8","method":"bibit.invoke","params":{"serviceId":"store","operationId":"settings.get.v1","params":{},"timeoutMs":30000}}
-{"jsonrpc":"2.0","id":"req-9","method":"bibit.invoke","params":{"serviceId":"store","operationId":"settings.update.v1","params":{"showExperimental":false,"refreshMinutes":15,"apiKey":"<APC key>"},"timeoutMs":30000}}
+{"jsonrpc":"2.0","id":"req-8","method":"bibit.invoke","params":{"serviceId":"store","operationId":"settings.get.v2","params":{},"timeoutMs":30000}}
+{"jsonrpc":"2.0","id":"req-9","method":"bibit.invoke","params":{"serviceId":"store","operationId":"settings.keys.add.v1","params":{"apiKey":"<APC key>"},"timeoutMs":30000}}
+{"jsonrpc":"2.0","id":"req-10","method":"bibit.invoke","params":{"serviceId":"store","operationId":"settings.keys.enable.v1","params":{"id":"<32 hex>"},"timeoutMs":30000}}
+{"jsonrpc":"2.0","id":"req-11","method":"bibit.invoke","params":{"serviceId":"store","operationId":"settings.keys.delete.v1","params":{"id":"<32 hex>"},"timeoutMs":30000}}
 ```
 
-`settings.get.v1` 参数是空对象，结果是 `{showExperimental, refreshMinutes, hasApiKey}`——**永不返回 Key 本身**，只告诉页面是否已配置。`settings.update.v1` 参数是闭集：
+`settings.get.v2` 参数是空对象，结果是 `{showExperimental, refreshMinutes, keys}`，其中 `keys` 是 `[{id, preview, enabled}]`——**永不返回 Key 本身**，`preview` 是 Provider 生成的 `头****尾` 遮蔽形式，`id` 是 128-bit hex 句柄，页面只能拿它做启用/删除。三个写入的入参分别是 `{apiKey}` 与 `{id}`，结果都是同一份 `SettingsView`：
 
 ```text
-{showExperimental: bool, refreshMinutes: 5..120, apiKey?: "<printable ASCII, ≤512>"}
+{apiKey: "<printable ASCII, ≤512, 非空>"} | {id: "<32 hex>"}
 ```
 
-- 省略 `apiKey` → 保留已存 Key；传空串 → 清除。
-- 存储位置：`--data-dir` 指定目录（宿主通过 `BIBIT_PROVIDER_DATA_DIR` 注入 `/var/lib` 下的私有目录），否则回退 `$HOME/.local/state/bibit-agenthub/settings.json`；目录 0700、文件 0600，写入走「临时文件 + fsync + rename」；读到符号链接或损坏 JSON 一律报错，不静默覆盖。
+- 语义：列表为空时新增的第一条自动 `enabled`；已有 Key 时新增的保持未启用；`enable` 把目标置为唯一启用项；`delete` 删除当前启用项后**不**自动启用其它 Key（此后上传返回 `unauthorized`）；重复 Key、未知 id、超过 50 条都返回 `incompatible`。
+- 存储位置：`--data-dir` 指定目录（宿主通过 `BIBIT_PROVIDER_DATA_DIR` 注入 `/var/lib` 下的私有目录），否则回退 `$HOME/.local/state/bibit-agenthub/settings.json`；目录 0700、文件 0600，写入走「临时文件 + fsync + rename」；读到符号链接、损坏 JSON、`apiKey` 与 `apiKeys` 同时出现、或超过一条 `enabled` 一律报错，不静默覆盖。
+- 迁移：schemaVersion 1（单个 `apiKey`）在读取时升级为「一条已启用记录」，下一次写入落成 schemaVersion 2；v2 文件不再写 `apiKey`。
 - `apiKey` 属于宿主 `credentialParameters` 声明范围，见第 6 节的 Registry 片段；未声明时宿主会直接拒绝该参数。
 
 ## 4. 错误闭集
@@ -246,7 +249,7 @@ provider_crashed resource_exhausted unknown
 /usr/libexec/bibit/bibit-agenthub --self-test
 ```
 
-自检离线运行 6 项子检查：初始化与 v1 协商、power operations（inspect/install/uninstall 的 argv 与结果形状）、custom resources（custom.list / upload / delete / settings.get / settings.update 的参数与结果形状，且结果不得含 `apiKey`、路径或 stderr）、纯 v2 不支持路径、invoke 错误映射、malformed NDJSON（`-32700`），exit 0 表示通过。不要求真实 APM 或公网服务。
+自检离线运行 6 项子检查：初始化与 v1 协商、power operations（inspect/install/uninstall 的 argv 与结果形状）、custom resources（custom.list / upload / delete / settings.get.v2 / settings.keys.add.v1 / settings.keys.delete.v1 / settings.keys.enable.v1 的参数与结果形状，且结果不得含 `apiKey` / `hasApiKey` / `key`、路径或 stderr）、纯 v2 不支持路径、invoke 错误映射、malformed NDJSON（`-32700`），exit 0 表示通过。不要求真实 APM 或公网服务。
 
 ## 6. Registry 与双 deb
 
@@ -264,14 +267,14 @@ Registry 严格对齐宿主 `RawConnectionRegistry`（serde camelCase）：
       "protocolVersions": [1],
       "requestTimeoutMs": 120000,
       "credentialParameters": {
-        "settings.update.v1": ["apiKey"]
+        "settings.keys.add.v1": ["apiKey"]
       }
     }
   }
 }
 ```
 
-`version: 2` 只是 Registry 文件格式版本；Provider 始终协商协议 v1，`protocolVersions` 固定 `[1]`。`credentialParameters` 必须与 `debian/agenthub-provider.json` 保持一致：宿主的参数策略把 `apiKey` 视为凭据键，未在该 operation 下声明时 `settings.update.v1` 会被宿主直接拒绝，Provider 收不到请求。CLI 不安装 probe。
+`version: 2` 只是 Registry 文件格式版本；Provider 始终协商协议 v1，`protocolVersions` 固定 `[1]`。`credentialParameters` 必须与 `debian/agenthub-provider.json` 保持一致：宿主的参数策略把 `apiKey` 视为凭据键，未在该 operation 下声明时 `settings.keys.add.v1` 会被宿主直接拒绝，Provider 收不到请求。CLI 不安装 probe。
 
 构建与交叉构建：
 
@@ -297,6 +300,6 @@ CLI 包不依赖 APM 或 bi-bit；APM 缺失允许降级为 `unavailable` 而非
 
 1. `make -C provider test vet`；`make -C provider build GOARCH=riscv64` 后 `readelf -h` 确认 RISC-V。
 2. `/usr/libexec/bibit/bibit-agenthub --self-test`（或本机二进制路径）exit 0。
-3. `go run ./cmd/provider-probe --executable <binary> --scope market` 记录 snapshot，再用该 snapshot 复调确认 `not_modified`；`--scope custom` 走 `powers.custom.list.v1`，`--operation settings.get.v1` 检查 `hasApiKey`。
+3. `go run ./cmd/provider-probe --executable <binary> --scope market` 记录 snapshot，再用该 snapshot 复调确认 `not_modified`；`--scope custom` 走 `powers.custom.list.v1`，`--operation settings.get.v2` 检查 `keyCount` 与 `hasEnabledKey`（**不含**任何 Key 文本）。
 4. 临时 home 下放一个只含 `name`/`description` 的 `~/.codex/skills/<name>/SKILL.md`，用 `--scope custom --agent codex` 确认被列出；删掉 `description` 后确认进入 `skipped` 且 `reason` 为 `invalid-authority-file`。
 5. 板端安装两包后，宿主协商 `protocol=1`，页面 installed/market 真实数据、翻页/筛选每次 version 检查、缓存命中不下载全量，详情与安装/卸载走 `apm`（读 30s / 写 120s）；自定义资源在「我的 Power」中带 `Custom` 标记显示，弹窗可上传/删除。

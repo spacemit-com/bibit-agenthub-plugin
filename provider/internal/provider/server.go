@@ -23,8 +23,13 @@ const (
 	operationPowersUpload     = "powers.upload.v1"
 	operationPowersDelete     = "powers.delete.v1"
 
-	operationSettingsGet    = "settings.get.v1"
-	operationSettingsUpdate = "settings.update.v1"
+	// Settings operations. `settings.get.v2` lists the saved APC keys as masked
+	// previews; the three `settings.keys.*.v1` writes add, delete and enable one
+	// entry. Exactly one key may be enabled, and that one is what upload uses.
+	operationSettingsGet       = "settings.get.v2"
+	operationSettingsKeyAdd    = "settings.keys.add.v1"
+	operationSettingsKeyDelete = "settings.keys.delete.v1"
+	operationSettingsKeyEnable = "settings.keys.enable.v1"
 
 	// maxInputBytes bounds a single NDJSON input line (the host request budget).
 	maxInputBytes = 1 << 20 // 1 MiB
@@ -33,7 +38,7 @@ const (
 	// maxIDLength bounds a JSON-RPC string id; the host uses 1..128.
 	maxIDLength = 128
 
-	providerVersion = "0.3.9"
+	providerVersion = "0.3.13"
 )
 
 // declaredOperations is the closed set reported to the host at initialize and
@@ -47,7 +52,9 @@ var declaredOperations = []string{
 	operationPowersUpload,
 	operationPowersDelete,
 	operationSettingsGet,
-	operationSettingsUpdate,
+	operationSettingsKeyAdd,
+	operationSettingsKeyDelete,
+	operationSettingsKeyEnable,
 }
 
 func isDeclaredOperation(operationID string) bool {
@@ -387,12 +394,18 @@ func decodeOperationRequest(operationID string, raw json.RawMessage) (OperationR
 			return OperationRequest{}, err
 		}
 		return OperationRequest{OperationID: operationID}, nil
-	case operationSettingsUpdate:
-		update, err := decodeSettingsUpdate(raw)
+	case operationSettingsKeyAdd:
+		key, err := decodeSettingsKeyAdd(raw)
 		if err != nil {
 			return OperationRequest{}, err
 		}
-		return OperationRequest{OperationID: operationID, Settings: &update}, nil
+		return OperationRequest{OperationID: operationID, SettingsKey: &key}, nil
+	case operationSettingsKeyDelete, operationSettingsKeyEnable:
+		id, err := decodeSettingsKeyID(raw)
+		if err != nil {
+			return OperationRequest{}, err
+		}
+		return OperationRequest{OperationID: operationID, SettingsKeyID: &id}, nil
 	default:
 		return OperationRequest{}, errors.New("unknown operation")
 	}

@@ -1,5 +1,41 @@
 # Changelog
 
+## 2026-09-30 — 设置标签页改为 APC Key 列表，可增删与单独启用（0.3.13）
+
+分类：新增功能 / 交互调整
+
+用户需求：
+
+设置标签页里去掉「Clear Saved key」和「Save settings」；文本框输入 Key 后可点保存，保存后列表里显示该 Key（Key 头 + 中间星号 + Key 尾）；每条保存的 Key 有独立的删除与启用按钮，删除无需二次确认；列表中只有一个 Key 可以启用，它就是提交资源的输入；列表为空时新建的 Key 默认启用。
+
+解决方案或完成结果：
+
+- **表单改为“输入 + 保存 Key”**：`Save settings` 与 `Clear saved key` 两个按钮都被移除，输入框右侧只有 `Save key`（中文「保存 Key」）。保存是独立动作，输入框在成功后清空；`settings.update.v1` 的“省略即保留 / 空串即清除”语义不再需要，因此仓库里也不再有 `apiKeyDirty`。
+- **列表即遮蔽视图**：每行显示 `preview`，形如 `apc-****-one`（前 4 + `****` + 后 4；短 Key 只留前 2）。遮蔽在 Provider 侧生成（`MaskAPIKey`），前端 `parseSettingsView` 还会拒绝不含 `****` 的 `preview`、重复 `id` 与超过一条 `enabled`——后端一次 bug 不会变成屏幕上的凭据。
+- **每行独立的启用 / 删除**：`Enable` 在已启用的行上禁用；`Delete` 单击即执行，**没有二次确认**（行内按钮的可访问名已经写出要删的是哪个 Key，与仍需确认的卸载/删除自定义资源不同）。写入过程中两行按钮都禁用，避免并发写。
+- **只有一个启用**：启用标志由 Provider 决定，页面只回显。列表为空时新增的第一条自动 `enabled: true`；已有 Key 时新增的保持未启用（新建不会偷偷换掉正在用的凭据）；`enable` 把目标置为唯一启用项；删除当前启用项后**不**自动启用其它 Key，此后上传返回未配置，直到用户自己点启用。`SettingsAPIKey` 只返回启用项，也就是 `apm submit` 真正拿到的凭据。
+- **协议升级为上列表**：`settings.get.v2` 返回 `{showExperimental, refreshMinutes, keys:[{id,preview,enabled}]}`；三个写入 `settings.keys.add.v1` / `settings.keys.delete.v1` / `settings.keys.enable.v1` 取代 `settings.update.v1`，入参分别是 `{apiKey}` 与 `{id}`（32 位 hex 句柄）。operation 从 9 个增加到 11 个；`apiKey` 的 Registry `credentialParameters` 声明随之移动到 `settings.keys.add.v1`，否则宿主的参数策略会直接拒绝。
+- **存储迁移**：`settings.json` 升到 schemaVersion 2（`apiKeys: [{id,key,enabled}]`，`id` 为 128-bit 随机 hex）。读到 v1 文件（单个 `apiKey`）时在内存里迁移为「一条已启用记录」，下一次写入落成 v2，老用户不会丢凭据；v2 文件里再出现 `apiKey`、或出现两条 `enabled`，一律报错而不是静默修复。权限（0600）、原子写入、拒绝对符号链接写入、上限 50 条、重复 Key 拒绝都不变。
+- 前端新增 `src/api/settingsClient.ts`（读取/新增/删除/启用四个客户端），`dev/store.ts` 的 Mock 复刻同一套遮蔽与「首个启用 / 至多一个启用」规则，`dev/main.tsx` 注释同步；CSS 新增可收缩的 Key 行规则，`agentHubLayout.test.ts` 增加「预览可收缩换行、动作不换行」的契约断言，`docs/verification/probe-settings-key-list.py` 在离屏 WebKitGTK 里量 10 个窗口确认长 Key 不撑宽面板、不产生横向滚动、行内两个动作不换行。
+
+相关文件：
+
+- `src/components/AgentHubSettingsPanel.tsx`、`src/components/AgentHubSettingsPanel.test.tsx`（17 条用例）
+- `src/api/contracts.ts`、`src/api/settingsClient.ts`（新）、`src/api/settingsClient.test.ts`（新）
+- `src/agentHubI18n.tsx`、`src/agentHub.css`、`src/agentHubLayout.test.ts`、`src/AgentHubPage.test.tsx`、`src/manifestGrants.test.ts`
+- `provider/internal/provider/settings.go`、`operations.go`、`contracts.go`、`config.go`、`server.go`、`selftest.go`、`cmd/provider-probe/main.go` 及其测试
+- `dev/store.ts`、`dev/store.test.ts`、`dev/main.tsx`
+- `debian/agenthub-provider.json`、`debian/agenthub-feature-grants.json`、`debian/changelog`
+- `README.md`、`docs/development-and-deployment-guide.md`、`docs/cli-provider-development-and-deployment.md`
+- `package.json`、`package-lock.json`、`bibit.feature.json`（0.3.13）
+- `docs/verification/2026-09-30-settings-key-list.md`（新增验证记录）、`docs/verification/probe-settings-key-list.py`（新增离屏 WebKit 探针）
+
+验证结果或限制：
+
+`npm test` 521/524（28 个文件；唯一失败的 `dev/sources.test.ts` 3 条 `readMarket` 用例为基线问题，`git stash` 后同样失败）、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin`（`artifacts/agent-hub-0.3.13.bibit-plugin.tgz`，sha256 `cab64173…`）、`make -C provider test vet build`、`bibit-agenthub --self-test`（exit 0）、`gofmt -l provider/`（无输出）与 `git diff --check` 均通过。产物核对：`plugin.json` 为 0.3.13、`fallbackTitle` 为 `Capabilities`（0.3.12 文案）、`settings: []`；bundle 里 `Clear saved key` / `Save settings` / `hasApiKey` / `settings.update.v1` / `settings.get.v1` 出现 0 次，四个新 operation 与 `Save key` / `No key saved` / `Saved API Keys` 均出现。真机流程用 provider 二进制直接驱动验证：空列表 → add 第一条（`enabled: true`）→ add 第二条（`enabled: false`，第一条仍启用）→ enable 第二条（唯一启用）→ delete 启用项（剩下的行 `enabled: false`，上传返回 `incompatible` 的未授权路径）；v1 文件读取迁移与“下一次写入落成 v2”也已核对。三处变异验证确认新断言不是空转：`Enable` 去掉「已启用则禁用」、`parseSettingsView` 去掉遮蔽校验、Provider 删除时自动启用幸存项，各有对应用例失败。
+
+限制：删除当前启用 Key 后不会自动启用其它 Key，是本次确认过的产品选择（图片/字面需求只说「列表中没有 Key 时新建默认启用」）；如果之后希望「始终有一条启用」，需要改 Provider 的 `DeleteSettingsKey` 而不是前端。
+
 ## 2026-09-30 — 文案改为「能力中心 / 能力市场」并去掉页头眉标（0.3.12）
 
 分类：体验优化（纯前端文案）
@@ -27,7 +63,7 @@
 
 验证结果或限制：
 
-`npm test` 506/509（27 个文件；`src` 下 23 个文件 463/463 全通过；**唯一失败文件是 `dev/sources.test.ts` 的 3 条 `readMarket` 用例，基线即失败**——jsdom 把全局 `URL` 换成不继承 `node:url` `URL` 的实现，`http.get(url, options, cb)` 把它当 options，`git stash` 后同样失败，与本次改动无关）、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin`（`artifacts/agent-hub-0.3.12.bibit-plugin.tgz`，sha256 `6796aa46…`）与 `git diff --check` 均通过。
+`npm test` 506/509（27 个文件；`src` 下 23 个文件 463/463 全通过；**唯一失败文件是 `dev/sources.test.ts` 的 3 条 `readMarket` 用例，基线即失败**——jsdom 把全局 `URL` 换成不继承 `node:url` `URL` 的实现，`http.get(url, options, cb)` 把它当 options，`git stash` 后同样失败，与本次改动无关）、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin`（`artifacts/agent-hub-0.3.13.bibit-plugin.tgz`，sha256 `6796aa46…`）与 `git diff --check` 均通过。
 
 限制：本次是纯文案与字典键改名，**未做真机截图与离屏探针验证**（没有布局或尺寸改动；删眉标后页头的左右分布与创建入口列不变，说明段落的 `margin: 0` 是补齐原先由 `header p` 提供的值）。`docs/`（`README.md`、开发指南、`docs/superpowers/**`）与历史 `debian/changelog` 条目里仍保留旧的「我的 Power / Power 市场 / 创建资源 / INTERNAL CATALOG」措辞，它们是历史规格与变更记录，本次有意未改。
 

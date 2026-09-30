@@ -108,14 +108,17 @@ const zh: Readonly<Record<string, string>> = {
 
   // ---- settings tab (in-page, next to My Capabilities / Capability Market) ----
   'Settings': '设置',
-  'Save settings': '保存设置',
   'Loading settings…': '正在加载设置…',
   'Store capability is unavailable.': 'Store 能力不可用。',
   'Settings synchronized.': '设置已同步。',
   'Could not load Agent Hub settings.': '无法加载 Agent Hub 设置。',
   'Saving…': '正在保存…',
-  'Settings saved.': '设置已保存。',
-  'Could not save Agent Hub settings.': '无法保存 Agent Hub 设置。',
+  'Key saved.': 'Key 已保存。',
+  'Could not save the key.': '无法保存该 Key。',
+  'Key deleted.': 'Key 已删除。',
+  'Could not delete the key.': '无法删除该 Key。',
+  'Key enabled.': 'Key 已启用。',
+  'Could not enable the key.': '无法启用该 Key。',
 
   // ---- installation store and operation messages ----
   'This version is already installed; uninstall it first.':
@@ -191,10 +194,18 @@ const zh: Readonly<Record<string, string>> = {
   // ---- settings: APC credential ----
   'APC API Key': 'APC API Key',
   'Required to upload custom resources to APC.': '用于把自定义资源上传到 APC。',
-  'Configured': '已配置',
-  'Not configured': '未配置',
-  'Clear saved key': '清除已保存的 Key',
-  'The API Key is never shown again once saved.': '保存后不再回显 API Key。',
+  'No key saved': '尚未保存 Key',
+  '{count} saved': '已保存 {count} 个',
+  'Save key': '保存 Key',
+  'The saved key is only shown masked.': '已保存的 Key 只显示遮蔽形式。',
+  'Saved API Keys': '已保存的 API Key',
+  'Enabled': '已启用',
+  'Not enabled': '未启用',
+  'Enable': '启用',
+  'Enabling…': '正在启用…',
+  'Enable key {preview}': '启用 Key {preview}',
+  'Delete key {preview}': '删除 Key {preview}',
+  // 'Delete' / 'Deleting…' are shared with the custom-resource dialog above.
 }
 
 export const agentHubChinese: Readonly<Record<string, string>> = zh

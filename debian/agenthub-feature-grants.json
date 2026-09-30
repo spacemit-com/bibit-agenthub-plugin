@@ -5,7 +5,7 @@
   },
   "serviceOperations": {
     "agent-hub": {
-      "store": ["powers.list.v1", "powers.inspect.v1", "powers.install.v1", "powers.uninstall.v1", "powers.custom.list.v1", "powers.upload.v1", "powers.delete.v1", "settings.get.v1", "settings.update.v1"]
+      "store": ["powers.list.v1", "powers.inspect.v1", "powers.install.v1", "powers.uninstall.v1", "powers.custom.list.v1", "powers.upload.v1", "powers.delete.v1", "settings.get.v2", "settings.keys.add.v1", "settings.keys.delete.v1", "settings.keys.enable.v1"]
     }
   }
 }

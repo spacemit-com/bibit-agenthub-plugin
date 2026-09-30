@@ -43,8 +43,10 @@ describe('capability declarations and their grant', () => {
         'powers.custom.list.v1',
         'powers.upload.v1',
         'powers.delete.v1',
-        'settings.get.v1',
-        'settings.update.v1',
+        'settings.get.v2',
+        'settings.keys.add.v1',
+        'settings.keys.delete.v1',
+        'settings.keys.enable.v1',
       ],
     })
   })

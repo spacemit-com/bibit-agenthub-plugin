@@ -9,7 +9,7 @@
       "protocolVersions": [1],
       "requestTimeoutMs": 120000,
       "credentialParameters": {
-        "settings.update.v1": ["apiKey"]
+        "settings.keys.add.v1": ["apiKey"]
       }
     }
   }

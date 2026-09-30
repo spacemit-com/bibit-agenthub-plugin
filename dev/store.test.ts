@@ -4,6 +4,8 @@ import type { ListPowersInput } from '../src/api/contracts'
 import { listPowers } from '../src/api/powerCatalogClient'
 import {
   handleStoreRequest,
+  resetDevSettings,
+  StoreError,
   type CustomDeleteSource,
   type CustomListSource,
   type CustomUploadSource,
@@ -52,42 +54,97 @@ function marketQuery(overrides: Record<string, unknown> = {}): Record<string, un
 }
 
 describe('handleStoreRequest', () => {
-  it('returns default settings for settings.get.v1', async () => {
+  it('returns an empty key list for settings.get.v2', async () => {
+    resetDevSettings()
     await expect(
-      handleStoreRequest({ operationId: 'settings.get.v1', params: {} }, sources(), new AbortController().signal)
-    ).resolves.toEqual({ showExperimental: false, refreshMinutes: 15, hasApiKey: false })
+      handleStoreRequest({ operationId: 'settings.get.v2', params: {} }, sources(), new AbortController().signal)
+    ).resolves.toEqual({ showExperimental: false, refreshMinutes: 15, keys: [] })
   })
 
-  it('echoes settings.update.v1 and persists the change without returning the key', async () => {
-    await expect(
-      handleStoreRequest(
-        { operationId: 'settings.update.v1', params: { showExperimental: true, refreshMinutes: 30, apiKey: 'k' } },
-        sources(),
-        new AbortController().signal
-      )
-    ).resolves.toEqual({ showExperimental: true, refreshMinutes: 30, hasApiKey: true })
-    const reread = await handleStoreRequest(
-      { operationId: 'settings.get.v1', params: {} },
+  it('adds masked keys, enables the first only, and moves the enabled flag explicitly', async () => {
+    resetDevSettings()
+    const added = (await handleStoreRequest(
+      { operationId: 'settings.keys.add.v1', params: { apiKey: 'apc-key-one' } },
       sources(),
       new AbortController().signal
+    )) as { keys: { id: string; preview: string; enabled: boolean }[] }
+    // The first saved key is enabled and is only ever reported masked.
+    expect(added.keys).toHaveLength(1)
+    expect(added.keys[0].enabled).toBe(true)
+    expect(added.keys[0].preview).toBe('apc-****-one')
+    expect(JSON.stringify(added)).not.toContain('apc-key-one')
+
+    const second = (await handleStoreRequest(
+      { operationId: 'settings.keys.add.v1', params: { apiKey: 'apc-key-two' } },
+      sources(),
+      new AbortController().signal
+    )) as { keys: { id: string; preview: string; enabled: boolean }[] }
+    expect(second.keys[0].enabled).toBe(true)
+    expect(second.keys[1].enabled).toBe(false)
+
+    // The enabled key is the credential the upload source receives.
+    const upload = vi.fn<CustomUploadSource>(okCustomUpload)
+    await handleStoreRequest(
+      {
+        operationId: 'powers.upload.v1',
+        params: { agent: 'bibit', type: 'skill', name: 'demo', message: 'publish it' },
+      },
+      sources({ upload }),
+      new AbortController().signal
     )
-    expect(reread).toEqual({ showExperimental: true, refreshMinutes: 30, hasApiKey: true })
-    expect(JSON.stringify(reread)).not.toContain('"apiKey"')
-    // Omitting apiKey keeps it; an empty string clears it.
+    expect(upload).toHaveBeenCalledWith(
+      { agent: 'bibit', type: 'skill', name: 'demo' },
+      'publish it',
+      'apc-key-one',
+      expect.anything()
+    )
+
+    // Enabling the second one switches the flag and nothing else.
+    const enabled = (await handleStoreRequest(
+      { operationId: 'settings.keys.enable.v1', params: { id: second.keys[1].id } },
+      sources(),
+      new AbortController().signal
+    )) as { keys: { enabled: boolean }[] }
+    expect(enabled.keys.map((key) => key.enabled)).toEqual([false, true])
+
+    // Deleting the enabled key leaves the survivor disabled.
+    const deleted = (await handleStoreRequest(
+      { operationId: 'settings.keys.delete.v1', params: { id: second.keys[1].id } },
+      sources(),
+      new AbortController().signal
+    )) as { keys: { enabled: boolean }[] }
+    expect(deleted.keys).toHaveLength(1)
+    expect(deleted.keys[0].enabled).toBe(false)
+  })
+
+  it('rejects an unusable key, a duplicate key and an unknown id', async () => {
+    resetDevSettings()
+    const signal = new AbortController().signal
+    // The closed parser rejects a non-ASCII or empty token before the store runs.
+    await expect(
+      handleStoreRequest({ operationId: 'settings.keys.add.v1', params: { apiKey: 'has space' } }, sources(), signal)
+    ).rejects.toThrow(/Invalid settings\.keys\.add\.v1 input/)
+    await expect(
+      handleStoreRequest({ operationId: 'settings.keys.add.v1', params: { apiKey: '' } }, sources(), signal)
+    ).rejects.toThrow(/Invalid settings\.keys\.add\.v1 input/)
+    await handleStoreRequest({ operationId: 'settings.keys.add.v1', params: { apiKey: 'k' } }, sources(), signal)
+    await expect(
+      handleStoreRequest({ operationId: 'settings.keys.add.v1', params: { apiKey: 'k' } }, sources(), signal)
+    ).rejects.toBeInstanceOf(StoreError)
     await expect(
       handleStoreRequest(
-        { operationId: 'settings.update.v1', params: { showExperimental: true, refreshMinutes: 30 } },
+        { operationId: 'settings.keys.delete.v1', params: { id: 'ffffffffffffffffffffffffffffffff' } },
         sources(),
-        new AbortController().signal
+        signal
       )
-    ).resolves.toEqual({ showExperimental: true, refreshMinutes: 30, hasApiKey: true })
+    ).rejects.toBeInstanceOf(StoreError)
     await expect(
       handleStoreRequest(
-        { operationId: 'settings.update.v1', params: { showExperimental: true, refreshMinutes: 30, apiKey: '' } },
+        { operationId: 'settings.keys.enable.v1', params: { id: 'not-an-id' } },
         sources(),
-        new AbortController().signal
+        signal
       )
-    ).resolves.toEqual({ showExperimental: true, refreshMinutes: 30, hasApiKey: false })
+    ).rejects.toThrow(/Invalid settings\.keys\.enable\.v1 input/)
   })
 
   it('routes the custom scan and the two custom writes to their sources', async () => {

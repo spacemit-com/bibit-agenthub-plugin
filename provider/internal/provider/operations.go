@@ -138,28 +138,41 @@ func decodeCustomListInput(raw json.RawMessage) (CustomListInput, error) {
 	return CustomListInput{Agent: agent}, nil
 }
 
-// decodeSettingsUpdate strictly decodes the settings.update.v1 payload. A
-// missing apiKey means "keep the stored key"; an empty one clears it.
-func decodeSettingsUpdate(raw json.RawMessage) (SettingsUpdate, error) {
+// decodeSettingsKeyAdd strictly decodes the settings.keys.add.v1 payload: one
+// non-empty printable-ASCII APC credential.
+func decodeSettingsKeyAdd(raw json.RawMessage) (string, error) {
 	obj, err := decodeObject(raw)
 	if err != nil {
-		return SettingsUpdate{}, err
+		return "", err
 	}
-	if err := rejectKeys(obj, "showExperimental", "refreshMinutes", "apiKey"); err != nil {
-		return SettingsUpdate{}, err
+	if err := rejectKeys(obj, "apiKey"); err != nil {
+		return "", err
 	}
-	var update SettingsUpdate
-	if err := strictUnmarshal(raw, &update); err != nil {
-		return SettingsUpdate{}, err
+	key, ok := parseString(obj["apiKey"])
+	if !ok || key == "" {
+		return "", errors.New("operation input: apiKey must be a non-empty string")
 	}
-	if update.RefreshMinutes < minRefreshMinutes || update.RefreshMinutes > maxRefreshMinutes {
-		return SettingsUpdate{}, errors.New("operation input: refreshMinutes out of range")
+	if len(key) > maxAPIKeyBytes || !isPrintableASCII(key) {
+		return "", errors.New("operation input: apiKey must be printable ASCII")
 	}
-	if update.APIKey != nil && *update.APIKey != "" &&
-		(len(*update.APIKey) > maxAPIKeyBytes || !isPrintableASCII(*update.APIKey)) {
-		return SettingsUpdate{}, errors.New("operation input: apiKey must be printable ASCII")
+	return key, nil
+}
+
+// decodeSettingsKeyID strictly decodes the {id} payload shared by the delete and
+// enable operations. The id is the opaque handle `settings.get.v2` returned.
+func decodeSettingsKeyID(raw json.RawMessage) (string, error) {
+	obj, err := decodeObject(raw)
+	if err != nil {
+		return "", err
 	}
-	return update, nil
+	if err := rejectKeys(obj, "id"); err != nil {
+		return "", err
+	}
+	id, ok := parseString(obj["id"])
+	if !ok || !isAPIKeyID(id) {
+		return "", errors.New("operation input: id must be a saved apiKey id")
+	}
+	return id, nil
 }
 
 // decodeInstallInput strictly decodes and validates a {agent,type,name,version}

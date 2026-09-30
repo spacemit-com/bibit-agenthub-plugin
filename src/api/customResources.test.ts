@@ -6,8 +6,6 @@ import {
   parseCustomResourceList,
   parseDeleteResult,
   parseDeleteTarget,
-  parseSettingsUpdate,
-  parseSettingsView,
   parseUploadInput,
   parseUploadResult,
 } from './contracts'
@@ -166,40 +164,6 @@ describe('parseUploadInput / parseUploadResult / parseDeleteTarget / parseDelete
     )
     expect(parseDeleteResult({ status: 'deleted' })).toEqual({ status: 'deleted' })
     expect(() => parseDeleteResult({ status: 'gone' })).toThrow(/Invalid powers\.delete\.v1 result/)
-  })
-})
-
-describe('parseSettingsView / parseSettingsUpdate', () => {
-  it('never accepts a credential in the view', () => {
-    expect(parseSettingsView({ showExperimental: true, refreshMinutes: 30, hasApiKey: true }, 'x:')).toEqual({
-      showExperimental: true,
-      refreshMinutes: 30,
-      hasApiKey: true,
-    })
-    for (const value of [
-      { showExperimental: true, refreshMinutes: 30, hasApiKey: true, apiKey: 'leak' },
-      { showExperimental: true, refreshMinutes: 1, hasApiKey: false },
-      { showExperimental: 'yes', refreshMinutes: 30, hasApiKey: false },
-    ]) {
-      expect(() => parseSettingsView(value, 'x:')).toThrow(/^x:/)
-    }
-  })
-
-  it('validates the update payload and keeps apiKey optional', () => {
-    expect(parseSettingsUpdate({ showExperimental: false, refreshMinutes: 15 })).toEqual({
-      showExperimental: false,
-      refreshMinutes: 15,
-    })
-    expect(parseSettingsUpdate({ showExperimental: false, refreshMinutes: 15, apiKey: '' }).apiKey).toBe('')
-    for (const value of [
-      { showExperimental: false, refreshMinutes: 4 },
-      { showExperimental: false, refreshMinutes: 121 },
-      { showExperimental: false, refreshMinutes: 15, apiKey: 'has space' },
-      { showExperimental: false, refreshMinutes: 15, apiKey: 'x'.repeat(513) },
-      { showExperimental: false, refreshMinutes: 15, unknown: true },
-    ]) {
-      expect(() => parseSettingsUpdate(value)).toThrow(/Invalid settings\.update\.v1 input/)
-    }
   })
 })
 

@@ -12,7 +12,8 @@ import { featureModule } from '../src/feature'
 // Vite dev-store middleware, which runs the same raw wire contracts as the
 // production Go provider: powers.list.v1, powers.inspect.v1, powers.install.v1,
 // powers.uninstall.v1, powers.custom.list.v1, powers.upload.v1,
-// powers.delete.v1 and settings.get.v1 / settings.update.v1, with the read 30 s
+// powers.delete.v1 and settings.get.v2 / settings.keys.add.v1 /
+// settings.keys.delete.v1 / settings.keys.enable.v1, with the read 30 s
 // / write 120 s deadlines. The settings operations are reached from the page's own
 // Settings tab: the plugin declares no settings contribution, so the Dev Host
 // lists a page preview only. The custom operations scan the real home directory of

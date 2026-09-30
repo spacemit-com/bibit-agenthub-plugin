@@ -1,3 +1,39 @@
+bibit-agenthub-plugin (0.3.13) resolute-porting; urgency=medium
+
+  * Turn the Settings tab's single APC credential into a saved-key list. The
+    form-wide "Save settings" action and the "Clear saved key" workaround are
+    gone: a key is typed and saved with its own "Save key" action, and it then
+    appears in the list as a masked preview (`head****tail`) so the page can
+    show which credentials exist without ever holding one.
+  * Every saved key carries its own Enable and Delete action. Delete is a single
+    click with no confirmation step — the row's button names the key it removes,
+    unlike the catalog uninstall/delete flows which still confirm. Exactly one
+    key may be enabled, and that key is the credential `apm submit` receives.
+  * The enabled flag is decided by the provider, not the page. When the list is
+    empty the first saved key is enabled; every later key arrives disabled, so
+    saving a new key never silently switches the credential an upload is using.
+    Deleting the enabled key leaves the remaining keys disabled until the user
+    enables one, which is the explicit choice we settled on.
+  * The settings protocol moves from one `apiKey` field to a key list:
+    `settings.get.v2` returns `{keys:[{id,preview,enabled}]}` and three writes
+    replace `settings.update.v1` — `settings.keys.add.v1` (the only operation
+    that receives a credential, so the Registry `credentialParameters` entry
+    moves there), `settings.keys.delete.v1` and `settings.keys.enable.v1`. The
+    page learns a key only as a masked preview plus an opaque 128-bit id.
+  * `settings.json` becomes schemaVersion 2 (`apiKeys: [{id,key,enabled}]`). A v1
+    file is migrated on read: its single key becomes the one enabled entry, and
+    the next write lands the v2 shape, so an existing installation keeps its
+    credential. The file keeps its 0600 permissions and atomic replace, and a v2
+    file that still carries `apiKey`, or one with two enabled rows, is refused
+    rather than silently repaired.
+  * The provider still owns validation end to end: printable-ASCII keys only,
+    duplicates and unknown ids rejected as `incompatible`, at most 50 keys, and
+    the masked preview is generated provider-side. The page re-validates the
+    closed DTO and additionally refuses a preview without a mask, so a provider
+    bug cannot put a credential on screen.
+
+ -- liangjunzhao <junzhao.liang@spacemit.com>  Wed, 30 Sep 2026 11:05:00 +0800
+
 bibit-agenthub-plugin (0.3.12) resolute-porting; urgency=medium
 
   * Rename the page's front-end copy to the capabilities vocabulary, with no

@@ -8,66 +8,171 @@ import (
 	"testing"
 )
 
-func TestSettingsRoundTrip(t *testing.T) {
-	home := t.TempDir()
-	cfg := Config{UserHome: home}
-
+func TestSettingsDefaultsToNoKeys(t *testing.T) {
+	cfg := Config{UserHome: t.TempDir()}
 	defaults, err := GetSettings(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if defaults.RefreshMinutes != 15 || defaults.ShowExperimental || defaults.HasAPIKey {
+	if defaults.RefreshMinutes != 15 || defaults.ShowExperimental || len(defaults.Keys) != 0 {
 		t.Fatalf("unexpected defaults: %+v", defaults)
 	}
+	if _, err := SettingsAPIKey(cfg); err == nil {
+		t.Fatal("an empty list must not yield a usable key")
+	}
+}
 
-	key := "apc-key-abc"
-	updated, err := UpdateSettings(cfg, SettingsUpdate{ShowExperimental: true, RefreshMinutes: 30, APIKey: &key})
+func TestSettingsFirstKeyIsEnabledAndLaterKeysAreNot(t *testing.T) {
+	cfg := Config{UserHome: t.TempDir()}
+
+	first, err := AddSettingsKey(cfg, "apc-key-one")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !updated.ShowExperimental || updated.RefreshMinutes != 30 || !updated.HasAPIKey {
-		t.Fatalf("unexpected update result: %+v", updated)
+	if len(first.Keys) != 1 || !first.Keys[0].Enabled {
+		t.Fatalf("the first key must be enabled: %+v", first)
+	}
+	if first.Keys[0].Preview != "apc-****-one" {
+		t.Fatalf("unexpected preview: %q", first.Keys[0].Preview)
+	}
+	if first.Keys[0].ID == "" {
+		t.Fatal("a saved key needs an id")
 	}
 
-	reread, err := GetSettings(cfg)
+	second, err := AddSettingsKey(cfg, "apc-key-two")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reread.ShowExperimental || reread.RefreshMinutes != 30 || !reread.HasAPIKey {
-		t.Fatalf("settings did not persist: %+v", reread)
+	if len(second.Keys) != 2 {
+		t.Fatalf("expected two keys: %+v", second)
+	}
+	if !second.Keys[0].Enabled || second.Keys[1].Enabled {
+		t.Fatalf("adding a key must not switch the enabled one: %+v", second.Keys)
 	}
 
-	// The stored key must be readable for the upload path but never returned by
-	// `get`.
 	stored, err := SettingsAPIKey(cfg)
-	if err != nil || stored != key {
-		t.Fatalf("stored key = %q, err = %v", stored, err)
+	if err != nil || stored != "apc-key-one" {
+		t.Fatalf("the enabled key must be the upload credential: %q %v", stored, err)
 	}
-	raw, err := os.ReadFile(filepath.Join(home, ".local/state/bibit-agenthub/settings.json"))
+
+	// The view is the only shape on the wire, and it never carries a real key.
+	encoded, err := json.Marshal(second)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(raw), key) {
-		t.Fatalf("key missing from the file: %s", raw)
+	if strings.Contains(string(encoded), "apc-key-one") || strings.Contains(string(encoded), "apc-key-two") {
+		t.Fatalf("the view leaked a credential: %s", encoded)
 	}
-	// `hasApiKey` is the only key-shaped field on the wire.
-	encoded, err := json.Marshal(reread)
+	if strings.Contains(string(encoded), `"apiKey"`) || strings.Contains(string(encoded), `"hasApiKey"`) {
+		t.Fatalf("the view kept a retired field: %s", encoded)
+	}
+
+	// The secret is on disk, readable by the upload path only.
+	raw, err := os.ReadFile(filepath.Join(cfg.UserHome, ".local/state/bibit-agenthub/settings.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(encoded), key) || strings.Contains(string(encoded), "apiKey") {
-		t.Fatalf("the view leaked the credential: %s", encoded)
+	if !strings.Contains(string(raw), "apc-key-one") || !strings.Contains(string(raw), "apc-key-two") {
+		t.Fatalf("keys missing from the file: %s", raw)
+	}
+	if strings.Contains(string(raw), `"apiKey"`) {
+		t.Fatalf("the v1 field must not be written: %s", raw)
+	}
+}
+
+func TestSettingsEnableSwitchesTheOnlyEnabledKey(t *testing.T) {
+	cfg := Config{UserHome: t.TempDir()}
+	if _, err := AddSettingsKey(cfg, "apc-key-one"); err != nil {
+		t.Fatal(err)
+	}
+	view, err := AddSettingsKey(cfg, "apc-key-two")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := view.Keys[1].ID
+
+	enabled, err := EnableSettingsKey(cfg, second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if enabled.Keys[0].Enabled || !enabled.Keys[1].Enabled {
+		t.Fatalf("exactly one key must be enabled: %+v", enabled.Keys)
+	}
+	stored, err := SettingsAPIKey(cfg)
+	if err != nil || stored != "apc-key-two" {
+		t.Fatalf("the enabled key must be the upload credential: %q %v", stored, err)
+	}
+
+	if _, err := EnableSettingsKey(cfg, "ffffffffffffffffffffffffffffffff"); err == nil {
+		t.Fatal("an unknown id must be rejected")
+	}
+}
+
+func TestSettingsDeleteLeavesNoEnabledKey(t *testing.T) {
+	cfg := Config{UserHome: t.TempDir()}
+	first, err := AddSettingsKey(cfg, "apc-key-one")
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := AddSettingsKey(cfg, "apc-key-two")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Deleting the enabled key does not promote the survivor: the user chooses.
+	after, err := DeleteSettingsKey(cfg, first.Keys[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after.Keys) != 1 || after.Keys[0].Enabled {
+		t.Fatalf("the survivor must stay disabled: %+v", after.Keys)
+	}
+	if _, err := SettingsAPIKey(cfg); err == nil {
+		t.Fatal("no key is enabled, so upload must be unauthorized")
+	}
+
+	// Re-enabling the survivor works, and deleting it empties the list.
+	after, err = EnableSettingsKey(cfg, after.Keys[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !after.Keys[0].Enabled {
+		t.Fatalf("the survivor must be enabled: %+v", after.Keys)
+	}
+	after, err = DeleteSettingsKey(cfg, view.Keys[1].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after.Keys) != 0 {
+		t.Fatalf("the list must be empty: %+v", after.Keys)
+	}
+
+	if _, err := DeleteSettingsKey(cfg, "ffffffffffffffffffffffffffffffff"); err == nil {
+		t.Fatal("an unknown id must be rejected")
+	}
+}
+
+func TestSettingsRejectsUnusableKeys(t *testing.T) {
+	cfg := Config{UserHome: t.TempDir()}
+	for _, key := range []string{"", "has space", "line\nbreak", "tab\tkey", strings.Repeat("x", maxAPIKeyBytes+1)} {
+		if _, err := AddSettingsKey(cfg, key); err == nil {
+			t.Fatalf("key %q must be rejected", key)
+		}
+	}
+	if _, err := AddSettingsKey(cfg, "apc-key-one"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := AddSettingsKey(cfg, "apc-key-one"); err == nil {
+		t.Fatal("a duplicate key must be rejected")
 	}
 }
 
 func TestSettingsFilePermissions(t *testing.T) {
-	home := t.TempDir()
-	cfg := Config{UserHome: home}
-	key := "k"
-	if _, err := UpdateSettings(cfg, SettingsUpdate{RefreshMinutes: 15, APIKey: &key}); err != nil {
+	cfg := Config{UserHome: t.TempDir()}
+	if _, err := AddSettingsKey(cfg, "k"); err != nil {
 		t.Fatal(err)
 	}
-	info, err := os.Stat(filepath.Join(home, ".local/state/bibit-agenthub/settings.json"))
+	info, err := os.Stat(filepath.Join(cfg.UserHome, ".local/state/bibit-agenthub/settings.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,54 +181,40 @@ func TestSettingsFilePermissions(t *testing.T) {
 	}
 }
 
-func TestSettingsUpdateKeepsKeyWhenOmitted(t *testing.T) {
+func TestSettingsMigratesTheV1Key(t *testing.T) {
 	home := t.TempDir()
 	cfg := Config{UserHome: home}
-	key := "keep-me"
-	if _, err := UpdateSettings(cfg, SettingsUpdate{RefreshMinutes: 15, APIKey: &key}); err != nil {
+	dir := filepath.Join(home, ".local/state/bibit-agenthub")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	// Omitting apiKey keeps it; an empty string clears it.
-	if _, err := UpdateSettings(cfg, SettingsUpdate{ShowExperimental: true, RefreshMinutes: 20}); err != nil {
+	// The 0.3.11 shape: schemaVersion 1 with one apiKey.
+	legacy := `{"schemaVersion":1,"showExperimental":false,"refreshMinutes":15,"apiKey":"apc-legacy"}`
+	if err := os.WriteFile(filepath.Join(dir, "settings.json"), []byte(legacy), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if stored, err := SettingsAPIKey(cfg); err != nil || stored != key {
-		t.Fatalf("key was lost: %q %v", stored, err)
-	}
-	clear := ""
-	if _, err := UpdateSettings(cfg, SettingsUpdate{RefreshMinutes: 20, APIKey: &clear}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := SettingsAPIKey(cfg); err == nil {
-		t.Fatal("cleared key must not be usable")
-	}
+
 	view, err := GetSettings(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if view.HasAPIKey {
-		t.Fatalf("hasApiKey must be false after clearing: %+v", view)
+	if len(view.Keys) != 1 || !view.Keys[0].Enabled || view.Keys[0].Preview != "apc-****gacy" {
+		t.Fatalf("the v1 key must migrate into an enabled entry: %+v", view.Keys)
 	}
-}
+	if stored, err := SettingsAPIKey(cfg); err != nil || stored != "apc-legacy" {
+		t.Fatalf("the migrated key must stay usable: %q %v", stored, err)
+	}
 
-func TestSettingsRejectsInvalidPayloads(t *testing.T) {
-	home := t.TempDir()
-	cfg := Config{UserHome: home}
-	bad := []SettingsUpdate{
-		{RefreshMinutes: 0},
-		{RefreshMinutes: 4},
-		{RefreshMinutes: 121},
+	// The next write lands the v2 shape.
+	if _, err := AddSettingsKey(cfg, "apc-second"); err != nil {
+		t.Fatal(err)
 	}
-	for _, update := range bad {
-		if _, err := UpdateSettings(cfg, update); err == nil {
-			t.Fatalf("update %+v must be rejected", update)
-		}
+	raw, err := os.ReadFile(filepath.Join(dir, "settings.json"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, key := range []string{"has space", "line\nbreak", "tab\tkey", strings.Repeat("x", maxAPIKeyBytes+1)} {
-		value := key
-		if _, err := UpdateSettings(cfg, SettingsUpdate{RefreshMinutes: 15, APIKey: &value}); err == nil {
-			t.Fatalf("key %q must be rejected", key)
-		}
+	if !strings.Contains(string(raw), `"schemaVersion": 2`) || strings.Contains(string(raw), `"apiKey"`) {
+		t.Fatalf("the rewrite must be a v2 document: %s", raw)
 	}
 }
 
@@ -141,12 +232,30 @@ func TestSettingsReadRejectsSymlinkAndCorruptFile(t *testing.T) {
 	if _, err := GetSettings(cfg); err == nil {
 		t.Fatal("a corrupt settings file must be reported")
 	}
+	// A file with two enabled keys: refused rather than silently repaired.
+	two := `{"schemaVersion":2,"refreshMinutes":15,"apiKeys":[` +
+		`{"id":"0123456789abcdef0123456789abcdef","key":"a","enabled":true},` +
+		`{"id":"fedcba9876543210fedcba9876543210","key":"b","enabled":true}]}`
+	if err := os.WriteFile(filepath.Join(dir, "settings.json"), []byte(two), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := GetSettings(cfg); err == nil {
+		t.Fatal("more than one enabled key must be refused")
+	}
+	// A v2 file that still carries the v1 field is refused.
+	stale := `{"schemaVersion":2,"refreshMinutes":15,"apiKey":"x","apiKeys":[]}`
+	if err := os.WriteFile(filepath.Join(dir, "settings.json"), []byte(stale), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := GetSettings(cfg); err == nil {
+		t.Fatal("a v2 file with the v1 field must be refused")
+	}
 	// Symlinked file: refused outright.
 	if err := os.Remove(filepath.Join(dir, "settings.json")); err != nil {
 		t.Fatal(err)
 	}
 	target := filepath.Join(home, "elsewhere.json")
-	if err := os.WriteFile(target, []byte(`{"schemaVersion":1,"refreshMinutes":15}`), 0o600); err != nil {
+	if err := os.WriteFile(target, []byte(`{"schemaVersion":2,"refreshMinutes":15}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(target, filepath.Join(dir, "settings.json")); err != nil {
@@ -155,16 +264,44 @@ func TestSettingsReadRejectsSymlinkAndCorruptFile(t *testing.T) {
 	if _, err := GetSettings(cfg); err == nil {
 		t.Fatal("a symlinked settings file must be refused")
 	}
-	if _, err := UpdateSettings(cfg, SettingsUpdate{RefreshMinutes: 15}); err == nil {
+	if _, err := AddSettingsKey(cfg, "apc-key"); err == nil {
 		t.Fatal("writing through a symlink must be refused")
+	}
+}
+
+func TestSettingsCapsTheNumberOfKeys(t *testing.T) {
+	cfg := Config{UserHome: t.TempDir()}
+	for i := 0; i < maxAPIKeys; i++ {
+		key := "apc-key-" + strings.Repeat("a", i+1)
+		if _, err := AddSettingsKey(cfg, key); err != nil {
+			t.Fatalf("key %d: %v", i, err)
+		}
+	}
+	if _, err := AddSettingsKey(cfg, "apc-key-overflow"); err == nil {
+		t.Fatal("the list must be capped")
+	}
+}
+
+func TestMaskAPIKey(t *testing.T) {
+	cases := map[string]string{
+		"":            "",
+		"k":           "k****",
+		"abc":         "ab****",
+		"abcdefgh":    "ab****",
+		"abcdefghi":   "abcd****fghi",
+		"apc-key-123": "apc-****-123",
+	}
+	for input, want := range cases {
+		if got := MaskAPIKey(input); got != want {
+			t.Fatalf("MaskAPIKey(%q) = %q, want %q", input, got, want)
+		}
 	}
 }
 
 func TestSettingsPathUsesDataDirOverride(t *testing.T) {
 	dir := t.TempDir()
 	cfg := Config{UserHome: t.TempDir(), DataDir: dir}
-	key := "k"
-	if _, err := UpdateSettings(cfg, SettingsUpdate{RefreshMinutes: 15, APIKey: &key}); err != nil {
+	if _, err := AddSettingsKey(cfg, "k"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "settings.json")); err != nil {
@@ -207,15 +344,37 @@ func TestSettingsPathWithoutHomeOrDataDir(t *testing.T) {
 	}
 }
 
-func TestDecodeSettingsUpdateRejectsUnknownFields(t *testing.T) {
-	if _, err := decodeSettingsUpdate(json.RawMessage(`{"refreshMinutes":15,"unknown":1}`)); err == nil {
-		t.Fatal("unknown fields must be rejected")
+func TestDecodeSettingsKeyPayloads(t *testing.T) {
+	key, err := decodeSettingsKeyAdd(json.RawMessage(`{"apiKey":"apc-key"}`))
+	if err != nil || key != "apc-key" {
+		t.Fatalf("key = %q, err = %v", key, err)
 	}
-	if _, err := decodeSettingsUpdate(json.RawMessage(`{"refreshMinutes":"15"}`)); err == nil {
-		t.Fatal("a string refreshMinutes must be rejected")
+	for _, payload := range []string{
+		`{}`,
+		`{"apiKey":""}`,
+		`{"apiKey":5}`,
+		`{"apiKey":"has space"}`,
+		`{"apiKey":"ok","extra":1}`,
+	} {
+		if _, err := decodeSettingsKeyAdd(json.RawMessage(payload)); err == nil {
+			t.Fatalf("payload %s must be rejected", payload)
+		}
 	}
-	if _, err := decodeSettingsUpdate(json.RawMessage(`{"showExperimental":false,"refreshMinutes":15,"apiKey":"k"}`)); err != nil {
-		t.Fatalf("a valid payload must decode: %v", err)
+
+	id, err := decodeSettingsKeyID(json.RawMessage(`{"id":"0123456789abcdef0123456789abcdef"}`))
+	if err != nil || id != "0123456789abcdef0123456789abcdef" {
+		t.Fatalf("id = %q, err = %v", id, err)
+	}
+	for _, payload := range []string{
+		`{}`,
+		`{"id":""}`,
+		`{"id":"../escape"}`,
+		`{"id":"0123456789ABCDEF0123456789ABCDEF"}`,
+		`{"id":"0123456789abcdef0123456789abcdef","key":"k"}`,
+	} {
+		if _, err := decodeSettingsKeyID(json.RawMessage(payload)); err == nil {
+			t.Fatalf("payload %s must be rejected", payload)
+		}
 	}
 }
 
@@ -266,8 +425,11 @@ func TestSettingsCredentialPolicyDeclared(t *testing.T) {
 	// the operation's credential, so the drop-in must keep this entry.
 	source := mustReadFile(t, filepath.Join("..", "..", "..", "debian", "agenthub-provider.json"))
 	if !strings.Contains(source, `"credentialParameters"`) ||
-		!strings.Contains(source, `"settings.update.v1"`) ||
+		!strings.Contains(source, `"settings.keys.add.v1"`) ||
 		!strings.Contains(source, `"apiKey"`) {
 		t.Fatalf("provider registry is missing the settings credential policy: %s", source)
+	}
+	if strings.Contains(source, `"settings.update.v1"`) {
+		t.Fatalf("the retired operation must not stay in the registry: %s", source)
 	}
 }

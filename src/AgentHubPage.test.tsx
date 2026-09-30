@@ -78,11 +78,11 @@ function customData(itemsJson = '{"items":[],"skipped":[]}') {
 }
 
 /**
- * The `settings.get.v1` / `settings.update.v1` view. Only the Settings tab reads
- * it, so a test that never opens that tab never needs this answer.
+ * The `settings.get.v2` view. Only the Settings tab reads it, so a test that
+ * never opens that tab never needs this answer.
  */
-function settingsData(hasApiKey = false) {
-  return { showExperimental: false, refreshMinutes: 15, hasApiKey }
+function settingsData(keys: { id: string; preview: string; enabled: boolean }[] = []) {
+  return { showExperimental: false, refreshMinutes: 15, keys }
 }
 
 function installedPage(count: number, agent = 'bibit'): string {
@@ -647,14 +647,14 @@ describe('AgentHubPage', () => {
   it('hides the header refresh entry on the Settings tab', async () => {
     const user = userEvent.setup()
     const { hostApi } = makeStoreHost((input) =>
-      input.operationId === 'settings.get.v1' ? settingsData() : installedData(codeReviewList)
+      input.operationId === 'settings.get.v2' ? settingsData() : installedData(codeReviewList)
     )
     renderPage(hostApi)
     await screen.findByRole('heading', { name: 'code-review' })
     expect(screen.getByRole('button', { name: 'Refresh' })).toBeTruthy()
 
     await user.click(screen.getByRole('button', { name: 'Settings' }))
-    await screen.findByTestId('api-key-state')
+    await screen.findByTestId('api-key-count')
 
     // The leaf panel renders no catalog, so it must not offer a button that would
     // re-read a list it does not show. Returning to a catalog tab brings it back.
@@ -1527,7 +1527,7 @@ describe('AgentHubPage settings tab', () => {
   it('opens the credential panel without spending a catalog request', async () => {
     const user = userEvent.setup()
     const { hostApi, calls } = makeStoreHost((input) =>
-      input.operationId === 'settings.get.v1' ? settingsData() : installedData(codeReviewList)
+      input.operationId === 'settings.get.v2' ? settingsData() : installedData(codeReviewList)
     )
     renderPage(hostApi)
     await screen.findByRole('heading', { name: 'code-review' })
@@ -1535,9 +1535,9 @@ describe('AgentHubPage settings tab', () => {
 
     await user.click(screen.getByRole('button', { name: 'Settings' }))
 
-    expect(await screen.findByTestId('api-key-state')).toBeTruthy()
-    expect((await screen.findByTestId('api-key-state')).textContent).toBe('Not configured')
-    expect(calls.some((call) => call.operationId === 'settings.get.v1')).toBe(true)
+    expect(await screen.findByTestId('api-key-count')).toBeTruthy()
+    expect((await screen.findByTestId('api-key-count')).textContent).toBe('No key saved')
+    expect(calls.some((call) => call.operationId === 'settings.get.v2')).toBe(true)
     // The tab renders no catalog, so it must not issue a list request or keep a
     // row of Type/Tag filters that filter nothing.
     expect(calls.filter((call) => call.operationId === 'powers.list.v1')).toHaveLength(listCallsBefore)
@@ -1545,14 +1545,14 @@ describe('AgentHubPage settings tab', () => {
     expect(screen.getByRole('button', { name: 'Settings' }).getAttribute('aria-pressed')).toBe('true')
   })
 
-  it('saves the APC key and reloads the catalog when the user goes back', async () => {
+  it('saves and lists the APC key and reloads the catalog when the user goes back', async () => {
     const user = userEvent.setup()
-    let updateCall: StoreRequest | undefined
+    let addCall: StoreRequest | undefined
     const { hostApi, calls } = makeStoreHost((input) => {
-      if (input.operationId === 'settings.get.v1') return settingsData()
-      if (input.operationId === 'settings.update.v1') {
-        updateCall = input
-        return settingsData(true)
+      if (input.operationId === 'settings.get.v2') return settingsData()
+      if (input.operationId === 'settings.keys.add.v1') {
+        addCall = input
+        return settingsData([{ id: '0123456789abcdef0123456789abcdef', preview: 'apc-****cret', enabled: true }])
       }
       return installedData(codeReviewList)
     })
@@ -1560,18 +1560,16 @@ describe('AgentHubPage settings tab', () => {
     await screen.findByRole('heading', { name: 'code-review' })
 
     await user.click(screen.getByRole('button', { name: 'Settings' }))
-    await screen.findByTestId('api-key-state')
+    await screen.findByTestId('api-key-count')
     await user.type(screen.getByLabelText('APC API Key'), 'apc-secret')
-    await user.click(screen.getByRole('button', { name: 'Save settings' }))
+    await user.click(screen.getByRole('button', { name: 'Save key' }))
 
-    expect(await screen.findByText('Settings saved.')).toBeTruthy()
-    expect(updateCall?.params).toEqual({
-      showExperimental: false,
-      refreshMinutes: 15,
-      apiKey: 'apc-secret',
-    })
-    // The key is never echoed back, only its presence.
-    expect((await screen.findByTestId('api-key-state')).textContent).toBe('Configured')
+    expect(await screen.findByText('Key saved.')).toBeTruthy()
+    expect(addCall?.params).toEqual({ apiKey: 'apc-secret' })
+    // The key is never echoed back, only its masked preview and enabled state.
+    expect(screen.getByText('apc-****cret')).toBeTruthy()
+    expect(screen.queryByText('apc-secret')).toBeNull()
+    expect(screen.getByTestId('api-key-count').textContent).toBe('1 saved')
     expect((screen.getByLabelText('APC API Key') as HTMLInputElement).value).toBe('')
 
     const listCallsBefore = calls.filter((call) => call.operationId === 'powers.list.v1').length

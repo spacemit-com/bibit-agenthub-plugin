@@ -231,6 +231,20 @@ describe('Agent Hub layout contract', () => {
     expect(declaredOnce('max-width')).toContain('100%')
   })
 
+  it('lets a saved-key row shrink instead of pushing its actions out of the panel', () => {
+    // A key preview is a long monospace token; without a shrinkable preview and a
+    // wrapping rule the row would widen the panel and add a horizontal scrollbar
+    // to a page that must never scroll sideways.
+    const row = rules('.agent-hub-settings-panel__key')
+    expect(row.flatMap((block) => declared(block, 'min-width'))).toContain('0')
+    const preview = rules('.agent-hub-settings-panel__key-preview')
+    expect(preview.flatMap((block) => declared(block, 'min-width'))).toContain('0')
+    expect(preview.flatMap((block) => declared(block, 'overflow-wrap'))).toContain('anywhere')
+    const actions = rules('.agent-hub-settings-panel__key-actions')
+    // `flex: 0 0 auto` keeps the two buttons intact while the preview gives way.
+    expect(actions.flatMap((block) => declared(block, 'flex'))).toContain('0 0 auto')
+  })
+
   it('keeps a custom Power card visibly distinct from a Hub-managed one', () => {
     const custom = rules(".power-card[data-source='custom']")
     expect(custom.flatMap((block) => declared(block, 'border-style'))).toContain('dashed')

@@ -874,70 +874,125 @@ export function parseDeleteTarget(value: unknown): { agent: string; type: PowerT
 // ---- settings -------------------------------------------------------------
 
 /**
- * The settings view returned by `settings.get.v1` / `settings.update.v1`. The
- * API key is never returned: the page only learns whether one is configured,
- * because a renderer must not be able to read a credential back out.
+ * One saved APC credential, as the page is allowed to see it. The real key never
+ * crosses the protocol boundary: the page gets an opaque `id` to act on and a
+ * masked `preview` to recognise the row by.
+ */
+export interface AgentHubSettingsKeyV1 {
+  id: string
+  preview: string
+  enabled: boolean
+}
+
+/**
+ * The view returned by `settings.get.v2` and by the three `settings.keys.*.v1`
+ * writes, which answer with the whole list so the page never needs a second
+ * round trip to redraw.
  */
 export interface AgentHubSettingsV1 {
   showExperimental: boolean
   refreshMinutes: number
-  hasApiKey: boolean
+  keys: AgentHubSettingsKeyV1[]
 }
 
-/**
- * The settings update payload. `apiKey` is optional so omitting it keeps the
- * stored key; an empty string clears it.
- */
-export interface AgentHubSettingsUpdateV1 {
-  showExperimental: boolean
-  refreshMinutes: number
-  apiKey?: string
+/** The `settings.keys.add.v1` payload: the credential the user just typed. */
+export interface AgentHubSettingsKeyAddV1 {
+  apiKey: string
 }
 
-export const SETTINGS_GET_OPERATION_ID = 'settings.get.v1' as const
-export const SETTINGS_UPDATE_OPERATION_ID = 'settings.update.v1' as const
+/** The `settings.keys.delete.v1` / `settings.keys.enable.v1` payload. */
+export interface AgentHubSettingsKeyTargetV1 {
+  id: string
+}
+
+export const SETTINGS_GET_OPERATION_ID = 'settings.get.v2' as const
+export const SETTINGS_KEY_ADD_OPERATION_ID = 'settings.keys.add.v1' as const
+export const SETTINGS_KEY_DELETE_OPERATION_ID = 'settings.keys.delete.v1' as const
+export const SETTINGS_KEY_ENABLE_OPERATION_ID = 'settings.keys.enable.v1' as const
 
 export const SETTINGS_MIN_REFRESH_MINUTES = 5
 export const SETTINGS_MAX_REFRESH_MINUTES = 120
 export const SETTINGS_MAX_API_KEY_LENGTH = 512
+/** At most one row may be enabled; it is the credential an upload uses. */
+export const SETTINGS_MAX_KEYS = 50
+
+const SETTINGS_KEY_ID_PATTERN = /^[0-9a-f]{32}$/
+
+/** The provider's random 128-bit handle, and the only id shape a request accepts. */
+export function isSettingsKeyId(value: string): boolean {
+  return SETTINGS_KEY_ID_PATTERN.test(value)
+}
 
 export function parseSettingsView(value: unknown, prefix: string): AgentHubSettingsV1 {
   const obj = assertObject(value, prefix)
-  const allowed = new Set(['showExperimental', 'refreshMinutes', 'hasApiKey'])
+  const allowed = new Set(['showExperimental', 'refreshMinutes', 'keys'])
   assertClosedKeys(obj, allowed, prefix)
   if (typeof obj.showExperimental !== 'boolean') {
     fail(prefix, 'showExperimental must be a boolean')
   }
-  if (typeof obj.hasApiKey !== 'boolean') {
-    fail(prefix, 'hasApiKey must be a boolean')
+  if (!Array.isArray(obj.keys)) {
+    fail(prefix, 'keys must be an array')
+  }
+  const keys = obj.keys.map((entry, index) => parseSettingsKey(entry, `${prefix} keys[${index}]:`))
+  if (keys.length > SETTINGS_MAX_KEYS) {
+    fail(prefix, 'keys has too many entries')
+  }
+  if (keys.filter((key) => key.enabled).length > 1) {
+    fail(prefix, 'at most one key may be enabled')
+  }
+  const seen = new Set<string>()
+  for (const key of keys) {
+    if (seen.has(key.id)) {
+      fail(prefix, 'keys contains a duplicate id')
+    }
+    seen.add(key.id)
   }
   return {
     showExperimental: obj.showExperimental,
     refreshMinutes: assertRefreshMinutes(obj.refreshMinutes, prefix),
-    hasApiKey: obj.hasApiKey,
+    keys,
   }
 }
 
-export function parseSettingsUpdate(value: unknown): AgentHubSettingsUpdateV1 {
-  const prefix = 'Invalid settings.update.v1 input:'
+function parseSettingsKey(value: unknown, prefix: string): AgentHubSettingsKeyV1 {
   const obj = assertObject(value, prefix)
-  const allowed = new Set(['showExperimental', 'refreshMinutes', 'apiKey'])
-  assertClosedKeys(obj, allowed, prefix)
-  if (typeof obj.showExperimental !== 'boolean') {
-    fail(prefix, 'showExperimental must be a boolean')
+  assertClosedKeys(obj, new Set(['id', 'preview', 'enabled']), prefix)
+  const id = assertString(obj.id, prefix, 'id')
+  if (!isSettingsKeyId(id)) {
+    fail(prefix, 'id must be a saved apiKey id')
   }
-  let apiKey: string | undefined
-  if (obj.apiKey !== undefined) {
-    apiKey = assertString(obj.apiKey, prefix, 'apiKey')
-    if (apiKey !== '' && (apiKey.length > SETTINGS_MAX_API_KEY_LENGTH || !isPrintableASCII(apiKey))) {
-      fail(prefix, 'apiKey must be printable ASCII')
-    }
+  if (typeof obj.enabled !== 'boolean') {
+    fail(prefix, 'enabled must be a boolean')
   }
-  return {
-    showExperimental: obj.showExperimental,
-    refreshMinutes: assertRefreshMinutes(obj.refreshMinutes, prefix),
-    ...(apiKey !== undefined ? { apiKey } : {}),
+  const preview = assertNonEmptyString(obj.preview, prefix, 'preview')
+  // A preview is a mask, never the key: refusing an unmasked value here is what
+  // keeps a provider bug from turning into a credential on screen.
+  if (!preview.includes('****')) {
+    fail(prefix, 'preview must be masked')
   }
+  return { id, preview, enabled: obj.enabled }
+}
+
+export function parseSettingsKeyAdd(value: unknown): AgentHubSettingsKeyAddV1 {
+  const prefix = 'Invalid settings.keys.add.v1 input:'
+  const obj = assertObject(value, prefix)
+  assertClosedKeys(obj, new Set(['apiKey']), prefix)
+  const apiKey = assertString(obj.apiKey, prefix, 'apiKey')
+  if (apiKey === '' || apiKey.length > SETTINGS_MAX_API_KEY_LENGTH || !isPrintableASCII(apiKey)) {
+    fail(prefix, 'apiKey must be a printable ASCII token')
+  }
+  return { apiKey }
+}
+
+export function parseSettingsKeyTarget(value: unknown, operationId: string): AgentHubSettingsKeyTargetV1 {
+  const prefix = `Invalid ${operationId} input:`
+  const obj = assertObject(value, prefix)
+  assertClosedKeys(obj, new Set(['id']), prefix)
+  const id = assertString(obj.id, prefix, 'id')
+  if (!isSettingsKeyId(id)) {
+    fail(prefix, 'id must be a saved apiKey id')
+  }
+  return { id }
 }
 
 function assertRefreshMinutes(value: unknown, prefix: string): number {
