@@ -6,7 +6,7 @@
 
 | 项目 | 当前版本 |
 | --- | --- |
-| Agent Hub 插件 | `0.3.16` |
+| Agent Hub 插件 | `0.4.0` |
 
 | `manifestSchemaVersion` | `1` |
 | `sdkApiVersion` | `1` |
@@ -238,7 +238,7 @@ src/
   "manifestSchemaVersion": 1,
   "sdkApiVersion": 1,
   "id": "agent-hub",
-  "version": "0.3.16",
+  "version": "0.4.0",
 
   "owner": "agent-hub-team",
   "display": {
@@ -1169,17 +1169,17 @@ npm run build:plugin
 产物：
 
 ```text
-artifacts/agent-hub-0.3.16.bibit-plugin.tgz
+artifacts/agent-hub-0.4.0.bibit-plugin.tgz
 
 ```
 
 检查：
 
 ```bash
-tar -tzf artifacts/agent-hub-0.3.16.bibit-plugin.tgz
-tar -xOf artifacts/agent-hub-0.3.16.bibit-plugin.tgz plugin.json
-tar -xOf artifacts/agent-hub-0.3.16.bibit-plugin.tgz plugin.sig
-sha256sum artifacts/agent-hub-0.3.16.bibit-plugin.tgz
+tar -tzf artifacts/agent-hub-0.4.0.bibit-plugin.tgz
+tar -xOf artifacts/agent-hub-0.4.0.bibit-plugin.tgz plugin.json
+tar -xOf artifacts/agent-hub-0.4.0.bibit-plugin.tgz plugin.sig
+sha256sum artifacts/agent-hub-0.4.0.bibit-plugin.tgz
 
 ```
 
@@ -1231,7 +1231,7 @@ Settings > Extensions > Trusted plugins
 选择：
 
 ```text
-artifacts/agent-hub-0.3.16.bibit-plugin.tgz
+artifacts/agent-hub-0.4.0.bibit-plugin.tgz
 ```
 
 Bibit 会验签、校验 hash、安装、激活并刷新 Feature Registry。确认主导航出现 Agent Hub（插件已不声明 settings contribution，因此设置子菜单里不再有 Agent Hub 条目）。
@@ -1257,7 +1257,7 @@ Agent Hub 插件 deb 应安装：
 
 ```bash
 sudo install -Dm0644 \
-  artifacts/agent-hub-0.3.16.bibit-plugin.tgz \
+  artifacts/agent-hub-0.4.0.bibit-plugin.tgz \
 
   /usr/lib/bibit/plugins/agent-hub.bibit-plugin.tgz
 sudo install -Dm0644 \
@@ -1341,7 +1341,7 @@ dpkg-buildpackage -us -uc -b
 K3DEB1 的 Release 部署必须使用正式签名、且 `keyId` 已进入目标 Bibit 内置信任库的 bundle：
 
 ```bash
-export SIGNED_AGENT_HUB_BUNDLE=/absolute/path/agent-hub-0.3.16.bibit-plugin.tgz
+export SIGNED_AGENT_HUB_BUNDLE=/absolute/path/agent-hub-0.4.0.bibit-plugin.tgz
 
 test -f "$SIGNED_AGENT_HUB_BUNDLE"
 tar -xOf "$SIGNED_AGENT_HUB_BUNDLE" plugin.json
@@ -1436,7 +1436,7 @@ npm run build:plugin
 
 - 目标 Bibit 信任正式 `keyId`；
 - 系统目录只有预期 Agent Hub bundle；
-- Bibit 插件管理页显示 `agent-hub@0.3.16` 已激活；
+- Bibit 插件管理页显示 `agent-hub@0.4.0` 已激活；
 - 主导航出现 Agent Hub；
 - 设置子菜单**不再**出现 Agent Hub（插件已不声明 settings contribution）；
 - Agent Hub 页面一级标签为「我的 Power / Power 市场 / 设置」；

@@ -40,7 +40,7 @@ npm run keygen
 npm run build:plugin
 ```
 
-当前产物：`artifacts/agent-hub-0.3.10.bibit-plugin.tgz`。`.bibit-keys/` 中的私钥禁止提交，开发签名不能代替目标 Release 的信任链。开发预览地址追加 `?lang=zh-CN` 可查看中文界面；页面语言跟随 Bibit 系统语言，插件本身不提供语言设置。Local Preview 的 Store 中间件会扫描本机 home（`dev/custom.ts`），因此自定义资源在开发环境也可见。
+当前产物：`artifacts/agent-hub-0.4.0.bibit-plugin.tgz`。`.bibit-keys/` 中的私钥禁止提交，开发签名不能代替目标 Release 的信任链。开发预览地址追加 `?lang=zh-CN` 可查看中文界面；页面语言跟随 Bibit 系统语言，插件本身不提供语言设置。Local Preview 的 Store 中间件会扫描本机 home（`dev/custom.ts`），因此自定义资源在开发环境也可见。
 
 页头的「创建资源」入口经宿主 `host:actions` 的 `conversation.compose` 打开新会话并预置一段点名 `using-apm` 的草稿（不发送）。它需要同时满足 Manifest 声明、系统 grant 和宿主登记该动作三项；缺任何一项时入口禁用或提示不支持，详情见开发指南的宿主动作一节与 verification 记录。
 

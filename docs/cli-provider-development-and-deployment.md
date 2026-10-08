@@ -39,7 +39,7 @@ Provider 从 stdin 读取 UTF-8 NDJSON，stdout 只输出完整单行 JSON-RPC 2
 支持传输的 Provider 返回：
 
 ```json
-{"jsonrpc":"2.0","id":"session:initialize","result":{"protocolVersion":1,"providerVersion":"0.3.16","capabilities":{"invoke":true},"operations":["powers.list.v1","powers.inspect.v1","powers.install.v1","powers.uninstall.v1","powers.custom.list.v1","powers.upload.v1","powers.delete.v1","settings.get.v2","settings.keys.add.v1","settings.keys.delete.v1","settings.keys.enable.v1"]}}
+{"jsonrpc":"2.0","id":"session:initialize","result":{"protocolVersion":1,"providerVersion":"0.4.0","capabilities":{"invoke":true},"operations":["powers.list.v1","powers.inspect.v1","powers.install.v1","powers.uninstall.v1","powers.custom.list.v1","powers.upload.v1","powers.delete.v1","settings.get.v2","settings.keys.add.v1","settings.keys.delete.v1","settings.keys.enable.v1"]}}
 ```
 
 初始化前拒绝 `bibit.invoke`。Provider 只声明 `invoke`，不声明 v2 的 `jobs`/`cancellation`/`maxConcurrentJobs`。`bibit.shutdown` 通知结束会话，`bibit.cancel`（v2 保留字）在 v1 会话中被忽略。

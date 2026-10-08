@@ -43,7 +43,7 @@ const (
 	// provider that self-reports an older one makes every bug report ambiguous.
 	// `TestProviderVersionMatchesPackageJSON` reads package.json to keep the two
 	// from drifting again.
-	providerVersion = "0.3.20"
+	providerVersion = "0.4.0"
 )
 
 // declaredOperations is the closed set reported to the host at initialize and

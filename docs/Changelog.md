@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-10-08 — Expert 重命名随 0.4.0 发布（版本号提升）
+
+分类：发布工程 / 契约变更
+
+改动内容与下一个条目（0.3.20）相同——Power 类别 `agent` 更名为 `expert`。本条目只记录**版本号从 0.3.20 提升到 0.4.0**：0.3.20 从未发版，所以这次把它和版本提升一起交付。
+
+之所以用主版本号：这次是**线上契约变更**，不是功能新增。插件现在给 apm 发 `--type=expert`，而旧 apm（板上 0.2.1）会直接拒绝：
+
+```text
+level=ERROR msg="command failed" error="invalid --type \"expert\": must be skill, plugin, mcp, or agent"
+```
+
+因此 `0.4.0` 必须与 **apm 0.0.2**（或含 `expert` 的更新版）配套安装。插件对旧 apm 的反向兼容只保留一版：前端 `src/api/apm.ts` 会把旧 apm 输出的 `type:"agent"` 归一化为 `expert`，所以"插件先升、CLI 后升"时列表仍能正确显示；但反过来（新 CLI + 旧插件）不行。
+
+版本号在四处同步：`package.json`、`package-lock.json`、`bibit.feature.json`、`provider/internal/provider/server.go` 的 `providerVersion`（由 `TestProviderVersionMatchesPackageJSON` 强制）。文档里陈旧的版本引用一并更新：开发指南 11 处（此前停留在 0.3.16）、`README.md` 的产物名（停在 0.3.10）、CLI 文档的 `providerVersion` 示例（停在 0.3.16）。
+
 ## 2026-10-08 — 资源类型 agent 更名为 expert（0.3.20，联动 apm 0.0.2）
 
 分类：契约变更（Power 类型取值改为 `expert`；显示映射删除）

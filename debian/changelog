@@ -1,3 +1,23 @@
+bibit-agenthub-plugin (0.4.0) resolute-porting; urgency=medium
+
+  * Ship the Expert rename as 0.4.0. The change itself is the one prepared as
+    0.3.20 (see that entry below): the power category `agent` becomes `expert`
+    across POWER_TYPES, the type guards, the Provider type table and the dev
+    host, while the target agent (`--agent`, `agent.yaml`, `agents/`) and APC's
+    wire vocabulary keep their names. That release was never deployed, so this
+    one carries it together with the version bump.
+  * The major bump marks a wire-contract change rather than a feature: this
+    plugin sends `--type=expert`, which an older apm rejects outright. It must
+    be installed together with apm 0.0.2 and reads the pre-rename spelling
+    `type:"agent"` from an older apm for one release, so a plugin upgraded ahead
+    of the CLI still lists correctly.
+  * Version 0.4.0 moves package.json, package-lock.json, bibit.feature.json and
+    providerVersion together, as TestProviderVersionMatchesPackageJSON requires
+    even though no Provider code changed.
+
+ -- liangjunzhao <junzhao.liang@spacemit.com>  Thu, 08 Oct 2026 18:10:00 +0800
+
+
 bibit-agenthub-plugin (0.3.20) resolute-porting; urgency=medium
 
   * Follow apm 0.0.2 in renaming the Expert power type. "agent" meant two things
