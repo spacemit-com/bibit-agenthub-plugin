@@ -7,6 +7,8 @@ import {
   parseListPowersResult,
   parsePowersWireInput,
   parsePowersWireResult,
+  powerTypesForAgent,
+  supportsAgentType,
   type ListPowersInput,
   type ReadyListPowersResult,
 } from './contracts'
@@ -602,6 +604,17 @@ describe('parsePowersWireResult', () => {
     expect(() =>
       parsePowersWireResult({ scope: 'market', status: 'data', snapshot: 'abc', catalogJson: {} })
     ).toThrow()
+  })
+
+  it('limits the type filter to the types an Agent can take', () => {
+    // `agent`-type Powers are bibit-only; the wire value stays `agent`.
+    expect(supportsAgentType('bibit')).toBe(true)
+    for (const agent of ['codex', 'claude-code', 'hermes-agent']) {
+      expect(supportsAgentType(agent)).toBe(false)
+      expect(powerTypesForAgent(agent)).toEqual(['skill', 'plugin', 'mcp'])
+    }
+    expect(powerTypesForAgent('bibit')).toEqual(POWER_TYPES)
+    expect(powerTypesForAgent('bibit')).toContain('agent')
   })
 
   it('rejects an unknown scope or status', () => {

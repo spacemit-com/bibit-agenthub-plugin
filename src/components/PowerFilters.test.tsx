@@ -235,6 +235,19 @@ describe('PowerFilters', () => {
     expect(props.onTypeChange).toHaveBeenLastCalledWith('agent')
   })
 
+  it('offers no Expert type for an Agent that cannot take one', () => {
+    renderFilters({ agent: 'codex' })
+
+    const typeGroup = screen.getByRole('group', { name: 'Type' })
+    // An `agent`-type Power is bibit-only, so its chip is not offered here.
+    expect(within(typeGroup).getAllByRole('button').map((button) => button.textContent)).toEqual([
+      'skill',
+      'plugin',
+      'mcp',
+    ])
+    expect(screen.queryByRole('button', { name: 'Expert' })).toBeNull()
+  })
+
   it('toggles tags via buttons and reports them sorted and unique', async () => {
     const user = userEvent.setup()
     const onTagsChange = vi.fn()

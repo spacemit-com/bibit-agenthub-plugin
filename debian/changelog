@@ -1,3 +1,29 @@
+bibit-agenthub-plugin (0.3.17) resolute-porting; urgency=medium
+
+  * Hide the Expert type in the filter row for every Agent but bibit. An
+    `agent`-type Power can only be installed into bibit, so offering the chip
+    under codex / claude-code / hermes-agent invited a filter whose results could
+    never be installed.
+  * A query left on the hidden type would strand the list on something the user
+    can neither see nor switch away from, so choosing another Agent while Expert
+    is selected moves the type to the first one that Agent does take (skill) and
+    applies the same reset an explicit type change gets.
+  * The rule now has one home. It was written out three times -- twice in the
+    wire target validators and once as the dialog's "can this be installed"
+    check -- and the filter would have made a fourth. `supportsAgentType` and
+    `powerTypesForAgent` in src/api/contracts.ts are the definition; the two
+    validators, the details dialog and the type filter all read it.
+  * Version: package.json, package-lock.json, bibit.feature.json and the
+    Provider's providerVersion all move together. providerVersion is no longer a
+    free-floating constant: 00eb0db added TestProviderVersionMatchesPackageJSON,
+    which reads package.json, so the Provider has to be bumped even though none
+    of its code changed here.
+  * No protocol or DTO change: the wire still carries the canonical `agent` type
+    and still rejects it for a non-bibit target; only the filter row changed.
+
+ -- liangjunzhao <junzhao.liang@spacemit.com>  Thu, 08 Oct 2026 14:40:00 +0800
+
+
 bibit-agenthub-plugin (0.3.16) resolute-porting; urgency=medium
 
   * Keep the version the Provider reports in `bibit.initialize` equal to the

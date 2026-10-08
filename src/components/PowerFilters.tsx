@@ -3,7 +3,7 @@ import { ScrollThumb } from '../ScrollThumb'
 import { AgentSwitcher } from './AgentSwitcher'
 import { useAgentHubI18n } from '../agentHubI18n'
 import { resolvePowerTypeLabel } from '../displayFields'
-import { POWER_TYPES, type PowerScope, type PowerType } from '../api/contracts'
+import { powerTypesForAgent, type PowerScope, type PowerType } from '../api/contracts'
 
 /**
  * The page's first-level tab. `PowerScope` stays the wire-level data scope, so
@@ -81,7 +81,7 @@ export function PowerFilters({
         <div className="power-filters__filter-row">
           <span className="power-filters__label">{t('Type')}</span>
           <div className="power-filters__types" role="group" aria-label={t('Type')}>
-            {POWER_TYPES.map((value) => (
+            {powerTypesForAgent(agent).map((value) => (
               <button
                 key={value}
                 type="button"

@@ -25,6 +25,21 @@ export const INSTALLED_AGENTS = ['bibit', 'codex', 'claude-code', 'hermes-agent'
 export type PowerScope = 'installed' | 'market'
 export type PowerType = (typeof POWER_TYPES)[number]
 
+/**
+ * `agent`-type Powers are bibit-only: bibit is the one Agent APM will install one
+ * into. The wire value stays `agent` (only the copy relabels it "Expert"), and this
+ * is the one place the compatibility rule is written down -- the install/target
+ * validators, the details dialog and the type filter all read it.
+ */
+export function supportsAgentType(agent: string): boolean {
+  return agent === 'bibit'
+}
+
+/** The types an Agent can actually take, i.e. the type filter's options. */
+export function powerTypesForAgent(agent: string): readonly PowerType[] {
+  return supportsAgentType(agent) ? POWER_TYPES : POWER_TYPES.filter((type) => type !== 'agent')
+}
+
 export interface ListPowersInput {
   scope: PowerScope
   agent?: string
@@ -711,7 +726,7 @@ function parseResourceTarget(
   ) {
     fail(prefix, 'name must be a canonical lowercase kebab power name')
   }
-  if (type === 'agent' && agent !== 'bibit') {
+  if (type === 'agent' && !supportsAgentType(agent)) {
     fail(prefix, 'type=agent is only available for the bibit agent')
   }
   return { agent, type, name }

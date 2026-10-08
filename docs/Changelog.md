@@ -1,5 +1,59 @@
 # Changelog
 
+## 2026-10-08 — 非 bibit 的 Agent 隐藏 Expert 类型标签（0.3.17）
+
+分类：缺陷修复 / 体验优化
+
+用户需求：
+
+> 由于 expert 只在 bibt 中可用，选择其他 agent 时隐藏 expert 类型标签
+
+### 一、改动
+
+`agent` 类型（界面上的 `Expert`）只能装进 bibit，所以选中 codex / claude-code / hermes-agent 时，类型筛选行不再渲染 `Expert`，只剩 skill / plugin / mcp。bibit 下依旧是四个。
+
+一个必须一起处理的连带问题：如果当前选中的类型正好是这个被隐藏的类型，筛选chip 消失后列表会停在一个**用户既看不见、也切不走**的类型上。所以切换 Agent 时若发现当前类型已不被支持，类型会回退到该 Agent 支持的第一个类型（`skill`），并按一次显式类型切换重置标签/页码/snapshot。
+
+### 二、顺手把这条规则收口
+
+「`agent` 只能配 bibit」原先写在三个地方：`parseTargetFields`（`powers.inspect/install/uninstall` 的目标校验）、`parsePowersWireInput` 的另一处、以及详情弹窗的 `agentValidForInstall`。加上筛选行就是第四处。现在定义在 `src/api/contracts.ts`：
+
+```ts
+export function supportsAgentType(agent: string): boolean      // 原语
+export function powerTypesForAgent(agent: string): readonly PowerType[]  // 筛选行的选项
+```
+
+两处 wire 校验改用 `supportsAgentType`，弹窗的「能否安装」与筛选行改用 `powerTypesForAgent`——四个调用点读同一处，wire 行为不变（仍然是 `type=agent` + 非 bibit 目标 → 校验失败）。
+
+### 三、相关文件
+
+- `src/api/contracts.ts`（新增 `supportsAgentType` / `powerTypesForAgent`，目标校验改用它）
+- `src/api/powerOperations.ts`（同样改用 `supportsAgentType`）
+- `src/components/PowerFilters.tsx`（类型行渲染 `powerTypesForAgent(agent)`）
+- `src/components/PowerDetailsDialog.tsx`（`agentValidForInstall` 改用 `powerTypesForAgent`）
+- `src/AgentHubPage.tsx`（`changeAgent` 在类型被隐藏时回退到受支持的类型）
+- 测试：`src/api/contracts.test.ts`、`src/components/PowerFilters.test.tsx`、`src/AgentHubPage.test.tsx`
+- 文档：开发指南 §7.2.4 / §10.4 / §11，`README.md`，`debian/changelog`，版本 0.3.17
+- `docs/verification/2026-10-08-expert-type-per-agent.md`（新增验证记录）
+
+### 四、版本与工具链
+
+- 版本 0.3.17：`package.json`、`package-lock.json`、`bibit.feature.json`，**以及 Provider 的 `providerVersion`**。后者不再是自由常量——`00eb0db` 新增的 `TestProviderVersionMatchesPackageJSON` 会读 `package.json` 比对，所以即使本次没碰 Provider 代码也必须一起改。
+- 本次构建按 `00eb0db` 引入的 Node pin 执行：`.nvmrc` = 24.16.0，`npm run build:plugin` 先跑 `scripts/check-node.mjs`，用其它 Node 会直接失败（bundle 是 gzip tar，sha256 依赖运行时的 zlib）。因此 §5 的门禁是在 **Node 24.16.0** 下跑的。
+
+### 五、验证结果
+
+在钉住的 Node 24.16.0 下：`npm test` 30 个文件 / **550 例全通过**、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin`（`artifacts/agent-hub-0.3.17.bibit-plugin.tgz`，sha256 `36718b79…`，100541 字节）、`make -C provider test vet build`、`gofmt -l`、`git diff --check` 全部通过。
+
+**顺带更正一条旧记录**：0.3.15 / 0.3.16 记录里写的「`dev/sources.test.ts` 3 条 `readMarket` 是基线失败」其实是 **Node 18 下的环境问题**——同一份代码在 Node 24 下 16/16 全通过。仓库现在把构建钉在 Node 24，这个「基线失败」不再存在。
+
+反向验证 2 处（均按预期失败）：让 `powerTypesForAgent` 无视 Agent 直接返回 `POWER_TYPES`（筛选行与契约用例失败）；去掉 `changeAgent` 里的类型回退（页面用例失败）。
+
+### 六、限制
+
+- 只影响**类型筛选行**。市场目录里仍然有 `agent` 类型的条目，只是非 bibit 时筛不到它们（类型是单选、没有「全部」选项）；卡片与弹窗上的类型标签仍是 `Expert`。
+- 回退到 `skill` 是刻意的：它是 `POWER_TYPES[0]`，也是页面的初始类型。若之后再有别的类型变成「按 Agent 可选」，`powerTypesForAgent` 已经是那个可扩展点。
+
 ## 2026-10-08 — providerVersion 追平 + 钉住构建用 Node（0.3.16 追加修复）
 
 分类：发布工程 / 可复现性

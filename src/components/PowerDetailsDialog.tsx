@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ScrollThumb } from '../ScrollThumb'
 import { useAgentHubI18n, useAgentHubLanguage, type TranslatableText } from '../agentHubI18n'
 import { resolvePowerDescription, resolvePowerTitle, resolvePowerTypeLabel } from '../displayFields'
-import type { PowerSeries } from '../api/contracts'
+import { powerTypesForAgent, type PowerSeries } from '../api/contracts'
 import type { ActiveMutation, InstallationState } from '../api/installationStore'
 
 /** A custom-resource write in flight; both custom actions disable while it runs. */
@@ -116,7 +116,7 @@ export function PowerDetailsDialog({
   // APM supports skill/plugin/mcp for every listed target, including Hermes, but
   // an `agent` Power is bibit-only; that is a fact about the type, not a choice
   // this dialog makes, so the hint stays and the install button simply hides.
-  const agentValidForInstall = series.type !== 'agent' || agent === 'bibit'
+  const agentValidForInstall = powerTypesForAgent(agent).includes(series.type)
   const targetLocked = busy || isInstalled || readOnly
   const writeEnabled = installation.status === 'ready' && !busy
   const showInstall = installation.status === 'ready' && !isInstalled && agentValidForInstall && !readOnly

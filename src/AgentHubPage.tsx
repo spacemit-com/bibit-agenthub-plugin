@@ -9,6 +9,7 @@ import {
 import {
   INSTALLED_AGENTS,
   POWER_PAGE_SIZE,
+  powerTypesForAgent,
   type ListPowersInput,
   type PowerScope,
   type PowerType,
@@ -419,7 +420,18 @@ export function AgentHubPage(_: FeaturePageProps) {
   const changeAgent = (next: string) => {
     resetPageScroll()
     setAgent(next)
-    if (scope !== 'installed') return
+    // The `agent` type is bibit-only, so its filter chip is not rendered for any
+    // other Agent. A query left on that hidden type would strand the list on
+    // something the user can no longer see or switch away from, so it falls back
+    // to the first type the new Agent does take, with the reset an explicit type
+    // change would get.
+    const supported = powerTypesForAgent(next)
+    const typeFellAway = !supported.includes(type)
+    if (typeFellAway) setType(supported[0])
+    // Only the installed list is read per Agent, so only there does the Agent
+    // alone reset the query; on the market the choice just moves the install
+    // target and the catalog the user is browsing must stay where it is.
+    if (!typeFellAway && scope !== 'installed') return
     setTags([])
     setPage(1)
     setSnapshot(undefined)
