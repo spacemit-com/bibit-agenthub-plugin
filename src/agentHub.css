@@ -134,11 +134,18 @@
 /* One hue per Power type, with the light face as shipped and a dark face that
    keeps the hue and lifts the lightness until the accent reads on a dark card.
    The dark fills are deep desaturated versions of the same hue, so a card still
-   announces its type without glowing. */
+   announces its type without glowing.
+
+   These keys are the Power type values, so they move with the vocabulary: the
+   fourth one was `agent` until the type was renamed Expert, and a stale key here
+   does not fail loudly -- the element matches no rule, silently keeps the
+   inherited `--type`/`--type-soft`/`--type-line`, and renders as a plain bordered
+   chip. `agentHubLayout.test.ts` asserts one rule exists per `POWER_TYPES` entry
+   so the next rename cannot lose the palette again. */
 [data-power-type='skill']  { --type: light-dark(#6d55cf, #b3abff); --type-soft: light-dark(#f2efff, #25233b); --type-line: light-dark(#b8acf0, #534e7d); }
 [data-power-type='plugin'] { --type: light-dark(#16775c, #4ed2a9); --type-soft: light-dark(#eef9f5, #0a2d22); --type-line: light-dark(#a9d8ca, #20634e); }
 [data-power-type='mcp']    { --type: light-dark(#a95e16, #f5a15e); --type-soft: light-dark(#fff6eb, #37200f); --type-line: light-dark(#e9c59e, #744a28); }
-[data-power-type='agent']  { --type: light-dark(#356dbd, #89b9ff); --type-soft: light-dark(#eff6ff, #18273c); --type-line: light-dark(#abc7ed, #3a567f); }
+[data-power-type='expert'] { --type: light-dark(#356dbd, #89b9ff); --type-soft: light-dark(#eff6ff, #18273c); --type-line: light-dark(#abc7ed, #3a567f); }
 
 /* ===== Page header (retained) ===== */
 .agent-hub header {

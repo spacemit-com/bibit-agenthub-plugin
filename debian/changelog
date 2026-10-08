@@ -1,3 +1,26 @@
+bibit-agenthub-plugin (0.4.1) resolute-porting; urgency=medium
+
+  * Fix the Expert type losing its palette. The type's accent is selected by the
+    type value -- [data-power-type='agent'] { --type: ... } -- and the rename left
+    that key behind, so an expert chip matched no rule at all. Nothing errors: the
+    element inherits no --type/--type-soft/--type-line and falls back to the default
+    border and text colour, which is the black-on-white chip users saw. Only Expert
+    was affected; the other three keys were already the type names.
+  * Recolouring is not involved: the blue was always this type's colour and the
+    values are unchanged. Only the key moves.
+  * Adds the contract test that was missing. The token values had coverage (hue
+    distance, light-dark() pairs, no amber literals) but "every type has a rule"
+    never did, which is why a key drift was silent. The new case derives the
+    expected keys from POWER_TYPES, checks one rule and all three tokens per type,
+    and asserts the set of [data-power-type='...'] keys in the stylesheet equals
+    POWER_TYPES exactly -- so a leftover key from a future rename fails here
+    instead of rendering as an unstyled chip.
+  * 0.4.0 already shipped with the defect, so this carries only the fix above plus
+    the version bump; the Expert rename and its notes are unchanged below.
+
+ -- liangjunzhao <junzhao.liang@spacemit.com>  Thu, 08 Oct 2026 20:05:00 +0800
+
+
 bibit-agenthub-plugin (0.4.0) resolute-porting; urgency=medium
 
   * Ship the Expert rename as 0.4.0. The change itself is the one prepared as

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { POWER_TYPES } from './api/contracts'
 
 // jsdom has no layout engine, so this guards the CSS contract by reading the source.
 // It exists because the page contribution lives in a full-height host box
@@ -159,6 +160,32 @@ describe('Agent Hub layout contract', () => {
         return bareLiteral.test(` ${stripped}`)
       })
     expect(offenders).toEqual([])
+  })
+
+  it('gives every Power type its own palette rule', () => {
+    // The palette is selected by the type value, so renaming a type silently drops its
+    // colours: the element matches no rule, keeps the inherited --type/--type-soft/
+    // --type-line, and renders as a plain bordered chip. That is exactly how the Expert
+    // type lost its blue accent when it was renamed from `agent` -- nothing failed, the
+    // card just went black. Keying the assertion off POWER_TYPES means the next rename
+    // has to carry the palette with it.
+    for (const powerType of POWER_TYPES) {
+      const palette = rules(`[data-power-type='${powerType}']`)
+      expect(palette, `no palette rule for type ${powerType}`).toHaveLength(1)
+      for (const token of ['--type', '--type-soft', '--type-line']) {
+        const values = palette.flatMap((block) => declared(block, token))
+        expect(values, `${powerType} is missing ${token}`).toHaveLength(1)
+        // Every accent must be a light/dark pair, like the rest of the stylesheet.
+        expect(values[0]).toMatch(/^light-dark\(\s*#[0-9a-f]{6}\s*,\s*#[0-9a-f]{6}\s*\)$/)
+      }
+    }
+    // And nothing else claims a Power type: a leftover key from a rename matches
+    // nothing at runtime, so only a source-level check can see it.
+    const declaredTypes = blocks
+      .flatMap((block) => block.selectors)
+      .map((selector) => /^\[data-power-type='([^']+)'\]$/.exec(selector)?.[1])
+      .filter((value): value is string => value !== undefined)
+    expect([...new Set(declaredTypes)].sort()).toEqual([...POWER_TYPES].sort())
   })
 
   it('keeps the card height independent of the description length', () => {

@@ -16,6 +16,28 @@ level=ERROR msg="command failed" error="invalid --type \"expert\": must be skill
 
 版本号在四处同步：`package.json`、`package-lock.json`、`bibit.feature.json`、`provider/internal/provider/server.go` 的 `providerVersion`（由 `TestProviderVersionMatchesPackageJSON` 强制）。文档里陈旧的版本引用一并更新：开发指南 11 处（此前停留在 0.3.16）、`README.md` 的产物名（停在 0.3.10）、CLI 文档的 `providerVersion` 示例（停在 0.3.16）。
 
+## 2026-10-08 — 修复 Expert 类型标签丢失类型配色（0.4.1）
+
+分类：缺陷修复
+
+用户反馈：
+
+> expert 类型标签失去了之前的样式，现在退化到了黑边框黑字
+
+根因不在逻辑里，而在 CSS 的类型调色板的**键**。四类配色按类型取值选中：
+
+```css
+[data-power-type='agent'] { --type: …; --type-soft: …; --type-line: … }
+```
+
+`data-power-type` 的值来自 `series.type`，改名后是 `expert`，所以这一条规则匹配不到任何元素。这种失配是静默的：元素拿不到三个 token，`color` 与 `border-color` 各自回退到默认值，于是渲染成黑边黑字；另外三类没受影响，因为它们的键本来就是类型名。
+
+修复：把键改成 `expert`，颜色值原样保留（蓝 `#356dbd`/`#89b9ff` 本就是该类型的设计色）。同时补上此前缺失的契约测试 `src/agentHubLayout.test.ts` 的 `gives every Power type its own palette rule`——以 `POWER_TYPES` 为源断言每个类型恰好一条规则、三条 token 齐全且为 `light-dark()` 成对，并断言源码里 `[data-power-type='…']` 的键集合与 `POWER_TYPES` 完全相等（后半条专门抓改名留下的孤儿键，它在运行时不匹配任何东西）。反向验证：把键改回 `agent` 该用例即失败。
+
+漏掉的原因：`--type*` 的取值本身有测试（色相距离、`light-dark()` 成对、禁琥珀字面量），但「每个类型都有一条规则」这层从未断言，因此键名漂移无人发现。见 `docs/verification/2026-10-08-agent-type-renamed-to-expert.md` §5。
+
+已发布的 `0.4.0` deb 里确认带此缺陷（`0.4.0` 的 `dist/agent-hub-plugin.css` 里只有 `data-power-type=agent`，没有 `expert`），因此修复单独发为 **0.4.1**；版本在四处同步（`package.json`、`package-lock.json`、`bibit.feature.json`、`providerVersion`），开发指南的插件版本行与产物名一并更新（`@bibit/feature-*` 是宿主 SDK 版本，不动）。
+
 ## 2026-10-08 — 资源类型 agent 更名为 expert（0.3.20，联动 apm 0.0.2）
 
 分类：契约变更（Power 类型取值改为 `expert`；显示映射删除）

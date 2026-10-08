@@ -1,6 +1,6 @@
-# 0.3.20 验证记录：资源类型 agent 更名为 expert（联动 apm 0.0.2）
+# 0.4.1 验证记录：资源类型 agent 更名为 expert（联动 apm 0.0.2）
 
-- 变更版本：插件 0.3.20（上一版 0.3.19）；apm 0.0.2（上一版 0.0.1）
+- 变更版本：插件 **0.4.1**（记录含两部分：改名本体准备为 0.3.20、随版本号提升发为 0.4.0；类型调色板修复发为 0.4.1。上一版 0.3.19）；apm 0.0.2（上一版 0.0.1）
 - 验证环境：amd64 开发机；**Node 24.16.0**（`.nvmrc` 钉住的版本，`npm run build:plugin` 会先跑 `scripts/check-node.mjs`）；**Go 1.26.5**
 - 相关设计：apm `ivory-tower/adr/ADR-044-rename-agent-power-type-to-expert.md`
 
@@ -38,7 +38,7 @@
 - CLI：`--type=expert` 规范；`--type=agent` 在解析处就地改写成 `expert` 并在非 `--json` 时提示弃用。**规范化必须发生在命令读取 `flags.Type` 之前**，因为原始字符串会流进 `internal/lifecycle` 参与类型比较与过滤。
 - APC 边界：唯一翻译层 `internal/cloud/remote/type_vocabulary.go`。出站翻译提交 metadata 的 `type`、系列查询的 `type`、内容路径 `resources/<type>/...`；入站把响应里的 `agent` 翻回 `expert`（`nil` 原样透传）。目录分组仍叫 `agents`。
 
-### 3.2 插件（0.3.20）
+### 3.2 插件（0.4.0 / 0.4.1）
 
 - `POWER_TYPES` 改为含 `expert`；`supportsAgentType` → `supportsExpertType`；`parsePowerTarget` 与列表校验的类型判定同步。
 - 删除 `resolvePowerTypeLabel` 及其 4 个调用点（类型改名后它是恒等映射），类型本身即显示词。
@@ -52,11 +52,11 @@
 
 | 检查 | 结果 |
 | --- | --- |
-| `npm test` | **568/568**，30 个文件，0 失败 |
+| `npm test` | **569/569**，30 个文件，0 失败 |
 | `npm run typecheck` | 无输出 |
 | `npm run build:dev` | 成功 |
-| `npm run build:plugin` | 成功，`check-node` 通过；`artifacts/agent-hub-0.3.20.bibit-plugin.tgz`，sha256 `b54a506d2a6e6430f3a87cd88296b14877eee5e1881bfc1dbcaddf2a005e7e81`（101158 字节） |
-| `make -C provider test vet build` | 通过（含 `TestProviderVersionMatchesPackageJSON`，`providerVersion` 已同步 0.3.20） |
+| `npm run build:plugin` | 成功，`check-node` 通过；`artifacts/agent-hub-0.4.1.bibit-plugin.tgz`，sha256 `2284e1a4801fe77248d76b375af0cc956d3ff5bb9d46dffbc92f101ca3c5e088`（101158 字节） |
+| `make -C provider test vet build` | 通过（含 `TestProviderVersionMatchesPackageJSON`，`providerVersion` 已同步 0.4.0） |
 | `gofmt -l provider/` | 无输出 |
 | `git diff --check` | 无输出 |
 
@@ -68,7 +68,25 @@
 | `gofmt -l .` | 仅 `internal/cloud/remote/submission_test.go`，**改动前即未格式化**（已核对 `git show HEAD:` 的基线），本次未触碰该文件 |
 | `go vet ./...` / `go build -o ./apm ./cmd/apm` | 无输出 |
 
-## 5. 新增测试与反向验证（变异测试）
+## 5. 回归：Expert 类型调色板（0.4.1 修复）
+
+改名后 Expert 的类型标签退化成「黑边框黑字」。原因不在逻辑里，而在 CSS 的键：
+
+```css
+[data-power-type='agent'] { --type: ...; --type-soft: ...; --type-line: ... }   /* 改名前的键 */
+```
+
+`data-power-type` 的值来自 `series.type`，改名后是 `expert`，于是这条规则**匹配不到任何元素**。它不会报错：元素继承不到 `--type`/`--type-soft`/`--type-line`，`color` 与 `border-color` 各自回退，渲染成默认的黑边黑字。四类里只有 Expert 受影响，其余三个键本来就是类型名、没动过。
+
+修复只改键名（颜色值原样保留——蓝 `#356dbd`/`#89b9ff` 本来就是该类型的设计色），并补上缺失的契约测试：
+
+- `src/agentHubLayout.test.ts` 新增 `gives every Power type its own palette rule`：以 `POWER_TYPES` 为源，断言**每个类型恰好有一条** `[data-power-type='<type>']` 规则、三条 token 都在、且都是 `light-dark()` 成对；再收集源码里所有 `[data-power-type='…']` 键，断言集合与 `POWER_TYPES` **完全相等**。后半条专门抓「改名后留下的孤儿键」——那种键在运行时不匹配任何东西，只有源码级检查才看得见。
+
+反向验证：把 CSS 的键改回 `agent` → 该用例失败（`no palette rule for type expert`）。
+
+漏掉的原因值得记下来：`--type*` 的取值本身有测试（色相距离、`light-dark()` 成对、禁止琥珀字面量），但**「每个类型都有一条规则」这层从来没有断言过**，所以键名漂移是静默的。
+
+## 6. 新增测试与反向验证（变异测试）
 
 新增：
 
@@ -89,7 +107,7 @@
 
 E 是这次真正抓到的一个 bug：只改 `typeName` 而漏掉 `parseCustomAuthorityFile` 的分派分支时，扫描结果里 Expert 全部变成 `Skipped: invalid-authority-file`（该组合在实现过程中确实出现过，由本地测试当场暴露）。
 
-## 6. 兼容矩阵与发布顺序
+## 7. 兼容矩阵与发布顺序
 
 | apm | 插件 | 结果 |
 | --- | --- | --- |
@@ -100,7 +118,7 @@ E 是这次真正抓到的一个 bug：只改 `typeName` 而漏掉 `parseCustomA
 
 **混合状态两个方向都会坏**，因此两个包必须同批升级。插件的 deb 精确依赖 `bibit-agenthub-cli`（同包内自洽），但 `agent-power-manager` 未锁版本，所以这是真实风险，已写入两侧 changelog 与 `README.md`。回滚需两侧一起回滚。
 
-## 7. 未改的部分（外部契约，勿动）
+## 8. 未改的部分（外部契约，勿动）
 
 | 保留项 | 理由 |
 | --- | --- |
@@ -110,13 +128,13 @@ E 是这次真正抓到的一个 bug：只改 `typeName` 而漏掉 `parseCustomA
 | 清单文件的 `agents` 键 | 既有本地文件格式 |
 | `--agent`、`AgentID`、`AgentAdapter`、`agentProfile` | 目标 Agent，正是要保留的那个含义 |
 
-## 8. 已知限制
+## 9. 已知限制
 
 - 插件对 `type:"agent"` 的容忍与 apm 对 `--type=agent` 的别名都是**过渡期**的；等板上 apm 全部升到 0.0.2 后，`normalizePowerType` 的 `agent` 分支应与 apm 的别名一起删除，并在 apm ADR-044 标记 Superseded。
 - 插件发的 `--type=expert` 与 apm 0.0.2 绑定，**板端实机未验收**；本仓库只覆盖单元/集成测试与本地构建。
 - apm 的 deb 版本从 0.0.1 升到 0.0.2 仅用于本次发布标识，不涉及 apm 的版本号策略。
 - 未做 CLI 版本探测：插件不会主动判断板上 apm 的版本，只能靠「`--type=expert` 被拒」时的错误文案。
 
-## 9. 提交状态
+## 10. 提交状态
 
-两个仓库分别提交在各自 `bianbu-26.04` 分支：apm `0b31f96`（0.0.2）、插件 0.3.20（本记录所在提交）。两者都尚未 push。
+两个仓库分别提交在各自 `bianbu-26.04` 分支：apm `0b31f96`（发布标签 `bianbu/0.3.0`）；插件 `4115a70`（0.4.0，含缺陷）+ 本记录所在提交（0.4.1，类型调色板修复与测试）。两者都尚未 push。
