@@ -22,7 +22,7 @@ const (
 
 var (
 	installedAgents    = map[string]bool{"bibit": true, "codex": true, "claude-code": true, "hermes-agent": true}
-	powerTypes         = map[string]bool{"skill": true, "plugin": true, "mcp": true, "agent": true}
+	powerTypes         = map[string]bool{"skill": true, "plugin": true, "mcp": true, "expert": true}
 	canonicalVersionRE = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
 )
 
@@ -48,13 +48,15 @@ func validateTarget(agent, typ, name string) error {
 		return errors.New("operation input: agent must be a fixed installed agent")
 	}
 	if !powerTypes[typ] {
-		return errors.New("operation input: type must be skill, plugin, mcp or agent")
+		return errors.New("operation input: type must be skill, plugin, mcp or expert")
 	}
 	if !isCanonicalPowerName(name) {
 		return errors.New("operation input: name must be a canonical lowercase kebab power name")
 	}
-	if typ == "agent" && agent != "bibit" {
-		return errors.New("operation input: type=agent is only available for the bibit agent")
+	// One `agent` left in this message on purpose: the Expert type is bibit-only, so
+	// the two words mean different things and now read as different things.
+	if typ == "expert" && agent != "bibit" {
+		return errors.New("operation input: type=expert is only available for the bibit agent")
 	}
 	return nil
 }

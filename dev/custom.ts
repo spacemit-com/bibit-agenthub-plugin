@@ -34,7 +34,7 @@ const AGENT_ROOTS: Record<string, string> = {
 // manage Plugins through their own CLI (marketplace + cache), so a hand-dropped
 // plugin directory is not a resource those Agents can load.
 const AGENT_TYPES: Record<string, string[]> = {
-  bibit: ['skill', 'plugin', 'agent'],
+  bibit: ['skill', 'plugin', 'expert'],
   codex: ['skill'],
   'claude-code': ['skill'],
   'hermes-agent': ['skill', 'plugin'],
@@ -55,7 +55,9 @@ const TYPE_SPECS: Record<string, TypeSpec> = {
     candidates: ['apc-plugin.json', 'plugin.yaml', '.claude-plugin/plugin.json', '.codex-plugin/plugin.json'],
     extraCandidate: 'skills',
   },
-  agent: { dir: 'agents', authority: ['agent.yaml'], candidates: ['agent.yaml'] },
+  // The key is the Power type; `dir` and the authority file are what APC and the
+  // Bibit runtime already use, so they keep their names (apm ADR-044).
+  expert: { dir: 'agents', authority: ['agent.yaml'], candidates: ['agent.yaml'] },
 }
 
 const VERSION_PATTERN = /^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/

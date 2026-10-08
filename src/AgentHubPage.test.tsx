@@ -609,7 +609,7 @@ describe('AgentHubPage', () => {
     expect(screen.getByRole('button', { name: 'alpha' }).getAttribute('aria-pressed')).toBe('true')
   })
 
-  it('drops the Expert type and moves the query off it when another Agent is chosen', async () => {
+  it('drops the expert type and moves the query off it when another Agent is chosen', async () => {
     const user = userEvent.setup()
     const { hostApi } = makeStoreHost((input) => {
       if (input.operationId === 'powers.custom.list.v1') return customData()
@@ -621,14 +621,14 @@ describe('AgentHubPage', () => {
     renderPage(hostApi)
     await screen.findByRole('heading', { name: 'code-review' })
 
-    // Expert is bibit-only, so it is offered while bibit is the chosen Agent. The
+    // Expert (the type) is bibit-only, so it is offered while bibit is the chosen Agent. The
     // type filter is applied client-side, so "the query moved off it" shows up as
     // which chip is pressed and which cards survive, not as a wire parameter.
-    await user.click(screen.getByRole('button', { name: 'Expert' }))
+    await user.click(screen.getByRole('button', { name: 'expert' }))
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Expert' }).getAttribute('aria-pressed')).toBe('true')
+      expect(screen.getByRole('button', { name: 'expert' }).getAttribute('aria-pressed')).toBe('true')
     )
-    // The fixture is a skill, so it drops out under the Expert filter.
+    // The fixture is a skill, so it drops out under the expert filter.
     await waitFor(() => expect(screen.queryByRole('heading', { name: 'code-review' })).toBeNull())
 
     // Choosing another Agent hides the chip, and the selection moves to a type
@@ -638,7 +638,7 @@ describe('AgentHubPage', () => {
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'codex' }))
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Agent: codex' })).toBeTruthy()
-      expect(screen.queryByRole('button', { name: 'Expert' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'expert' })).toBeNull()
       expect(screen.getByRole('button', { name: 'skill' }).getAttribute('aria-pressed')).toBe('true')
     })
     // The three types that Agent does take are all still offered, and the list
@@ -648,12 +648,12 @@ describe('AgentHubPage', () => {
     }
     await screen.findByRole('heading', { name: 'code-review' })
 
-    // Going back to bibit brings Expert back. The menu is opened by clicking the
+    // Going back to bibit brings the type back. The menu is opened by clicking the
     // trigger here: the pointer is already on it from the step above, so `hover`
     // would not fire a second `mouseenter`.
     await user.click(screen.getByRole('button', { name: 'Agent: codex' }))
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'bibit' }))
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Expert' })).toBeTruthy())
+    await waitFor(() => expect(screen.getByRole('button', { name: 'expert' })).toBeTruthy())
   })
 
   it('preloads the manifest so market cards can show what is installed', async () => {

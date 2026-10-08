@@ -219,9 +219,8 @@ describe('PowerFilters', () => {
 
     const typeGroup = screen.getByRole('group', { name: 'Type' })
     const typeButtons = within(typeGroup).getAllByRole('button')
-    // The catalog's `agent` type is labeled `Expert` in the UI, but the wire value
-    // and `data-power-type` stay canonical.
-    expect(typeButtons.map((button) => button.textContent)).toEqual(['skill', 'plugin', 'mcp', 'Expert'])
+    // The type is the displayed word; the filter row's CSS capitalises it.
+    expect(typeButtons.map((button) => button.textContent)).toEqual(['skill', 'plugin', 'mcp', 'expert'])
     expect(screen.queryByRole('button', { name: 'all' })).toBeNull()
 
     const currentType = screen.getByRole('button', { name: 'skill' })
@@ -231,8 +230,8 @@ describe('PowerFilters', () => {
     await user.click(screen.getByRole('button', { name: 'mcp' }))
     expect(props.onTypeChange).toHaveBeenCalledWith('mcp')
 
-    await user.click(screen.getByRole('button', { name: 'Expert' }))
-    expect(props.onTypeChange).toHaveBeenLastCalledWith('agent')
+    await user.click(screen.getByRole('button', { name: 'expert' }))
+    expect(props.onTypeChange).toHaveBeenLastCalledWith('expert')
   })
 
   it('offers no Expert type for an Agent that cannot take one', () => {
@@ -245,7 +244,7 @@ describe('PowerFilters', () => {
       'plugin',
       'mcp',
     ])
-    expect(screen.queryByRole('button', { name: 'Expert' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'expert' })).toBeNull()
   })
 
   it('toggles tags via buttons and reports them sorted and unique', async () => {

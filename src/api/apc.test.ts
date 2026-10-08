@@ -72,9 +72,18 @@ describe('parseApcCatalog', () => {
       },
     })
     expect(parsed).toEqual([
-      { type: 'agent', name: 'a', version: 'v1.0.0', description: '', tags: [] },
-      { type: 'agent', name: 'a', version: 'v2.0.0', description: '', tags: [] },
+      { type: 'expert', name: 'a', version: 'v1.0.0', description: '', tags: [] },
+      { type: 'expert', name: 'a', version: 'v2.0.0', description: '', tags: [] },
     ])
+  })
+
+  it('reads the APC agents group as the expert type', () => {
+    // APC still ships an `agents` group (APC-API.md); the group name is the server's
+    // format and the type it decodes to is local, so the mapping is the one place the
+    // two vocabularies meet on the market path. Renaming the key here would make the
+    // whole group disappear from the market without any other symptom.
+    const parsed = parseApcCatalog({ agents: { items: [{ name: 'a', version: 'v1.0.0' }] } })
+    expect(parsed.map((entry) => entry.type)).toEqual(['expert'])
   })
 
   it('rejects a non-object top-level catalog', () => {

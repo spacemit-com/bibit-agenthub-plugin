@@ -1,5 +1,8 @@
 # APC Power 展示页面与系列级资源接口设计
 
+> APC 仓库说明（2026-10-08）：相邻的 APC 仓库已停止维护，本文中的 `../apc` 路径与命令只是当时的记录，
+> 不再可用；APC 的服务端契约以 APC 仓库根目录的 `APC-API.md` 为准。
+
 - Status：Approved for implementation
 - 修订：tag 多选语义已由 **OR 改为 AND（交集）**（0.3.14）。下文提到「多项使用 OR」
   的条目是当时的原始决策，已被现行为覆盖；以 `src/api/apm.ts` 的 `buildPowersResult`

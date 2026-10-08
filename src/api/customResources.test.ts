@@ -128,7 +128,7 @@ describe('parseUploadInput / parseUploadResult / parseDeleteTarget / parseDelete
       { agent: 'bibit', type: 'skill', name: 'demo', message: 'a\nb' },
       { agent: 'bibit', type: 'skill', name: 'demo', message: 'x'.repeat(201) },
       { agent: 'bibit', type: 'skill', name: '../escape', message: 'ok' },
-      { agent: 'codex', type: 'agent', name: 'demo', message: 'ok' },
+      { agent: 'codex', type: 'expert', name: 'demo', message: 'ok' },
       { agent: 'bibit', type: 'skill', name: 'demo', message: 'ok', extra: 1 },
     ]) {
       expect(() => parseUploadInput(value)).toThrow(/Invalid powers\.upload\.v1 input/)

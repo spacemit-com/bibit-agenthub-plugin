@@ -2,7 +2,7 @@ import { useRef } from 'react'
 import { ScrollThumb } from '../ScrollThumb'
 import { useFittedFontSize } from '../useFittedFontSize'
 import { useAgentHubI18n, useAgentHubLanguage, type TranslatableText } from '../agentHubI18n'
-import { resolvePowerDescription, resolvePowerTitle, resolvePowerTypeLabel } from '../displayFields'
+import { resolvePowerDescription, resolvePowerTitle } from '../displayFields'
 import type { PowerSeries } from '../api/contracts'
 
 export interface PowerCardProps {
@@ -63,7 +63,8 @@ export function PowerCard({
       onClick={openDetails}
     >
       <div className="power-card__header">
-        <span className="power-card__type">{resolvePowerTypeLabel(series.type)}</span>
+        {/* The type name is now the displayed word too: the CSS capitalises it. */}
+        <span className="power-card__type">{series.type}</span>
         {/* The custom and installed badges never co-exist: a custom resource only ever
             comes from the local scan on the installed tab, while `installed` is only
             set for market cards. The version slot is a label on every card now, in

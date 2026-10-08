@@ -331,6 +331,18 @@ describe('apm list --json contract (apm 0.1.6, ADR-040)', () => {
     '{"agent":"bibit","type":"skill","name":"legacy-skill","version":"v1.0.0",' +
     '"description":"Legacy skill.","tags":["official"],"name_zh":"","name_en":"","description_zh":""}'
 
+  it('maps the pre-rename agent type onto expert', () => {
+    // An apm older than 0.0.2 still reports the Expert category as `agent`. The plugin
+    // may be upgraded ahead of the CLI (the plugin's deb pins its own CLI, but
+    // agent-power-manager is unpinned), so the legacy spelling is accepted for one
+    // release and normalized here rather than leaking into every type comparison.
+    const legacy = JSON.parse(apmV2Record.replace('"type":"skill"', '"type":"agent"'))
+    expect(parseApmInstalledList([legacy])[0].type).toBe('expert')
+
+    const unknown = JSON.parse(apmV2Record.replace('"type":"skill"', '"type":"widget"'))
+    expect(() => parseApmInstalledList([unknown])).toThrow(/type must be one of skill, plugin, mcp, expert/)
+  })
+
   it('keeps populated display fields and drops the empty ones a V1 record carries', () => {
     const parsed = parseApmInstalledList(JSON.parse(`[${apmV2Record},${apmV1Record}]`))
     expect(parsed[0]).toEqual({

@@ -19,7 +19,6 @@ import {
 } from './api/contracts'
 import { ScrollThumb } from './ScrollThumb'
 import { useAgentHubI18n, type TranslatableText } from './agentHubI18n'
-import { resolvePowerTypeLabel } from './displayFields'
 import { listPowers } from './api/powerCatalogClient'
 import { powerSeriesKey } from './api/apm'
 import { deleteCustomResource, submissionIdFrom, uploadCustomResource } from './api/customResources'
@@ -640,9 +639,9 @@ export function AgentHubPage(_: FeaturePageProps) {
   const deleteDialog = () => {
     if (!dialog || !store) return
     const target = { type: dialog.type, name: dialog.name }
-    // The write keeps the canonical type; only the sentence shown to the user
-    // swaps the catalog's `agent` type for its `Expert` label.
-    const messageValues = { type: resolvePowerTypeLabel(dialog.type), name: dialog.name }
+    // The type now reads the same in the wire value and in the sentence; there is no
+    // label mapping to apply.
+    const messageValues = { type: dialog.type, name: dialog.name }
     void runCustomAction(
       'delete',
       dialog,

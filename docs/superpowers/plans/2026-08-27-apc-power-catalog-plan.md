@@ -1,5 +1,8 @@
 # APC Power Catalog Implementation Plan
 
+> APC 仓库说明（2026-10-08）：相邻的 APC 仓库已停止维护，本文中的 `../apc` 路径与命令只是当时的记录，
+> 不再可用；APC 的服务端契约以 APC 仓库根目录的 `APC-API.md` 为准。
+
 > **Tag semantics revision (0.3.14):** multi-tag selection is now **AND
 > (intersection)** — a version must carry every selected tag. The "OR" wording
 > below is the original plan; the live rule is `buildPowersResult` in

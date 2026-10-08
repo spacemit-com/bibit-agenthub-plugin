@@ -9,7 +9,7 @@ import {
   comparePowerVersions,
   parsePowersWireResult,
   powerTypesForAgent,
-  supportsAgentType,
+  supportsExpertType,
   type ListPowersInput,
   type ReadyListPowersResult,
 } from './contracts'
@@ -62,7 +62,7 @@ function expectRequestError(value: unknown): string {
 
 describe('Store contract constants', () => {
   it('exposes the exact constants', () => {
-    expect(POWER_TYPES).toEqual(['skill', 'plugin', 'mcp', 'agent'])
+    expect(POWER_TYPES).toEqual(['skill', 'plugin', 'mcp', 'expert'])
     expect(POWER_PAGE_SIZE).toBe(20)
     expect(POWERS_LIST_OPERATION_ID).toBe('powers.list.v1')
   })
@@ -238,7 +238,7 @@ describe('parseListPowersResult', () => {
           versions: [{ version: 'v1.0.0', description: 'a', tags: [] }],
         },
         {
-          type: 'agent',
+          type: 'expert',
           name: 'demo',
           versions: [{ version: 'v1.0.0', description: 'a', tags: [] }],
         },
@@ -625,13 +625,13 @@ describe('parsePowersWireResult', () => {
 
   it('limits the type filter to the types an Agent can take', () => {
     // `agent`-type Powers are bibit-only; the wire value stays `agent`.
-    expect(supportsAgentType('bibit')).toBe(true)
+    expect(supportsExpertType('bibit')).toBe(true)
     for (const agent of ['codex', 'claude-code', 'hermes-agent']) {
-      expect(supportsAgentType(agent)).toBe(false)
+      expect(supportsExpertType(agent)).toBe(false)
       expect(powerTypesForAgent(agent)).toEqual(['skill', 'plugin', 'mcp'])
     }
     expect(powerTypesForAgent('bibit')).toEqual(POWER_TYPES)
-    expect(powerTypesForAgent('bibit')).toContain('agent')
+    expect(powerTypesForAgent('bibit')).toContain('expert')
   })
 
   it('rejects an unknown scope or status', () => {

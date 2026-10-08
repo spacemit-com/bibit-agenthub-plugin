@@ -1,5 +1,5 @@
 import type { FeatureServiceApiV1 } from '@bibit/feature-sdk'
-import { INSTALLED_AGENTS, POWER_TYPES, supportsAgentType, type PowerType } from './contracts'
+import { INSTALLED_AGENTS, POWER_TYPES, supportsExpertType, type PowerType } from './contracts'
 import { parseApmInstalledList, type APMPowerRecord } from './apm'
 
 export const POWERS_INSPECT_OPERATION_ID = 'powers.inspect.v1' as const
@@ -118,7 +118,7 @@ function parseTargetFields(obj: Record<string, unknown>, prefix: string): PowerT
   }
   const type = assertPowerType(obj.type, prefix)
   const name = assertPowerName(obj.name, prefix)
-  if (type === 'agent' && !supportsAgentType(agent)) {
+  if (type === 'expert' && !supportsExpertType(agent)) {
     fail(prefix, 'type=agent is only available for the bibit agent')
   }
   return { agent, type, name }

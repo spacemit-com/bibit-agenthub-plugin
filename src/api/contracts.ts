@@ -1,4 +1,4 @@
-export const POWER_TYPES = ['skill', 'plugin', 'mcp', 'agent'] as const
+export const POWER_TYPES = ['skill', 'plugin', 'mcp', 'expert'] as const
 export const POWER_PAGE_SIZE = 20 as const
 export const POWERS_LIST_OPERATION_ID = 'powers.list.v1' as const
 export const POWERS_CUSTOM_LIST_OPERATION_ID = 'powers.custom.list.v1' as const
@@ -26,18 +26,19 @@ export type PowerScope = 'installed' | 'market'
 export type PowerType = (typeof POWER_TYPES)[number]
 
 /**
- * `agent`-type Powers are bibit-only: bibit is the one Agent APM will install one
- * into. The wire value stays `agent` (only the copy relabels it "Expert"), and this
- * is the one place the compatibility rule is written down -- the install/target
- * validators, the details dialog and the type filter all read it.
+ * `expert`-type Powers are bibit-only: bibit is the one Agent APM will install one
+ * into. This is the one place the compatibility rule is written down -- the
+ * install/target validators, the details dialog and the type filter all read it.
+ * The name says "Expert" because that is the type; the argument is still the
+ * target Agent, which is the other meaning of the word in this API.
  */
-export function supportsAgentType(agent: string): boolean {
+export function supportsExpertType(agent: string): boolean {
   return agent === 'bibit'
 }
 
 /** The types an Agent can actually take, i.e. the type filter's options. */
 export function powerTypesForAgent(agent: string): readonly PowerType[] {
-  return supportsAgentType(agent) ? POWER_TYPES : POWER_TYPES.filter((type) => type !== 'agent')
+  return supportsExpertType(agent) ? POWER_TYPES : POWER_TYPES.filter((type) => type !== 'expert')
 }
 
 export interface ListPowersInput {
@@ -742,7 +743,7 @@ function parseResourceTarget(
   ) {
     fail(prefix, 'name must be a canonical lowercase kebab power name')
   }
-  if (type === 'agent' && !supportsAgentType(agent)) {
+  if (type === 'expert' && !supportsExpertType(agent)) {
     fail(prefix, 'type=agent is only available for the bibit agent')
   }
   return { agent, type, name }

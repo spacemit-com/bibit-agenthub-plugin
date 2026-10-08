@@ -1,3 +1,29 @@
+bibit-agenthub-plugin (0.3.20) resolute-porting; urgency=medium
+
+  * Follow apm 0.0.2 in renaming the Expert power type. "agent" meant two things
+    at once -- the target agent a power installs into, and one power category --
+    and the UI already called the category Expert while every type comparison,
+    request and chip still said agent. POWER_TYPES, the type guards, the provider's
+    type table and the dev host all use expert now.
+  * The label shim is gone: resolvePowerTypeLabel existed only to render `agent`
+    as Expert, so with the type renamed it became the identity function. The chips
+    read the type itself and the CSS capitalises it, which is what the four other
+    types already did.
+  * The provider still reads agent.yaml under agents/, and still sends `--type`
+    values apm understands: the type is expert, the directory and authority file
+    keep their names because APC and Bibit's runtime use them (apm ADR-044). Its
+    authority-file parser had to move off "agent" too, or every hand-installed
+    Expert would have been skipped as invalid.
+  * Parsing tolerates the pre-rename spelling for one release: an older apm reports
+    `type:"agent"`, and the plugin's deb pins its own CLI but agent-power-manager is
+    unpinned, so a plugin upgraded ahead of the CLI still works. The market catalog
+    keeps reading APC's `agents` group, which is the server's format.
+  * Install this together with agent-power-manager 0.0.2: this plugin sends
+    --type=expert, which older apm rejects.
+
+ -- liangjunzhao <junzhao.liang@spacemit.com>  Thu, 08 Oct 2026 17:40:00 +0800
+
+
 bibit-agenthub-plugin (0.3.19) resolute-porting; urgency=medium
 
   * The card no longer chooses a version. Its version slot is a static label showing

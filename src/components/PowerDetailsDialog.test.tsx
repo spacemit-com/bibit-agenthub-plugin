@@ -300,9 +300,9 @@ describe('PowerDetailsDialog', () => {
     expect(screen.queryByRole('button', { name: 'Install' })).toBeNull()
   })
 
-  it.each(['codex', 'hermes-agent'])('only explains that an %s target cannot take agent-type Powers', (agent) => {
+  it.each(['codex', 'hermes-agent'])('only explains that an %s target cannot take expert-type Powers', (agent) => {
     const agentSeries: PowerSeries = {
-      type: 'agent',
+      type: 'expert',
       name: 'reviewer',
       versions: [{ version: 'v1.0.0', description: 'Agent reviewer.', tags: [] }],
     }
@@ -474,10 +474,10 @@ describe('PowerDetailsDialog', () => {
     expect(document.querySelector('.agent-hub-dialog__confirm')?.getAttribute('role')).toBe('alertdialog')
   })
 
-  it('shows the agent type as Expert in the badge and the confirmations', async () => {
+  it('shows the expert type in the badge and the confirmations', async () => {
     const user = userEvent.setup()
     const agentSeries: PowerSeries = {
-      type: 'agent',
+      type: 'expert',
       name: 'reviewer',
       versions: [{ version: 'v1.0.0', description: 'Agent reviewer.', tags: [] }],
     }
@@ -488,15 +488,15 @@ describe('PowerDetailsDialog', () => {
         selectedVersion="v1.0.0"
         installation={{
           status: 'ready',
-          records: [{ agent: 'bibit', type: 'agent', name: 'reviewer', version: 'v1.0.0', description: '', tags: [] }],
+          records: [{ agent: 'bibit', type: 'expert', name: 'reviewer', version: 'v1.0.0', description: '', tags: [] }],
         }}
       />
     )
 
-    expect(document.querySelector('.agent-hub-dialog__type')?.textContent).toBe('Expert')
+    expect(document.querySelector('.agent-hub-dialog__type')?.textContent).toBe('expert')
 
     await user.click(screen.getByRole('button', { name: 'Uninstall' }))
-    expect(screen.getByText('Removes Expert "reviewer" for bibit.')).toBeTruthy()
+    expect(screen.getByText('Removes expert "reviewer" for bibit.')).toBeTruthy()
   })
 
   it('cancels the uninstall confirmation without calling the handler', async () => {

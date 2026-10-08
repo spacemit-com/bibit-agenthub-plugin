@@ -140,7 +140,7 @@ apm uninstall demo --agent=bibit --type=skill
 
 | Agent | 根目录 | 类型 |
 | --- | --- | --- |
-| `bibit` | `.bianbu-agent` | `skills/`、`plugins/`、`agents/` |
+| `bibit` | `.bianbu-agent` | `skills/`、`plugins/`、`agents/`（类型依次为 skill/plugin/expert）|
 | `codex` | `.codex` | `skills/` |
 | `claude-code` | `.claude` | `skills/` |
 | `hermes-agent` | `.hermes` | `skills/`、`plugins/` |
@@ -151,7 +151,9 @@ apm uninstall demo --agent=bibit --type=skill
 | --- | --- | --- | --- |
 | skill | `skills/` | `SKILL.md` | frontmatter 是映射，且 `name`、`description` 均非空 |
 | plugin | `plugins/` | `apc-plugin.json`、`plugin.yaml`、`.claude-plugin/plugin.json`、`.codex-plugin/plugin.json` | 清单至少有非空 `name` |
-| agent | `agents/` | `agent.yaml` | 至少有非空 `agent.name` |
+| expert | `agents/` | `agent.yaml` | 至少有非空 `agent.name` |
+
+> 上表的「类型」是 Power 类别，取值与 apm 0.0.2 起的 `--type` 一致（`expert`）；同名的「Agent」列指的是目标 Agent（bibit / codex / …）。类别改成 `expert` 之前 apm 用 `agent`，磁盘目录名与 `agent.yaml` 是 APC 与 Bibit Runtime 的外部约定，始终不变（apm ADR-044）。
 
 判定规则：
 

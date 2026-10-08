@@ -74,8 +74,11 @@ var customTypeSpecs = map[string]customTypeSpec{
 		},
 		extraCandidate: "skills",
 	},
-	"agent": {
-		typeName:  "agent",
+	// The map key and typeName are the Power type, which apm now calls expert; dirName
+	// and the authority file are what APC and the Bibit runtime already use, so they
+	// keep their names (apm ADR-044).
+	"expert": {
+		typeName:  "expert",
 		dirName:   "agents",
 		authority: []string{"agent.yaml"},
 		candidate: []string{"agent.yaml"},
@@ -107,7 +110,7 @@ var customAgentRoots = map[string]string{
 // entries plus a cache), so a hand-dropped plugin directory is not a resource
 // those Agents can load.
 var customAgentTypes = map[string][]string{
-	"bibit":        {"skill", "plugin", "agent"},
+	"bibit":        {"skill", "plugin", "expert"},
 	"codex":        {"skill"},
 	"claude-code":  {"skill"},
 	"hermes-agent": {"skill", "plugin"},
@@ -356,7 +359,9 @@ func parseCustomAuthorityFile(path, typeName string) (parsedAuthority, bool) {
 			return parsedAuthority{}, false
 		}
 		return authorityFromFields(fields, ""), true
-	case "agent":
+	case "expert":
+		// The type is `expert`; the file it reads is still agent.yaml and its payload
+		// is still the `agent:` block, so the fallback prefix keeps that spelling.
 		fields, ok := parseAuthorityMapping(path, contents)
 		if !ok {
 			return parsedAuthority{}, false

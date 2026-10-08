@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import {
   resolvePowerDescription,
   resolvePowerTitle,
-  resolvePowerTypeLabel,
 } from './displayFields'
 import type { PowerSeries, PowerVersion } from './api/contracts'
 
@@ -66,17 +65,5 @@ describe('resolvePowerDescription', () => {
     ['en' as const, version()],
   ])('falls back to the source description for a V1 version (%s)', (language, input) => {
     expect(resolvePowerDescription(input, language)).toBe('Peer review.')
-  })
-})
-
-describe('resolvePowerTypeLabel', () => {
-  it('shows the catalog type "agent" as Expert', () => {
-    expect(resolvePowerTypeLabel('agent')).toBe('Expert')
-  })
-
-  it('leaves every other type exactly as the wire declares it', () => {
-    expect(resolvePowerTypeLabel('skill')).toBe('skill')
-    expect(resolvePowerTypeLabel('plugin')).toBe('plugin')
-    expect(resolvePowerTypeLabel('mcp')).toBe('mcp')
   })
 })

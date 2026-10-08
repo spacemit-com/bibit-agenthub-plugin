@@ -224,7 +224,7 @@ func TestScanCustomPluginAndAgent(t *testing.T) {
 		t.Fatalf("plugin item missing: %+v", document)
 	}
 	agent, ok := byName["local-agent"]
-	if !ok || agent.Type != "agent" || agent.Version != "v2.0.0" || agent.Description != "Local agent." {
+	if !ok || agent.Type != "expert" || agent.Version != "v2.0.0" || agent.Description != "Local agent." {
 		t.Fatalf("agent item missing: %+v", document)
 	}
 	if len(document.Skipped) != 0 {

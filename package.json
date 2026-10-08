@@ -1,6 +1,6 @@
 {
   "name": "@bibit-internal/agent-hub-plugin",
-  "version": "0.3.19",
+  "version": "0.3.20",
   "private": true,
   "type": "module",
   "scripts": {

@@ -492,10 +492,10 @@ Agent 的选择只有一处：标签栏（`.power-filters__scopes`）最右侧�
 - **hover 与点击都能展开**：鼠标移入即展开、移出即收起；点击触发器只展开、不做 toggle（鼠标用户已经用 hover 展开过了，toggle 会读成「点一下反而关掉」）。键盘同样可达：焦点落在触发器上即展开、`ArrowDown`/`ArrowUp` 在选项间循环、`Escape` 关闭并把焦点还给触发器。焦点归还时会重入包装层，代码用一个 `suppressFocusOpenRef` 阻止它把菜单又开回来。
 - **三个标签页都在**：控件常驻标签行，`设置` 页也显示。设置页本身不发 `powers.list.v1`，所以在那里切换不产生请求、也没有可见变化；它决定的是下次进入目录时读取哪个 Agent（以及安装目标）。
 - **清空筛选只在真正相关时发生**：只有 `installed` 的列表按 Agent 读取，因此在 `installed` 下切换 Agent 会重置页码/标签/snapshot；`market` 的目录与 Agent 无关（请求体不带 `agent`），在市场上切换**不重发请求、也不清掉用户已选的标签**，只改变安装目标。
-- **`Expert`（`agent` 类型）只在 bibit 下出现**：`agent` 类型的 Power 只能装进 bibit，所以选中其它 Agent 时类型筛选行根本不渲染 `Expert`。这条规则集中在 `src/api/contracts.ts` 的 `powerTypesForAgent`（`supportsAgentType` 是它的原语），两处 wire 目标校验与详情弹窗的「能否安装」读的是同一处，不再各写一遍。切换 Agent 时如果当前类型正好是被隐藏的那个，类型会回退到该 Agent 支持的第一个类型（`skill`），并按一次显式类型切换重置标签/页码/snapshot——否则列表会停在一个用户既看不见、也切不走的类型上。
+- **`expert` 类型只在 bibit 下出现**：`expert` 类型的 Power 只能装进 bibit，所以选中其它 Agent 时类型筛选行根本不渲染 `expert`。这条规则集中在 `src/api/contracts.ts` 的 `powerTypesForAgent`（`supportsExpertType` 是它的原语），两处 wire 目标校验与详情弹窗的「能否安装」读的是同一处，不再各写一遍。类别的取值就是显示的那几个字母（筛选行 `capitalize`、卡片/徽标 `uppercase`），不再有 `agent` → `Expert` 这层显示映射。切换 Agent 时如果当前类型正好是被隐藏的那个，类型会回退到该 Agent 支持的第一个类型（`skill`），并按一次显式类型切换重置标签/页码/snapshot——否则列表会停在一个用户既看不见、也切不走的类型上。
 - **市场卡片可以有两个徽标**：`Installed` 表示该 Agent 装了它，`New` 表示目录里的最新版本比装的那版更新（两个同时出现时 `New` 在 `Installed` 左侧）。`New` 只在已安装时出现，因为「比你手上的新」离开已安装版本就没有意义；
 - **市场卡片显示 `Installed` 徽标**：市场列表与 Agent 无关（wire 请求不带 `agent`），所以徽标读的是**目标 Agent 的安装清单**（快照里的 `fullLists`，按 Agent 存）——页面进入市场/切 Agent/窗口聚焦时预载一次。徽标是**版本无关**的：装了任意版本就算已安装（卡片固定显示目录里的最新版本，具体装的哪一版看详情弹窗的 `已安装 {version}`）。installed 页不加这个徽标（那里的卡片按定义都已安装）。清单读取失败时市场仍可用，只是没有徽标。
-- **详情弹窗只读显示 Agent**：弹窗不再提供 Agent 选项（它本身是 `showModal()` 模态，用户也够不到标签栏上的控件）。`agent` 类型遇到非 bibit 目标时仍显示「该类型仅支持 bibit Agent。」并隐藏安装按钮，但不再有「切换到 bibit」的纠正按钮——要换 Agent 请关闭弹窗、用控件切换。
+- **详情弹窗只读显示 Agent**：弹窗不再提供 Agent 选项（它本身是 `showModal()` 模态，用户也够不到标签栏上的控件）。`expert` 类型遇到非 bibit 目标时仍显示「该类型仅支持 bibit Agent。」并隐藏安装按钮，但不再有「切换到 bibit」的纠正按钮——要换 Agent 请关闭弹窗、用控件切换。
 - 实现上 `dialogAgent` 这个第二份 state 已删除：列表查询、弹窗、安装/卸载、自定义资源的上传与删除全部读同一个 `agent`。
 
 ## 8. 设置内容开发（页面内「设置」标签页）
@@ -610,7 +610,7 @@ return () => controller.abort()
 - 不把 URL、header、authorization、token、API key、cookie、credential 或 secret 放入 `params`；唯一例外是 `settings.keys.add.v1` 的 `apiKey`——它必须同时在该 operation 的 Registry `credentialParameters` 中声明，宿主才会放行，且结果永不回传该值（只回传遮蔽预览）；
 - 不显示或记录原始凭据、请求 header 或后端内部堆栈。
 
-`powers.list.v1` 在插件 API 边界执行闭集运行时校验（`parseListPowersInput` / `parseListPowersResult`）：未知字段、非法 Power 类型、非 20 的 pageSize、版本乱序、重复或未排序 tags、market 携带 agent 等都会被拒绝。`powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` 用 `parsePowerTarget` / `parseInstallInput` 校验（安装必须带规范版本，卸载/详情不带版本；agent/type/name 必须满足规范命名）。`powers.custom.list.v1` / `powers.upload.v1` / `powers.delete.v1` 用 `parseCustomListInput` / `parseUploadInput` / `parseDeleteTarget` 校验：agent 必须是四个已安装 Agent 之一，`type=agent` 只允许 bibit，name 必须是规范 kebab，upload 必须带单行非空 `message`；自定义系列在 `powers.list.v1` 结果里恰好一个版本、版本可为空串、tags 必须为空。`settings.get.v2` / `settings.keys.add.v1` / `settings.keys.delete.v1` / `settings.keys.enable.v1` 由 store 服务处理（dev 为内存列表，Provider 为 `settings.json` 持久化；`apiKey` 只在 add 入参出现，结果只有遮蔽 `preview` 与 `enabled`）。校验失败或后端返回未知结构时映射为局部错误态（`incompatible`），不能让页面白屏。
+`powers.list.v1` 在插件 API 边界执行闭集运行时校验（`parseListPowersInput` / `parseListPowersResult`）：未知字段、非法 Power 类型、非 20 的 pageSize、版本乱序、重复或未排序 tags、market 携带 agent 等都会被拒绝。`powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` 用 `parsePowerTarget` / `parseInstallInput` 校验（安装必须带规范版本，卸载/详情不带版本；agent/type/name 必须满足规范命名）。`powers.custom.list.v1` / `powers.upload.v1` / `powers.delete.v1` 用 `parseCustomListInput` / `parseUploadInput` / `parseDeleteTarget` 校验：agent 必须是四个已安装 Agent 之一，`type=expert` 只允许 bibit，name 必须是规范 kebab，upload 必须带单行非空 `message`；自定义系列在 `powers.list.v1` 结果里恰好一个版本、版本可为空串、tags 必须为空。`settings.get.v2` / `settings.keys.add.v1` / `settings.keys.delete.v1` / `settings.keys.enable.v1` 由 store 服务处理（dev 为内存列表，Provider 为 `settings.json` 持久化；`apiKey` 只在 add 入参出现，结果只有遮蔽 `preview` 与 `enabled`）。校验失败或后端返回未知结构时映射为局部错误态（`incompatible`），不能让页面白屏。
 
 ### 9.1 跨 Feature 动作（`host:actions`）
 
@@ -668,7 +668,7 @@ const result = await actions.invoke('conversation.compose', {
 `powers.list.v1` 是页面的业务数据 operation；`powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` 是详情与写入 operation，均通过共享安装状态 `installationStore` 驱动页面（见 10.5）。`powers.custom.list.v1` 是只读扫描（Provider 不调用 apm），`powers.upload.v1` / `powers.delete.v1` 是自定义资源的写入 operation，由弹窗内联表单驱动、成功后重新读取 installed 清单；两者的参数都只携带 `(agent,type,name[,message])`，路径由 Provider 自己解析并重新校验，前端永远不传路径。请求与结果类型（与 `src/api/contracts.ts` 一致）：
 
 ```ts
-export const POWER_TYPES = ['skill', 'plugin', 'mcp', 'agent'] as const
+export const POWER_TYPES = ['skill', 'plugin', 'mcp', 'expert'] as const
 export const POWER_PAGE_SIZE = 20 as const
 export const POWERS_LIST_OPERATION_ID = 'powers.list.v1' as const
 
@@ -892,7 +892,7 @@ apm list --installed --agent=<selected> --json
 - stdout 非法 UTF-8 → `unavailable`；超 4 MiB → `resource_exhausted`；
 - 不透传 CLI stderr、物理路径、环境变量、堆栈或命令内部错误。
 
-前端 Agent 切换控件固定为 bibit / codex / claude-code / hermes-agent 四个选项（`claude-code` 即 apm 中 Claude 的 id），由插件常量 `INSTALLED_AGENTS` 提供，不依赖 `facets.agents` 做发现；每次请求只解析所选 agent 的返回。该控件是标签栏最右侧的独立控件（见 §7.2.4），`installed` 的列查询只认它的值（`market` 与 Agent 无关，请求体不带 agent）；`agent` 类型（UI 上的 `Expert`）只在 bibit 下可用，选中其它 Agent 时类型筛选不渲染它（§7.2.4）。`listJson` 由前端数据层用 `parseApmInstalledList` 解析为 `APMPowerRecord[]`，再经 `buildInstalledPowersResult` 完成 type 过滤与 tag AND（交集）过滤、按 type/name 聚合、去重、分页与 facets——这些聚合只存在于前端 `src/api/`，Provider 与 dev transport 不复制。
+前端 Agent 切换控件固定为 bibit / codex / claude-code / hermes-agent 四个选项（`claude-code` 即 apm 中 Claude 的 id），由插件常量 `INSTALLED_AGENTS` 提供，不依赖 `facets.agents` 做发现；每次请求只解析所选 agent 的返回。该控件是标签栏最右侧的独立控件（见 §7.2.4），`installed` 的列查询只认它的值（`market` 与 Agent 无关，请求体不带 agent）；`expert` 类型（Bibit 的子代理资源）只在 bibit 下可用，选中其它 Agent 时类型筛选不渲染它（§7.2.4）。`listJson` 由前端数据层用 `parseApmInstalledList` 解析为 `APMPowerRecord[]`，再经 `buildInstalledPowersResult` 完成 type 过滤与 tag AND（交集）过滤、按 type/name 聚合、去重、分页与 facets——这些聚合只存在于前端 `src/api/`，Provider 与 dev transport 不复制。
 
 ### 10.5 Power 详情与安装/卸载（APM CLI）
 
@@ -1068,7 +1068,7 @@ npm run dev
 
 浏览器打开 Vite 输出地址；首页地址追加 `?lang=zh-CN` 即为中文界面，右上角下拉框可随时切换语言（不刷新页面）。Feature Dev Host 读取真实 Manifest 和 Feature Module，并通过 `dev/main.tsx` 的 `serviceConnections` 把 `powers.list.v1` / `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` / `powers.custom.list.v1` / `powers.upload.v1` / `powers.delete.v1` / `settings.get.v2` / `settings.keys.add.v1` / `settings.keys.delete.v1` / `settings.keys.enable.v1` 路由到 Vite 中间件（`vite.config.ts` → `dev/store.ts`）提供的 Store。`scope=installed` 会真实执行 PATH 中的 `apm list --installed --agent=<selected> --json`（身份记录）；详情/安装/卸载分别执行 `apm list <name> --installed ...` / `apm install <name>=<version> ...` / `apm uninstall <name> ...`（argv 与 Go Provider 一致，读 30s / 写 120s）；`scope=market` 会每次请求真实拉取 APC 公开目录（`GET /resources/version` 取快照 + `GET /resources` 跟随重定向取全量列表），再按 `type` 过滤聚合；`settings.get.v2` / `settings.keys.add.v1` / `settings.keys.delete.v1` / `settings.keys.enable.v1` 使用内存设置（Key 只保留在 dev 进程内，只回传遮蔽 `preview`）；`powers.custom.list.v1` 扫描**本机真实 home**（`dev/custom.ts` 复刻 Provider 的目录、最低格式与展示名兜底规则），`powers.upload.v1` / `powers.delete.v1` 分别调用本机 `apm validate` + `apm submit` 与真实删除。此模式不启动、不编译 Bibit，也不要求远程 Store 后端在线；未安装 `apm` 时 installed 页显示可重试的 unavailable 错误，APC 不可达时 market 页显示可重试的 unavailable 错误。
 
-market 每次点击类型/标签、翻页都重新拉取并解析 APC 全量列表（无本地 fixture、无跨请求缓存），并在进入市场/切 Agent/窗口聚焦时额外读一次目标 Agent 的安装清单（只用于卡片徽标），覆盖 skill / plugin / mcp / agent 四种 Power 类型（筛选行里 `agent` 只在 bibit 下出现）；installed 由真实 apm 输出驱动，Agent 由标签栏最右侧的独立控件切换，选项固定为 bibit / codex / claude-code / hermes-agent 四个。两种 scope 复用同一套筛选、聚合、分页、facets 与 snapshot 规则，与未来 Remote Store 一致。
+market 每次点击类型/标签、翻页都重新拉取并解析 APC 全量列表（无本地 fixture、无跨请求缓存），并在进入市场/切 Agent/窗口聚焦时额外读一次目标 Agent 的安装清单（只用于卡片徽标），覆盖 skill / plugin / mcp / expert 四种 Power 类型（筛选行里 `expert` 只在 bibit 下出现）；installed 由真实 apm 输出驱动，Agent 由标签栏最右侧的独立控件切换，选项固定为 bibit / codex / claude-code / hermes-agent 四个。两种 scope 复用同一套筛选、聚合、分页、facets 与 snapshot 规则，与未来 Remote Store 一致。
 
 APC Base URL 默认测试环境 `https://developer.bianbu.xyz/api-server/apc/api/v1`，可用 `APC_BASE_URL` 环境变量覆盖。测试环境证书不受信，dev-only 传输层（`vite.config.ts`）关闭了 TLS 校验；正式 CLI Provider 必须使用受信 CA。APC 公开目录无按类型列表端点，因此 market 采用“全量列表 + 客户端按 `type` 过滤”的映射。
 

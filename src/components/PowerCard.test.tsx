@@ -96,16 +96,16 @@ describe('PowerCard', () => {
     expect(screen.getByRole('heading', { name: 'code-review' })).toBeTruthy()
   })
 
-  it('labels an agent-type series as Expert while keeping the wire type on the card', () => {
+  it('shows the Expert type chip from the type itself, capitalised by CSS', () => {
     const { container } = render(
       <AgentHubI18nProvider language="en">
-        <PowerCard series={{ ...series, type: 'agent', name: 'reviewer' }} busy={false} />
+        <PowerCard series={{ ...series, type: 'expert', name: 'reviewer' }} busy={false} />
       </AgentHubI18nProvider>
     )
 
-    expect(container.querySelector('.power-card__type')?.textContent).toBe('Expert')
-    // The canonical type still drives the card's type tokens and every request.
-    expect(container.querySelector('.power-card')?.getAttribute('data-power-type')).toBe('agent')
+    // No label mapping is left: the type IS the word, and `.power-card__type` uppercases it.
+    expect(container.querySelector('.power-card__type')?.textContent).toBe('expert')
+    expect(container.querySelector('.power-card')?.getAttribute('data-power-type')).toBe('expert')
   })
 
   it('shows the Chinese display name and description for a Chinese host', () => {

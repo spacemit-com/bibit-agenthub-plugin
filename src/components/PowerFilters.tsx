@@ -2,7 +2,6 @@ import { useRef } from 'react'
 import { ScrollThumb } from '../ScrollThumb'
 import { AgentSwitcher } from './AgentSwitcher'
 import { useAgentHubI18n } from '../agentHubI18n'
-import { resolvePowerTypeLabel } from '../displayFields'
 import { powerTypesForAgent, type PowerScope, type PowerType } from '../api/contracts'
 
 /**
@@ -89,7 +88,7 @@ export function PowerFilters({
                 aria-pressed={value === type}
                 onClick={() => value !== type && onTypeChange(value)}
               >
-                {resolvePowerTypeLabel(value)}
+                {value}
               </button>
             ))}
           </div>

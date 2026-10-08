@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ScrollThumb } from '../ScrollThumb'
 import { useAgentHubI18n, useAgentHubLanguage, type TranslatableText } from '../agentHubI18n'
-import { resolvePowerDescription, resolvePowerTitle, resolvePowerTypeLabel } from '../displayFields'
+import { resolvePowerDescription, resolvePowerTitle } from '../displayFields'
 import { comparePowerVersions, powerTypesForAgent, type PowerSeries } from '../api/contracts'
 import type { ActiveMutation, InstallationState } from '../api/installationStore'
 
@@ -219,7 +219,7 @@ export function PowerDetailsDialog({
       <div className="agent-hub-dialog__body" ref={bodyRef}>
         <header className="agent-hub-dialog__header">
           <div>
-            <span className="agent-hub-dialog__type">{resolvePowerTypeLabel(series.type)}</span>
+            <span className="agent-hub-dialog__type">{series.type}</span>
             {custom && <span className="power-card__badge">{t('Custom')}</span>}
             <h2>{title}</h2>
           </div>
@@ -235,7 +235,7 @@ export function PowerDetailsDialog({
           {/* Read-only: the Agent is chosen once, in the tab row's Agent control.
               The dialog is modal, so it cannot offer a second chooser. */}
           <span data-testid="dialog-agent-static">{agent}</span>
-          {series.type === 'agent' && agent !== 'bibit' && (
+          {series.type === 'expert' && agent !== 'bibit' && (
             <p className="agent-hub-dialog__hint">{t('Only the bibit agent supports this type.')}</p>
           )}
         </div>
@@ -378,7 +378,7 @@ export function PowerDetailsDialog({
               <p>{t('Delete this resource?')}</p>
               <p className="agent-hub-dialog__hint">
                 {t('Removes the local {type} "{name}" for {agent}. This cannot be undone.', {
-                  type: resolvePowerTypeLabel(series.type),
+                  type: series.type,
                   name: series.name,
                   agent,
                 })}
@@ -431,12 +431,12 @@ export function PowerDetailsDialog({
               <p className="agent-hub-dialog__hint">
                 {confirmingAction === 'uninstall'
                   ? t('Removes {type} "{name}" for {agent}.', {
-                      type: resolvePowerTypeLabel(series.type),
+                      type: series.type,
                       name: series.name,
                       agent,
                     })
                   : t('Replaces {type} "{name}" for {agent} with {version}.', {
-                      type: resolvePowerTypeLabel(series.type),
+                      type: series.type,
                       name: series.name,
                       agent,
                       version: selectedVersion,

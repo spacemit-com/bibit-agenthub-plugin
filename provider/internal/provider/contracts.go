@@ -23,7 +23,7 @@ type WireResult struct {
 
 // PowerTarget identifies one Power for inspect and uninstall. It is validated
 // at the protocol boundary: agent must be a fixed installed agent, type one of
-// the four Power types, and name a canonical lowercase kebab name. type=agent is
+// the four Power types, and name a canonical lowercase kebab name. type=expert is
 // only available for the bibit agent.
 type PowerTarget struct {
 	Agent string `json:"agent"`

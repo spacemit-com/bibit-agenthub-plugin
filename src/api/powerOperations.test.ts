@@ -70,8 +70,8 @@ describe('parsePowerTarget', () => {
     expect(parseInstallInput({ ...hermes, version: 'v1.0.0' })).toEqual({ ...hermes, version: 'v1.0.0' })
   })
 
-  it('rejects Hermes agent-type powers and the CLI executable alias', () => {
-    expect(() => parsePowerTarget({ agent: 'hermes-agent', type: 'agent', name: 'demo' })).toThrow(/only available for the bibit agent/)
+  it('rejects expert-type powers on Hermes and the CLI executable alias', () => {
+    expect(() => parsePowerTarget({ agent: 'hermes-agent', type: 'expert', name: 'demo' })).toThrow(/only available for the bibit agent/)
     expect(() => parsePowerTarget({ agent: 'hermes', type: 'skill', name: 'demo' })).toThrow()
   })
 
@@ -79,14 +79,14 @@ describe('parsePowerTarget', () => {
     expect(parsePowerTarget(target)).toEqual(target)
   })
 
-  it('rejects type=agent for a non-bibit agent', () => {
-    expect(() => parsePowerTarget({ agent: 'codex', type: 'agent', name: 'demo' })).toThrow()
+  it('rejects type=expert for a non-bibit agent', () => {
+    expect(() => parsePowerTarget({ agent: 'codex', type: 'expert', name: 'demo' })).toThrow()
   })
 
-  it('accepts type=agent for bibit', () => {
-    expect(parsePowerTarget({ agent: 'bibit', type: 'agent', name: 'demo' })).toEqual({
+  it('accepts type=expert for bibit', () => {
+    expect(parsePowerTarget({ agent: 'bibit', type: 'expert', name: 'demo' })).toEqual({
       agent: 'bibit',
-      type: 'agent',
+      type: 'expert',
       name: 'demo',
     })
   })

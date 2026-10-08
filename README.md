@@ -12,9 +12,9 @@ Bibit Agent Hub 的独立前端插件 + 独立 Go CLI Provider，当前包含：
 - 独立 Feature Dev Host 与共享的前端数据层（解析、过滤、聚合、分页、facets、snapshot 判断、共享安装状态）；
 - 纯 Go 标准库 CLI Provider（仅 Provider Protocol v1，`bibit-agenthub`）。
 
-「能力市场」的卡片按目标 Agent 的安装清单显示 `Installed` 徽标，目录里有更高版本时再加一个 `New` 徽标；卡片固定显示最新版本，版本选择与「安装 / 更新 / 降级 / 卸载」都在详情弹窗里完成。Agent 由标签栏最右侧的独立控件切换（文本就是当前 Agent，默认 `bibit`），支持 `bibit`、`codex`、`claude-code`、`hermes-agent`；「我的能力」标签与详情弹窗都不再提供 Agent 选项。Hermes 支持 Skill、MCP 和 Plugin 的列表、详情、安装与卸载，`agent` 类型（界面上的 `Expert`）仅支持 Bibit，选中其它 Agent 时类型筛选里不显示它；运行环境中的 APM 需要支持 `--agent=hermes-agent`。
+「能力市场」的卡片按目标 Agent 的安装清单显示 `Installed` 徽标，目录里有更高版本时再加一个 `New` 徽标；卡片固定显示最新版本，版本选择与「安装 / 更新 / 降级 / 卸载」都在详情弹窗里完成。Agent 由标签栏最右侧的独立控件切换（文本就是当前 Agent，默认 `bibit`），支持 `bibit`、`codex`、`claude-code`、`hermes-agent`；「我的能力」标签与详情弹窗都不再提供 Agent 选项。Hermes 支持 Skill、MCP 和 Plugin 的列表、详情、安装与卸载，`expert` 类型（Bibit 的子代理资源）仅支持 Bibit，选中其它 Agent 时类型筛选里不显示它；运行环境中的 APM 需要支持 `--agent=hermes-agent` 与 `--type=expert`（0.0.2 起；更早的 apm 用 `--type=agent`，插件仍能读取它输出的类型，但插件发出的 `--type=expert` 需要新 apm）。
 
-自定义资源扫描范围与各 Agent 的能力一致：目录 `~/.bianbu-agent/{skills,plugins,agents}`（Bibit）、`~/.codex/skills`、`~/.claude/skills`、`~/.hermes/{skills,plugins}`。本期不含 MCP（APM 不为其维护目录，无法扫描），codex / claude-code 的 Plugin 由各自 CLI 管理，也不在扫描范围内。展示只需满足主流最低格式（Skill 的 `SKILL.md` frontmatter 至少有 `name`/`description`；Plugin 清单至少有 `name`；Agent 的 `agent.yaml` 至少有 `agent.name`），不满足的被跳过并在页面上给出 warning。卡片标题按宿主语言取 `name_zh` → `name_en` → 资源声明的 `name`：v1 资源显示作者声明的名字，而不是它所在的目录名（目录名只是用于去重与上传/删除目标的身份）。上传仍交给 `apm validate` + `apm submit`，因此上传要求资源满足 Power 格式 v2。
+自定义资源扫描范围与各 Agent 的能力一致：目录 `~/.bianbu-agent/{skills,plugins,agents}`（Bibit）、`~/.codex/skills`、`~/.claude/skills`、`~/.hermes/{skills,plugins}`。本期不含 MCP（APM 不为其维护目录，无法扫描），codex / claude-code 的 Plugin 由各自 CLI 管理，也不在扫描范围内。展示只需满足主流最低格式（Skill 的 `SKILL.md` frontmatter 至少有 `name`/`description`；Plugin 清单至少有 `name`；`expert` 类型的 `agent.yaml` 至少有 `agent.name`），不满足的被跳过并在页面上给出 warning。卡片标题按宿主语言取 `name_zh` → `name_en` → 资源声明的 `name`：v1 资源显示作者声明的名字，而不是它所在的目录名（目录名只是用于去重与上传/删除目标的身份）。上传仍交给 `apm validate` + `apm submit`，因此上传要求资源满足 Power 格式 v2。
 
 本期范围是 v1：installed（APM + 自定义资源）与 market（APC 全量目录）浏览、单版本安装/卸载，以及自定义资源的 APC 上传 / 本地删除（读 30s、写 120s 超时）。下载、job 与文件传输不在本期。
 

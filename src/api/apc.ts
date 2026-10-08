@@ -13,7 +13,7 @@ const GROUP_TO_TYPE: Record<string, PowerType> = {
   skills: 'skill',
   plugins: 'plugin',
   mcps: 'mcp',
-  agents: 'agent',
+  agents: 'expert',
 }
 
 const VERSION_PATTERN = /^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/

@@ -59,6 +59,18 @@ const VERSION_PATTERN = /^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/
 
 const POWER_TYPE_SET: ReadonlySet<string> = new Set(POWER_TYPES)
 
+/**
+ * Maps a wire type onto the local one. `agent` is the spelling an apm older than
+ * 0.0.2 still reports for the Expert category; accepting it for one release keeps a
+ * plugin that was upgraded ahead of the CLI working, and it goes away once the
+ * legacy CLI does (apm ADR-044). Anything else, including a missing type, is
+ * rejected.
+ */
+function normalizePowerType(value: unknown): PowerType | undefined {
+  if (value === 'agent') return 'expert'
+  return typeof value === 'string' && POWER_TYPE_SET.has(value) ? (value as PowerType) : undefined
+}
+
 function fail(reason: string): never {
   throw new Error(`Invalid apm list output: ${reason}`)
 }
@@ -95,8 +107,9 @@ function parseApmPowerRecord(value: unknown): APMPowerRecord {
   if (typeof agent !== 'string' || agent.length === 0) {
     fail('agent must be a non-empty string')
   }
-  if (typeof type !== 'string' || !POWER_TYPE_SET.has(type)) {
-    fail('type must be one of skill, plugin, mcp, agent')
+  const powerType = normalizePowerType(type)
+  if (powerType === undefined) {
+    fail('type must be one of skill, plugin, mcp, expert')
   }
   if (typeof name !== 'string' || name.length === 0) {
     fail('name must be a non-empty string')
@@ -117,7 +130,7 @@ function parseApmPowerRecord(value: unknown): APMPowerRecord {
 
   return {
     agent,
-    type: type as PowerType,
+    type: powerType,
     name,
     version,
     ...(description !== undefined ? { description } : {}),

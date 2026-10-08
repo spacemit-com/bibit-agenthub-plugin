@@ -1,5 +1,52 @@
 # Changelog
 
+## 2026-10-08 — 资源类型 agent 更名为 expert（0.3.20，联动 apm 0.0.2）
+
+分类：契约变更（Power 类型取值改为 `expert`；显示映射删除）
+
+用户需求：
+
+> 这是一个联动仓库任务，包括 bibit-agenthub-plugin 和 ../apm。
+> 在设计中 agent 有歧义，一是指软件的目标智能体如 bibit、codex 等，二是指 bibit 中的特殊资源。
+> 在最近的一次提交中将 agent hub 插件的类型标签更名成了 expert，从此消除歧义。
+> 但需要同步两个仓库中的剩余的定义。包括但不限于：代码、文档、CLI 参数名（使两侧接口调整同步，不至于无法使用出错）
+
+### 一、为什么之前只改了一半
+
+0.3.12 起界面把这个类别显示为 `Expert`，但那只落在一层显示映射上：`resolvePowerTypeLabel` 把 `agent` 换成 `Expert`，而 `POWER_TYPES`、类型守卫、wire 请求、Provider 的类型表、磁盘目录全部还是 `agent`。于是同一个词在请求里出现两次（目标 Agent 与类型），在 apm 的一条命令里也是（`apm install <agent-power> --type agent --agent bibit`）。本次把剩余的定义同步到 `expert`，两个仓库一起改。
+
+### 二、插件侧改动
+
+- `POWER_TYPES` 改为 `['skill','plugin','mcp','expert']`；`supportsAgentType` → `supportsExpertType`（名字说的是类型，参数仍是目标 Agent——这正是要消除的那处歧义）；`parsePowerTarget` / 列表结果校验里的类型判定同步。
+- **删除 `resolvePowerTypeLabel`**：它唯一的作用就是把 `agent` 显示成 `Expert`，类型改名后它就是恒等映射。筛选行、卡片徽标与弹窗徽标直接渲染类型本身（筛选行 `capitalize`、卡片/徽标 `uppercase` 沿用既有 CSS），四个类型的显示方式至此完全一致。连带删除它的 4 个调用点、导入与 3 条专门测试。
+- Provider（Go）：`powerTypes` 集合与错误文案改为 `expert`；自定义扫描表的 key 与 `typeName` 改为 `expert`，而 `dirName: "agents"` 与权威文件 `agent.yaml` **保持不变**（APC 与 Bibit Runtime 的外部约定）。`parseCustomAuthorityFile` 的分支也必须跟着改——它按类型名分派，留在 `agent` 会让所有手装 Expert 被判成 `invalid-authority-file`（本地测试抓到过：`Skipped:[{Type:expert ... Reason:invalid-authority-file}]`）。
+- `dev/custom.ts` 的类型表同步（`TYPE_SPECS` 的 key 与 `AGENT_TYPES` 的值），目录与权威文件同样不变。
+- 兼容性：`apm.ts` 新增 `normalizePowerType`，把旧 apm 输出的 `type:"agent"` 归一成 `expert`，其余取值严格拒绝。插件 deb 精确锁自己的 CLI，但 `agent-power-manager` 不锁版本，所以「插件先升级、CLI 还没升」是真实可能的组合。市场目录仍读 APC 的 `agents` 分组（`apc.ts` 的 `agents: 'expert'`）——那是服务端的格式。
+- 版本 0.3.20（含 `providerVersion`，`TestProviderVersionMatchesPackageJSON` 要求相等）。
+
+### 三、apm 侧（另一仓库，同一批）
+
+见 apm 的 `docs/Changelog.md` 与 **ADR-044**：`PowerTypeExpert = "expert"`、`--type=expert`（`--type=agent` 降为弃用别名并在非 `--json` 时提示）、APC 的 HTTP 边界翻译（提交 metadata、系列查询、内容路径、响应回读）集中在 `internal/cloud/remote/type_vocabulary.go`、目录分组仍叫 `agents`，磁盘 `agents/<name>` 与 `agent.yaml` 不动。
+
+### 四、相关文件
+
+- `src/api/contracts.ts`、`src/api/powerOperations.ts`、`src/api/apc.ts`、`src/api/apm.ts`、`src/displayFields.ts`、`src/components/{PowerCard,PowerDetailsDialog,PowerFilters}.tsx`、`src/AgentHubPage.tsx`、`src/api/powerCatalogClient.ts`
+- `provider/internal/provider/{operations,custom,contracts}.go`、`dev/custom.ts`
+- 文档：`docs/development-and-deployment-guide.md`、`docs/cli-provider-development-and-deployment.md`、`README.md`、`debian/changelog`
+- `docs/verification/2026-10-08-agent-type-renamed-to-expert.md`（新增验证记录）
+
+### 五、验证结果
+
+在钉住的 Node 24.16.0 下：`npm test` 30 个文件 / **568 例全通过**、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin`，以及 `make -C provider test vet build`、`gofmt -l provider/`、`git diff --check` 全通过。apm 侧 `go test ./...`（22 个包）、`go vet`、`gofmt`、`go build` 全通过。
+
+新增用例：`apm.ts` 的「旧 CLI 的 `type:"agent"` 归一成 `expert`、未知类型仍被拒」、`apc.ts` 的「`agents` 组解成 `expert`」。改写用例：`POWER_TYPES` 常量、`powerTypesForAgent`、类型筛选行的四个控件与点击值、卡片类型 chip、弹窗徽标与确认句、`displayFields` 的 3 条映射用例（函数已删除，用例一并删除）。
+
+### 六、发布顺序与限制
+
+- **两个包必须同批升级**：新插件发 `--type=expert`，旧 apm 不认识；新 apm 输出 `type:"expert"`，旧插件解析不了。混合状态两个方向都会坏，只是坏在不同位置。插件的 deb 精确锁自己的 CLI，但 `agent-power-manager` 不锁，因此发布说明必须写明。
+- 磁盘布局（`agents/<name>`、`cache/agents/…`）、作者的 `agent.yaml`、清单与目录的 `agents` 分组、APC 的 wire 取值 `agent` 全部**未改**；它们是 APC、Bibit Runtime 与已发布内容的契约。清单见 apm ADR-044。
+- 插件对旧拼写的容忍是**过渡期**的：等板上 apm 全部升到 0.0.2 之后，`normalizePowerType` 里的 `agent` 分支应与 apm 的 `--type=agent` 别名一起删除。
+
 ## 2026-10-08 — 卡片固定显示最新版本，详情页按版本给出安装/更新/降级/卸载（0.3.19）
 
 分类：交互重构

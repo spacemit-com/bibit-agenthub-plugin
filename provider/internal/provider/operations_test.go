@@ -35,7 +35,7 @@ func TestHermesOperations(t *testing.T) {
 			assertArgv(t, home, tc.argv...)
 		})
 	}
-	if err := validateTarget("hermes-agent", "agent", "demo"); err == nil || !strings.Contains(err.Error(), "only available for the bibit agent") {
+	if err := validateTarget("hermes-agent", "expert", "demo"); err == nil || !strings.Contains(err.Error(), "only available for the bibit agent") {
 		t.Fatalf("Hermes agent-type validation: %v", err)
 	}
 }
