@@ -250,7 +250,6 @@ export function AgentHubPage(_: FeaturePageProps) {
 
   const [selectedVersions, setSelectedVersions] = useState<ReadonlyMap<string, string>>(new Map())
   const [dialog, setDialog] = useState<PowerSeries | null>(null)
-  const [dialogAgent, setDialogAgent] = useState('bibit')
   /** In-flight custom write, keyed by resource so the dialog only shows its own. */
   const [customAction, setCustomAction] = useState<{ key: string; state: CustomActionState } | null>(null)
   const [customNotices, setCustomNotices] = useState<ReadonlyMap<string, TranslatableText>>(new Map())
@@ -288,7 +287,7 @@ export function AgentHubPage(_: FeaturePageProps) {
       // An uninstall that is confirmed gone closes its dialog: staying on a Power
       // that is no longer installed hides the reinstall entry point. A failure
       // keeps the dialog, which is where its reason is shown.
-      if (dialog !== null && installationSnapshot.confirmedRemovals.has(itemKey(dialogAgent, dialog.type, dialog.name))) {
+      if (dialog !== null && installationSnapshot.confirmedRemovals.has(itemKey(agent, dialog.type, dialog.name))) {
         closeDetails()
       }
     }
@@ -298,7 +297,7 @@ export function AgentHubPage(_: FeaturePageProps) {
     installationSnapshot.revision,
     installationSnapshot.confirmedRemovals,
     dialog,
-    dialogAgent,
+    agent,
     closeDetails,
   ])
 
@@ -328,6 +327,11 @@ export function AgentHubPage(_: FeaturePageProps) {
     }
   }, [])
 
+  // The list depends on the Agent only in the installed scope: the market catalog
+  // is Agent-independent, so switching the Agent while browsing the market must
+  // neither refetch it nor clear the tag/page state the user just set.
+  const listAgent = scope === 'installed' ? agent : undefined
+
   useEffect(() => {
     // The Settings tab renders the credential panel, not a catalog list: it must
     // neither issue a `powers.list.v1` request nor leave the previous one running
@@ -353,7 +357,7 @@ export function AgentHubPage(_: FeaturePageProps) {
       tags: [...tags].sort(),
       page,
       pageSize: POWER_PAGE_SIZE,
-      ...(scope === 'installed' ? { agent } : {}),
+      ...(listAgent !== undefined ? { agent: listAgent } : {}),
       ...(page > 1 && snapshot !== undefined ? { snapshot } : {}),
     }
 
@@ -378,7 +382,7 @@ export function AgentHubPage(_: FeaturePageProps) {
       })
 
     return () => listController.abort()
-  }, [store, scope, tab, agent, type, tags, page, retry])
+  }, [store, scope, tab, listAgent, type, tags, page, retry])
 
   // ---- the page owns its scroll: size it to the box the host actually hands over ----
   // A page contribution is mounted in a min-height based box (SidebarProvider /
@@ -415,6 +419,7 @@ export function AgentHubPage(_: FeaturePageProps) {
   const changeAgent = (next: string) => {
     resetPageScroll()
     setAgent(next)
+    if (scope !== 'installed') return
     setTags([])
     setPage(1)
     setSnapshot(undefined)
@@ -465,18 +470,11 @@ export function AgentHubPage(_: FeaturePageProps) {
   )
 
   const openDetails = (series: PowerSeries) => {
-    const targetAgent = scope === 'installed' ? agent : 'bibit'
-    setDialogAgent(targetAgent)
     setDialog(series)
     // A hand-installed resource is not in the APM manifest, so an inspect would
     // only ask apm about a Power it does not manage. The custom dialog renders
     // its own facts instead of the installation lifecycle.
-    if (series.source !== 'custom') inspectTarget(targetAgent, series)
-  }
-
-  const changeDialogAgent = (next: string) => {
-    setDialogAgent(next)
-    if (dialog) inspectTarget(next, dialog)
+    if (series.source !== 'custom') inspectTarget(agent, series)
   }
 
   const runMutation = useCallback(
@@ -495,7 +493,7 @@ export function AgentHubPage(_: FeaturePageProps) {
     runMutation({
       kind: 'install',
       input: {
-        agent: dialogAgent,
+        agent,
         type: dialog.type,
         name: dialog.name,
         version: selectedVersionFor(dialog),
@@ -507,7 +505,7 @@ export function AgentHubPage(_: FeaturePageProps) {
     if (!dialog) return
     runMutation({
       kind: 'uninstall',
-      input: { agent: dialogAgent, type: dialog.type, name: dialog.name },
+      input: { agent, type: dialog.type, name: dialog.name },
     })
   }
 
@@ -589,10 +587,10 @@ export function AgentHubPage(_: FeaturePageProps) {
 
   const uploadDialog = (message: string) => {
     if (!dialog || !store) return
-    void runCustomAction('upload', dialog, dialogAgent, async (signal) => {
+    void runCustomAction('upload', dialog, agent, async (signal) => {
       const result = await uploadCustomResource(
         store,
-        { agent: dialogAgent, type: dialog.type, name: dialog.name, message },
+        { agent, type: dialog.type, name: dialog.name, message },
         signal
       )
       if (result.exitCode !== 0) {
@@ -624,9 +622,9 @@ export function AgentHubPage(_: FeaturePageProps) {
     void runCustomAction(
       'delete',
       dialog,
-      dialogAgent,
+      agent,
       async (signal) => {
-        await deleteCustomResource(store, { agent: dialogAgent, ...target }, signal)
+        await deleteCustomResource(store, { agent, ...target }, signal)
         // The page closes the dialog instead of showing this, so the text only
         // documents the outcome of the write it just performed.
         return { text: 'Deleted {type} "{name}".', values: messageValues }
@@ -636,27 +634,27 @@ export function AgentHubPage(_: FeaturePageProps) {
   }
 
   const retryInspect = () => {
-    if (dialog) inspectTarget(dialogAgent, dialog)
+    if (dialog) inspectTarget(agent, dialog)
   }
 
-  const facets = view.status === 'ready' ? view.data.facets : { agents: [], tags: [] }
-  // The Agent menu lives on the My Capabilities tab, so it lists Agents only there.
-  const agents = tab === 'installed' ? INSTALLED_AGENTS : []
+  // `facets.agents` is not read anywhere: the Agent list is the fixed
+  // `INSTALLED_AGENTS` constant, so agent discovery is never performed.
+  const availableTags = view.status === 'ready' ? view.data.facets.tags : []
   const totalPages =
     view.status === 'ready' ? Math.max(1, Math.ceil(view.data.total / POWER_PAGE_SIZE)) : 1
 
   const dialogInstallation =
     dialog !== null
-      ? installationSnapshot.items.get(itemKey(dialogAgent, dialog.type, dialog.name)) ?? { status: 'unknown' }
+      ? installationSnapshot.items.get(itemKey(agent, dialog.type, dialog.name)) ?? { status: 'unknown' }
       : null
   const dialogNotice =
     dialog !== null
-      ? installationSnapshot.notices.get(itemKey(dialogAgent, dialog.type, dialog.name))
+      ? installationSnapshot.notices.get(itemKey(agent, dialog.type, dialog.name))
       : undefined
   const dialogCustomNotice =
-    dialog !== null ? customNotices.get(itemKey(dialogAgent, dialog.type, dialog.name)) : undefined
+    dialog !== null ? customNotices.get(itemKey(agent, dialog.type, dialog.name)) : undefined
   const dialogCustomAction =
-    dialog !== null && customAction !== null && customAction.key === itemKey(dialogAgent, dialog.type, dialog.name)
+    dialog !== null && customAction !== null && customAction.key === itemKey(agent, dialog.type, dialog.name)
       ? customAction.state
       : undefined
 
@@ -718,10 +716,10 @@ export function AgentHubPage(_: FeaturePageProps) {
       )}
       <PowerFilters
         tab={tab}
-        agents={agents}
+        agents={INSTALLED_AGENTS}
         agent={agent}
         type={type}
-        availableTags={facets.tags}
+        availableTags={availableTags}
         selectedTags={tags}
         onTabChange={changeTab}
         onAgentChange={changeAgent}
@@ -788,7 +786,7 @@ export function AgentHubPage(_: FeaturePageProps) {
         <PowerDetailsDialog
           series={dialog}
           selectedVersion={selectedVersionFor(dialog)}
-          agent={dialogAgent}
+          agent={agent}
           installation={dialogInstallation}
           active={installationSnapshot.active}
           notice={dialogNotice}
@@ -798,7 +796,6 @@ export function AgentHubPage(_: FeaturePageProps) {
           onUpload={uploadDialog}
           onDelete={deleteDialog}
           onVersionChange={(version) => changeVersion(dialog, version)}
-          onAgentChange={changeDialogAgent}
           onInstall={installSelected}
           onUninstall={uninstallDialog}
           onRetry={retryInspect}

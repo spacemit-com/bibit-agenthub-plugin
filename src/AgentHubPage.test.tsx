@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {
   FeatureHostApiProvider,
@@ -368,7 +368,7 @@ describe('AgentHubPage', () => {
     await screen.findByRole('heading', { name: 'skill-20' })
     expect(pageNumber()).toBe('2')
 
-    await user.hover(screen.getByRole('button', { name: 'My Capabilities' }))
+    await user.hover(screen.getByRole('button', { name: 'Agent: bibit' }))
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'codex' }))
 
     await waitFor(() => {
@@ -484,7 +484,7 @@ describe('AgentHubPage', () => {
     renderPage(hostApi)
     await screen.findByRole('heading', { name: 'code-review' })
 
-    await user.hover(screen.getByRole('button', { name: 'My Capabilities' }))
+    await user.hover(screen.getByRole('button', { name: 'Agent: bibit' }))
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'codex' }))
     await waitFor(() => expect(lastListParams().agent).toBe('codex'))
 
@@ -497,6 +497,101 @@ describe('AgentHubPage', () => {
       expect(last.scope).toBe('installed')
       expect(last.agent).toBe('codex')
     })
+  })
+
+  it('installs a market Power to the Agent chosen in the tab-row control', async () => {
+    const user = userEvent.setup()
+    let installCall: StoreRequest | undefined
+    const { hostApi } = makeStoreHost((input) => {
+      const params = wireParamsOf(input)
+      if (input.operationId === 'powers.list.v1') {
+        return params.scope === 'market' ? marketData() : installedData('[]')
+      }
+      if (input.operationId === 'powers.custom.list.v1') return customData()
+      if (input.operationId === 'powers.inspect.v1') return { listJson: '[]' }
+      if (input.operationId === 'powers.install.v1') {
+        installCall = input
+        return { status: 'exited', exitCode: 0 }
+      }
+      throw new Error('unexpected op ' + input.operationId)
+    })
+    renderPage(hostApi)
+    await screen.findByText('No Powers are available.')
+
+    // Choosing an Agent no longer requires opening a dialog: the tab-row control
+    // owns it, and the market install must follow the same choice.
+    await user.hover(screen.getByRole('button', { name: 'Agent: bibit' }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'codex' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Agent: codex' })).toBeTruthy())
+
+    await user.click(screen.getByRole('button', { name: 'Capability Market' }))
+    await screen.findByRole('heading', { name: 'market-translate' })
+    await user.click(screen.getByRole('heading', { name: 'market-translate' }))
+    const dialog = within(document.querySelector('dialog') as HTMLElement)
+    await dialog.findByText('Not installed')
+    expect(dialog.getByTestId('dialog-agent-static').textContent).toBe('codex')
+
+    await user.click(dialog.getByRole('button', { name: 'Install' }))
+
+    await waitFor(() => expect(installCall?.operationId).toBe('powers.install.v1'))
+    expect(installCall?.params).toEqual({
+      agent: 'codex',
+      type: 'skill',
+      name: 'market-translate',
+      version: 'v1.0.0',
+    })
+  })
+
+  it('leaves the market query and its tags alone when the Agent changes', async () => {
+    const user = userEvent.setup()
+    const taggedCatalogJson = JSON.stringify({
+      skills: {
+        items: [
+          { name: 'market-translate', version: 'v1.0.0', description: 'Translates text.', tags: ['alpha'] },
+          { name: 'market-other', version: 'v1.0.0', description: 'Something else.', tags: ['beta'] },
+        ],
+      },
+    })
+    const snapshot = await sha256(taggedCatalogJson)
+    const { hostApi, calls } = makeStoreHost((input) => {
+      const params = wireParamsOf(input)
+      if (input.operationId === 'powers.list.v1') {
+        if (params.scope === 'market') {
+          return { scope: 'market', status: 'data', snapshot, catalogJson: taggedCatalogJson }
+        }
+        return installedData('[]')
+      }
+      if (input.operationId === 'powers.custom.list.v1') return customData()
+      throw new Error('unexpected op ' + input.operationId)
+    })
+    renderPage(hostApi)
+    await screen.findByText('No Powers are available.')
+
+    await user.click(screen.getByRole('button', { name: 'Capability Market' }))
+    await screen.findByRole('heading', { name: 'market-translate' })
+    await user.click(screen.getByRole('button', { name: 'alpha' }))
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'alpha' }).getAttribute('aria-pressed')).toBe('true')
+    )
+
+    const marketCalls = () =>
+      calls.filter(
+        (call) => call.operationId === 'powers.list.v1' && wireParamsOf(call).scope === 'market'
+      ).length
+    const before = marketCalls()
+
+    await user.hover(screen.getByRole('button', { name: 'Agent: bibit' }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'codex' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Agent: codex' })).toBeTruthy())
+    // Give a stray refetch a chance to land before asserting none happened.
+    await act(async () => {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0))
+    })
+
+    // The market catalog is Agent-independent, so the choice only moves the
+    // install target: the list and the tag filter must stay where they were.
+    expect(marketCalls()).toBe(before)
+    expect(screen.getByRole('button', { name: 'alpha' }).getAttribute('aria-pressed')).toBe('true')
   })
 
   it('clears tags and resets the page when selecting the plugin type', async () => {
@@ -964,7 +1059,7 @@ describe('AgentHubPage', () => {
     renderPage(hostApi)
     await screen.findByText('No Powers are available.')
 
-    await user.hover(screen.getByRole('button', { name: 'My Capabilities' }))
+    await user.hover(screen.getByRole('button', { name: 'Agent: bibit' }))
 
     expect(screen.getByRole('menuitemradio', { name: 'bibit' })).toBeTruthy()
     expect(screen.getByRole('menuitemradio', { name: 'codex' })).toBeTruthy()
@@ -1255,7 +1350,9 @@ describe('AgentHubPage', () => {
       let dialog = within(document.querySelector('dialog') as HTMLElement)
       expect(await dialog.findByRole('button', { name: 'Uninstall' })).toBeTruthy()
       expect((dialog.getByLabelText('Version') as HTMLSelectElement).disabled).toBe(true)
-      expect((dialog.getByLabelText('Agent') as HTMLSelectElement).disabled).toBe(true)
+      // The Agent is read-only in the dialog; the tab row owns that choice.
+      expect(dialog.getByTestId('dialog-agent-static').textContent).toBe('bibit')
+      expect(dialog.queryByLabelText('Agent')).toBeNull()
       await user.click(dialog.getByRole('button', { name: 'Close' }))
 
       await user.click(screen.getByRole('button', { name: 'Capability Market' }))

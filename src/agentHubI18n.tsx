@@ -79,6 +79,7 @@ const zh: Readonly<Record<string, string>> = {
   // ---- filters and cards ----
   'Scope': '范围',
   'Agent': 'Agent',
+  'Agent: {agent}': 'Agent：{agent}',
   'My Capabilities': '我的能力',
   'Capability Market': '能力市场',
   'Type': '类型',
@@ -88,7 +89,6 @@ const zh: Readonly<Record<string, string>> = {
   // ---- details dialog ----
   'Close': '关闭',
   'Only the bibit agent supports this type.': '该类型仅支持 bibit Agent。',
-  'Switch to bibit': '切换到 bibit',
   'Reading installation state…': '正在读取安装状态…',
   'Checking…': '检查中…',
   'Running…': '执行中…',

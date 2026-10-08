@@ -69,26 +69,57 @@ describe('PowerFilters', () => {
     expect(props.onTabChange).toHaveBeenCalledWith('settings')
   })
 
-  it('hides the Type and Tag filters on the Settings tab', () => {
+  it('hides the Type and Tag filters on the Settings tab but keeps the Agent control', () => {
     renderFilters({ tab: 'settings' })
 
     expect(screen.queryByText('Type')).toBeNull()
     expect(screen.queryByText('Tags')).toBeNull()
     expect(screen.queryByRole('group', { name: 'Type' })).toBeNull()
-    // The tab row itself stays, so the user can come back to the catalog.
+    // The tab row itself stays, so the user can come back to the catalog, and the
+    // Agent control stays with it so the next catalog visit reads the chosen Agent.
     expect(screen.getByRole('button', { name: 'My Capabilities' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Settings' }).getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByRole('button', { name: 'Agent: bibit' })).toBeTruthy()
   })
 
-  it('opens the Agent menu from My Capabilities and marks the current Agent', async () => {
-    const user = userEvent.setup()
+  it('parks the Agent control at the right end of the tab row, outside the scope group', () => {
     renderFilters()
 
-    expect(document.querySelector('.power-filters__scopes')).toBeTruthy()
     expect(document.querySelector('.power-filters__panel')).toBeTruthy()
     expect(document.querySelector('.power-filters__tags')).toBeTruthy()
 
-    const trigger = screen.getByRole('button', { name: 'My Capabilities' })
+    const row = document.querySelector('.power-filters__scopes')
+    const scopes = screen.getByRole('group', { name: 'Scope' })
+    const switcher = screen.getByRole('button', { name: 'Agent: bibit' })
+    expect(row?.contains(switcher)).toBe(true)
+    // The switcher is a sibling of the scope group, not one of its tabs.
+    expect(scopes.contains(switcher)).toBe(false)
+    expect(scopes.contains(document.querySelector('.power-filters__agent-switcher'))).toBe(false)
+  })
+
+  it('keeps the Agent menu off My Capabilities', async () => {
+    const user = userEvent.setup()
+    // Start on another tab so the click below is a real tab change: clicking the
+    // already-active tab is a no-op by design.
+    const props = renderFilters({ tab: 'market' })
+
+    const tab = screen.getByRole('button', { name: 'My Capabilities' })
+    expect(tab.getAttribute('aria-haspopup')).toBeNull()
+    expect(tab.getAttribute('aria-expanded')).toBeNull()
+    expect(tab.textContent).toBe('My Capabilities')
+
+    await user.hover(tab)
+    await user.click(tab)
+    expect(screen.queryByRole('menu', { name: 'Agent' })).toBeNull()
+    // Clicking the tab still switches scope -- that is all it does now.
+    expect(props.onTabChange).toHaveBeenCalledWith('installed')
+  })
+
+  it('opens the Agent menu from the right-hand control and marks the current Agent', async () => {
+    const user = userEvent.setup()
+    renderFilters()
+
+    const trigger = screen.getByRole('button', { name: 'Agent: bibit' })
     expect(trigger.getAttribute('aria-expanded')).toBe('false')
 
     await user.hover(trigger)
@@ -102,11 +133,11 @@ describe('PowerFilters', () => {
     ])
   })
 
-  it('selects an Agent, closes the menu, and keeps the scope installed', async () => {
+  it('selects an Agent without switching the tab', async () => {
     const user = userEvent.setup()
     const props = renderFilters()
 
-    await user.click(screen.getByRole('button', { name: 'My Capabilities' }))
+    await user.click(screen.getByRole('button', { name: 'Agent: bibit' }))
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'atlas' }))
 
     expect(props.onAgentChange).toHaveBeenCalledWith('atlas')
@@ -114,21 +145,33 @@ describe('PowerFilters', () => {
     expect(screen.queryByRole('menu', { name: 'Agent' })).toBeNull()
   })
 
-  it('switches from market to the selected installed Agent from the menu', async () => {
-    const user = userEvent.setup()
-    const props = renderFilters({ tab: 'market' })
-
-    await user.hover(screen.getByRole('button', { name: 'My Capabilities' }))
-    fireEvent.click(screen.getByRole('menuitemradio', { name: 'atlas' }))
-
-    expect(props.onTabChange).toHaveBeenCalledWith('installed')
-    expect(props.onAgentChange).toHaveBeenCalledWith('atlas')
+  it('offers the Agent control on every tab, including Settings', () => {
+    for (const tab of ['installed', 'market', 'settings'] as const) {
+      const { unmount } = render(
+        <AgentHubI18nProvider language="en">
+          <PowerFilters
+            tab={tab}
+            agents={['bibit', 'atlas']}
+            agent="bibit"
+            type="skill"
+            availableTags={[]}
+            selectedTags={[]}
+            onTabChange={vi.fn()}
+            onAgentChange={vi.fn()}
+            onTypeChange={vi.fn()}
+            onTagsChange={vi.fn()}
+          />
+        </AgentHubI18nProvider>
+      )
+      expect(screen.getByRole('button', { name: 'Agent: bibit' })).toBeTruthy()
+      unmount()
+    }
   })
 
   it('opens the Agent menu with ArrowDown and restores focus with Escape', async () => {
     const user = userEvent.setup()
     renderFilters()
-    const trigger = screen.getByRole('button', { name: 'My Capabilities' })
+    const trigger = screen.getByRole('button', { name: 'Agent: bibit' })
 
     trigger.focus()
     await user.keyboard('{ArrowDown}')
@@ -162,7 +205,7 @@ describe('PowerFilters', () => {
     const user = userEvent.setup()
     renderFilters()
 
-    await user.click(screen.getByRole('button', { name: 'My Capabilities' }))
+    await user.click(screen.getByRole('button', { name: 'Agent: bibit' }))
     act(() => {
       screen.getByRole('button', { name: 'Capability Market' }).focus()
     })

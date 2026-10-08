@@ -432,6 +432,25 @@ describe('Agent Hub layout contract', () => {
     expect(staticVersion.flatMap((block) => declared(block, 'overflow'))).toContain('hidden')
   })
 
+  it('parks the Agent control at the right end of the tab row and opens its menu inwards', () => {
+    // The control is the tab row's right-hand tenant: `margin-left: auto` is the
+    // whole of "far right", and `position: relative` is the containing block its
+    // absolutely positioned menu is measured against.
+    const switcher = rules('.power-filters__agent-switcher')
+    expect(switcher.flatMap((block) => declared(block, 'margin-left'))).toEqual(['auto'])
+    expect(switcher.flatMap((block) => declared(block, 'position'))).toEqual(['relative'])
+
+    // The trigger sits on the page edge, so the menu must open leftwards; anchored
+    // to `left: 0` it would overflow the page instead of staying inside it.
+    const menu = rules('.power-filters__agent-menu')
+    expect(menu.flatMap((block) => declared(block, 'position'))).toEqual(['absolute'])
+    expect(menu.flatMap((block) => declared(block, 'right'))).toEqual(['0'])
+    expect(menu.flatMap((block) => declared(block, 'left'))).toEqual([])
+
+    // The triggers live outside the scope tab group, which keeps its own role.
+    expect(rules('.power-filters__scope-agent')).toEqual([])
+  })
+
   it('keeps the header refresh icon and the create entry on one height', () => {
     // WebKit sizes the create entry from its own control font (39px on WebKitGTK 2.52
     // with a fallback family, not the 41px the 14px/1.5 padding arithmetic predicts), so

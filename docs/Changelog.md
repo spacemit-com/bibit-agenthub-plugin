@@ -1,5 +1,56 @@
 # Changelog
 
+## 2026-09-30 — Agent 选择抽成标签栏最右侧的独立控件（0.3.16）
+
+分类：体验优化 / 交互重构
+
+用户需求：
+
+> 将我的能力 hover 选择 agent 单独设为一个控件（放在标签栏最右侧，不提供点击能力，可以在浏览我的能力/能力市场时随时 hover 进行切换），我的能力不再提供 hover 选择目标 agent，能力卡片的详情页也不再提供 agent 的选项，全部由该控件独立控制。
+> 控件文本和选择的 Agent 一致，并随选项改变，默认是 bibit。
+
+### 一、控件本身
+
+新增 `src/components/AgentSwitcher.tsx`，挂在标签栏（`.power-filters__scopes`）最右侧（`margin-left: auto`）：
+
+- 触发器文本就是当前 Agent（默认 `bibit`），随选择改变；可访问名是 `Agent: bibit`（满足 WCAG 2.5.3：可访问名包含可见文本），带 `aria-haspopup="menu"` / `aria-expanded`，**不带** `aria-pressed`——它不是标签页。
+- 菜单沿用原来的 `role="menu"` + `role="menuitemradio"` + 选中 `✓`。
+- hover 移入展开、移出收起；点击触发器**只展开、不 toggle**（鼠标用户此时已由 hover 展开，toggle 会读成「点一下反而关掉」）。
+- 键盘同样可达：焦点落在触发器即展开、方向键循环、`Escape` 关闭并把焦点还给触发器。焦点归还时会重入包装层导致菜单又被打开，代码用 `suppressFocusOpenRef` 标记这一次归还。
+- 三个标签页都显示（含设置页）。设置页不发 `powers.list.v1`，那里切换只决定下次进入目录的读取目标与安装目标。
+
+关于「不提供点击能力」：这一条在实现中**未采用**（按确认结果选择「触发区可点击展开」）。触发器可点击展开菜单，但不再兼作标签页跳转——原来的问题是标签按钮同时承担「切 scope + 开菜单」两件事。
+
+### 二、我的能力标签与详情弹窗
+
+- 「我的能力」退化为普通标签按钮：只切 scope，去掉了 `aria-haspopup` / `aria-expanded` / 下拉箭头与 hover 菜单。
+- DOM 语义调整：三个标签移入 `.power-filters__tabs`（`role="group" aria-label="范围"`），Agent 控件是它的**兄弟节点**，不再落在「范围」分组内部。
+- 详情弹窗的 Agent 行改为**只读显示**：删掉 Agent `<select>`，自定义资源与管理态统一走同一个只读展示。`agent` 类型遇到非 bibit 时保留「该类型仅支持 bibit Agent。」提示并隐藏安装按钮，但删掉了「切换到 bibit」按钮——弹窗是 `showModal()` 模态，用户本来也够不到标签栏上的控件，要换 Agent 就先关弹窗。
+- `dialogAgent` 这第二份 state 删除：列表查询、弹窗、安装/卸载、自定义资源上传与删除全部读同一个 `agent`。
+
+### 三、市场 scope 的行为
+
+- 市场里打开卡片后的安装目标改为**控件所选 Agent**（原来是强制 `bibit`，只能在弹窗里改；现在弹窗没有该选项了）。
+- 列表只在 `installed` 下按 Agent 读取，所以只有那里需要依赖它：市场切换 Agent **不重发请求、不清空已选标签/页码**，只改变安装目标。
+
+### 四、相关文件
+
+- `src/components/AgentSwitcher.tsx`（新增）+ `AgentSwitcher.test.tsx`（新增 9 条用例）
+- `src/components/PowerFilters.tsx`、`src/components/PowerDetailsDialog.tsx`、`src/AgentHubPage.tsx`
+- `src/agentHub.css`（`.power-filters__agent-switcher` / `__agent-trigger` 新增、`.power-filters__agent-menu` 改 `right: 0` 向左展开、`.power-filters__tabs` 新增、删除 `.power-filters__scope-agent`）
+- `src/agentHubI18n.tsx`（新增 `'Agent: {agent}'`，删除已无引用的 `'Switch to bibit'`，否则 orphan-key 用例会失败）
+- 测试更新：`PowerFilters.test.tsx`、`PowerDetailsDialog.test.tsx`、`AgentHubPage.test.tsx`、`agentHubLayout.test.ts`
+- 文档：开发指南新增 §7.2.4 并更新 §10.4 / §11 / §19，`README.md`，`debian/changelog`，版本 0.3.16
+- `docs/verification/2026-09-30-agent-switcher.md`（新增验证记录）
+
+### 五、验证结果或限制
+
+`npm test` 544 例（541 通过；唯一失败的 `dev/sources.test.ts` 3 条 `readMarket` 为基线问题，与本次无关）、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin`、`make -C provider test vet build`、`gofmt -l`、`git diff --check` 均通过。用例数核对：`AgentHubLayout` 19→20、`AgentHubPage` 67→69、`PowerFilters` 10→12、`PowerDetailsDialog` 37→37、新增 `AgentSwitcher` 9，合计 +14，与套件总数 530→544 一致（用 HEAD worktree 逐文件对数，确认没有测试被静默删除）。
+
+反向验证 5 处（全部按预期失败）：把 hover/`aria-haspopup` 放回「我的能力」标签；让选中 Agent 时额外调 `onTabChange('installed')`；把市场安装目标钉回 `bibit`；让 Agent 变化时无条件重置查询并重发市场请求；把弹窗的 Agent `<select>` 加回去。
+
+限制：本次没有新增 WebKit 离屏探针——改动全是 DOM 行为与选择器对齐，jsdom + 布局契约足以覆盖；深色主题那套 `light-dark()` 契约未受影响。
+
 ## 2026-09-30 — 跟随宿主明暗主题 + 自定义资源改用独立色相（0.3.15）
 
 分类：缺陷修复 / 体验优化

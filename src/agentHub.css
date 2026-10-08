@@ -203,10 +203,10 @@
   cursor: pointer;
 }
 
-/* ===== Scope navigation, agent menu, filters, selection states ===== */
+/* ===== Scope navigation, agent control, filters, selection states ===== */
 .power-filters { margin-bottom: 24px; }
-.power-filters__scopes { display: flex; gap: 6px; border-bottom: 1px solid var(--hub-border); }
-.power-filters__scope-agent { position: relative; }
+.power-filters__scopes { display: flex; align-items: center; gap: 6px; border-bottom: 1px solid var(--hub-border); }
+.power-filters__tabs { display: flex; gap: 6px; }
 .power-filters__scope {
   border: 0;
   border-bottom: 3px solid transparent;
@@ -218,11 +218,18 @@
   padding: 10px 14px;
 }
 .power-filters__scope[aria-pressed='true'] { border-bottom-color: var(--hub-scope); color: var(--hub-scope-text); }
+/* The Agent control is the tab row's right-hand tenant. `margin-left: auto` is what
+   parks it against the far edge, and `position: relative` is the containing block its
+   menu is measured against. */
+.power-filters__agent-switcher { position: relative; margin-left: auto; }
+.power-filters__agent-trigger { display: inline-flex; align-items: center; gap: 6px; font-weight: 750; }
 .power-filters__agent-menu {
   position: absolute;
   z-index: 20;
   top: calc(100% + 8px);
-  left: 0;
+  /* Right-aligned to a trigger that already sits on the page edge: opening
+     leftwards keeps the menu inside the page instead of past it. */
+  right: 0;
   min-width: 180px;
   padding: 7px;
   border: 1px solid var(--hub-border);

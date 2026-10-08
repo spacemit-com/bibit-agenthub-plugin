@@ -1,3 +1,39 @@
+bibit-agenthub-plugin (0.3.16) resolute-porting; urgency=medium
+
+  * Move the Agent choice out of the "My Capabilities" tab into its own control
+    at the right end of the tab row. That tab now only switches scope; the new
+    control carries hover and click to open a menu of
+    bibit / codex / claude-code / hermes-agent, shows the chosen Agent as its own
+    text, and is present on all three tabs.
+  * The control is not a fourth tab. Its trigger has aria-haspopup/aria-expanded
+    and no aria-pressed, and the three scope tabs moved into their own
+    role="group" so the control is a sibling of the group rather than a member
+    of it.
+  * Clicking the trigger only opens the menu -- it does not toggle -- because
+    hovering has already opened it by the time a mouse user clicks. Keyboard
+    parity is kept: focus opens, the arrows cycle, Escape closes and returns
+    focus without reopening (the focus restore re-enters the wrapper, so it is
+    flagged to stand down).
+  * Collapse the dialog's separate `dialogAgent` state into the one `agent`. The
+    details dialog no longer offers an Agent chooser at all: it shows the Agent
+    read-only. An `agent`-type Power under a non-bibit Agent still gets the
+    "Only the bibit agent supports this type." hint and no install button, but
+    the "Switch to bibit" corrective button is gone -- the tab row owns that
+    choice, and since the dialog is modal the user cannot reach the control
+    while it is open anyway.
+  * In the market scope, opening a card now targets the Agent chosen in the
+    control instead of a forced `bibit`.
+  * The list reads `agent` only in the installed scope, so it only depends on it
+    there: changing the Agent on the market tab no longer refetches the
+    Agent-independent catalog nor clears the tag/page state the user just set.
+    On the settings tab nothing is fetched either way.
+  * No protocol, DTO, Provider or packaging change: CSS, components, one new
+    i18n key ("Agent: {agent}") minus the now-unused "Switch to bibit", and
+    tests.
+
+ -- liangjunzhao <junzhao.liang@spacemit.com>  Wed, 30 Sep 2026 18:20:00 +0800
+
+
 bibit-agenthub-plugin (0.3.15) resolute-porting; urgency=medium
 
   * Make the page follow the host's light/dark theme. Every colour was a

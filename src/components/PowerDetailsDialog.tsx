@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ScrollThumb } from '../ScrollThumb'
 import { useAgentHubI18n, useAgentHubLanguage, type TranslatableText } from '../agentHubI18n'
 import { resolvePowerDescription, resolvePowerTitle, resolvePowerTypeLabel } from '../displayFields'
-import { INSTALLED_AGENTS, type PowerSeries } from '../api/contracts'
+import type { PowerSeries } from '../api/contracts'
 import type { ActiveMutation, InstallationState } from '../api/installationStore'
 
 /** A custom-resource write in flight; both custom actions disable while it runs. */
@@ -20,7 +20,6 @@ export interface PowerDetailsDialogProps {
   notice?: TranslatableText
   readOnly: boolean
   onVersionChange(version: string): void
-  onAgentChange(agent: string): void
   onInstall(): void
   onUninstall(): void
   onRetry(): void
@@ -54,7 +53,6 @@ export function PowerDetailsDialog({
   notice,
   readOnly,
   onVersionChange,
-  onAgentChange,
   onInstall,
   onUninstall,
   onRetry,
@@ -115,8 +113,9 @@ export function PowerDetailsDialog({
       : undefined
   const isInstalled = installedVersion !== undefined
   const busy = active !== undefined
-  // APM supports skill/plugin/mcp for every listed target, including Hermes.
-  const agentOptions = series.type === 'agent' ? ['bibit'] : INSTALLED_AGENTS
+  // APM supports skill/plugin/mcp for every listed target, including Hermes, but
+  // an `agent` Power is bibit-only; that is a fact about the type, not a choice
+  // this dialog makes, so the hint stays and the install button simply hides.
   const agentValidForInstall = series.type !== 'agent' || agent === 'bibit'
   const targetLocked = busy || isInstalled || readOnly
   const writeEnabled = installation.status === 'ready' && !busy
@@ -173,28 +172,11 @@ export function PowerDetailsDialog({
 
         <div className="agent-hub-dialog__field">
           <span className="agent-hub-dialog__label">{t('Agent')}</span>
-          {custom ? (
-            <span data-testid="dialog-agent-static">{agent}</span>
-          ) : series.type === 'agent' && agent !== 'bibit' ? (
-            <div>
-              <p className="agent-hub-dialog__hint">{t('Only the bibit agent supports this type.')}</p>
-              <button type="button" disabled={targetLocked} onClick={() => onAgentChange('bibit')}>
-                {t('Switch to bibit')}
-              </button>
-            </div>
-          ) : (
-            <select
-              aria-label={t('Agent')}
-              value={agent}
-              disabled={targetLocked}
-              onChange={(event) => onAgentChange(event.target.value)}
-            >
-              {agentOptions.map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </select>
+          {/* Read-only: the Agent is chosen once, in the tab row's Agent control.
+              The dialog is modal, so it cannot offer a second chooser. */}
+          <span data-testid="dialog-agent-static">{agent}</span>
+          {series.type === 'agent' && agent !== 'bibit' && (
+            <p className="agent-hub-dialog__hint">{t('Only the bibit agent supports this type.')}</p>
           )}
         </div>
 

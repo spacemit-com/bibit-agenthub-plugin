@@ -482,6 +482,17 @@ Local Preview 使用 `?lang=zh-CN` 打开中文界面，`dev/main.tsx` 右上角
 
 Local Preview 的 `dev/devHostViewport.css` 去掉 Dev Host 的 stage 内边距与页头，让预览画布从视口顶部开始、正好一个视口高，等价于宿主给插件的那个盒子——否则预览里的吸底分页会掉到可见区域之外，看不出真实效果。
 
+#### 7.2.4 Agent 切换控件（标签栏最右侧，唯一真值来源）
+
+Agent 的选择只有一处：标签栏（`.power-filters__scopes`）最右侧的独立控件。它由 `src/components/AgentSwitcher.tsx` 渲染，文本就是当前 Agent（默认 `bibit`），随选择改变。
+
+- **不是标签页**：`我的能力` 退化成一个普通标签按钮（只切 scope），不再在 hover/点击时弹出 Agent 菜单，也没有 `aria-haspopup`。控件本身带 `aria-haspopup="menu"` / `aria-expanded` 而**不带** `aria-pressed`，语义上不会和标签页混淆；DOM 上三个标签同属 `role="group" aria-label="范围"` 的 `.power-filters__tabs`，控件是它的兄弟节点。
+- **hover 与点击都能展开**：鼠标移入即展开、移出即收起；点击触发器只展开、不做 toggle（鼠标用户已经用 hover 展开过了，toggle 会读成「点一下反而关掉」）。键盘同样可达：焦点落在触发器上即展开、`ArrowDown`/`ArrowUp` 在选项间循环、`Escape` 关闭并把焦点还给触发器。焦点归还时会重入包装层，代码用一个 `suppressFocusOpenRef` 阻止它把菜单又开回来。
+- **三个标签页都在**：控件常驻标签行，`设置` 页也显示。设置页本身不发 `powers.list.v1`，所以在那里切换不产生请求、也没有可见变化；它决定的是下次进入目录时读取哪个 Agent（以及安装目标）。
+- **清空筛选只在真正相关时发生**：只有 `installed` 的列表按 Agent 读取，因此在 `installed` 下切换 Agent 会重置页码/标签/snapshot；`market` 的目录与 Agent 无关（请求体不带 `agent`），在市场上切换**不重发请求、也不清掉用户已选的标签**，只改变安装目标。
+- **详情弹窗只读显示 Agent**：弹窗不再提供 Agent 选项（它本身是 `showModal()` 模态，用户也够不到标签栏上的控件）。`agent` 类型遇到非 bibit 目标时仍显示「该类型仅支持 bibit Agent。」并隐藏安装按钮，但不再有「切换到 bibit」的纠正按钮——要换 Agent 请关闭弹窗、用控件切换。
+- 实现上 `dialogAgent` 这个第二份 state 已删除：列表查询、弹窗、安装/卸载、自定义资源的上传与删除全部读同一个 `agent`。
+
 ## 8. 设置内容开发（页面内「设置」标签页）
 
 当前插件**不声明 settings contribution**：`contributions.settings` 是空数组，Feature Module 里也没有 `settings`。这是刻意的产品决定——原先的设置页只有 APC 凭据一个真实字段，其余两个（`showExperimental`、`refreshMinutes`）没有任何消费方，因此设置内容改为 Agent Hub 页面一级标签中的第三个标签，与「我的 Power」「Power 市场」并列。
@@ -876,7 +887,7 @@ apm list --installed --agent=<selected> --json
 - stdout 非法 UTF-8 → `unavailable`；超 4 MiB → `resource_exhausted`；
 - 不透传 CLI stderr、物理路径、环境变量、堆栈或命令内部错误。
 
-前端 Agent 菜单固定为 bibit / codex / claude-code / hermes-agent 四个选项（`claude-code` 即 apm 中 Claude 的 id），由插件常量提供，不依赖 `facets.agents` 做发现；每次请求只解析所选 agent 的返回。`listJson` 由前端数据层用 `parseApmInstalledList` 解析为 `APMPowerRecord[]`，再经 `buildInstalledPowersResult` 完成 type 过滤与 tag AND（交集）过滤、按 type/name 聚合、去重、分页与 facets——这些聚合只存在于前端 `src/api/`，Provider 与 dev transport 不复制。
+前端 Agent 切换控件固定为 bibit / codex / claude-code / hermes-agent 四个选项（`claude-code` 即 apm 中 Claude 的 id），由插件常量 `INSTALLED_AGENTS` 提供，不依赖 `facets.agents` 做发现；每次请求只解析所选 agent 的返回。该控件是标签栏最右侧的独立控件（见 §7.2.4），`installed` 的列查询只认它的值（`market` 与 Agent 无关，请求体不带 agent）。`listJson` 由前端数据层用 `parseApmInstalledList` 解析为 `APMPowerRecord[]`，再经 `buildInstalledPowersResult` 完成 type 过滤与 tag AND（交集）过滤、按 type/name 聚合、去重、分页与 facets——这些聚合只存在于前端 `src/api/`，Provider 与 dev transport 不复制。
 
 ### 10.5 Power 详情与安装/卸载（APM CLI）
 
@@ -1048,7 +1059,7 @@ npm run dev
 
 浏览器打开 Vite 输出地址；首页地址追加 `?lang=zh-CN` 即为中文界面，右上角下拉框可随时切换语言（不刷新页面）。Feature Dev Host 读取真实 Manifest 和 Feature Module，并通过 `dev/main.tsx` 的 `serviceConnections` 把 `powers.list.v1` / `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` / `powers.custom.list.v1` / `powers.upload.v1` / `powers.delete.v1` / `settings.get.v2` / `settings.keys.add.v1` / `settings.keys.delete.v1` / `settings.keys.enable.v1` 路由到 Vite 中间件（`vite.config.ts` → `dev/store.ts`）提供的 Store。`scope=installed` 会真实执行 PATH 中的 `apm list --installed --agent=<selected> --json`（身份记录）；详情/安装/卸载分别执行 `apm list <name> --installed ...` / `apm install <name>=<version> ...` / `apm uninstall <name> ...`（argv 与 Go Provider 一致，读 30s / 写 120s）；`scope=market` 会每次请求真实拉取 APC 公开目录（`GET /resources/version` 取快照 + `GET /resources` 跟随重定向取全量列表），再按 `type` 过滤聚合；`settings.get.v2` / `settings.keys.add.v1` / `settings.keys.delete.v1` / `settings.keys.enable.v1` 使用内存设置（Key 只保留在 dev 进程内，只回传遮蔽 `preview`）；`powers.custom.list.v1` 扫描**本机真实 home**（`dev/custom.ts` 复刻 Provider 的目录、最低格式与展示名兜底规则），`powers.upload.v1` / `powers.delete.v1` 分别调用本机 `apm validate` + `apm submit` 与真实删除。此模式不启动、不编译 Bibit，也不要求远程 Store 后端在线；未安装 `apm` 时 installed 页显示可重试的 unavailable 错误，APC 不可达时 market 页显示可重试的 unavailable 错误。
 
-market 每次点击类型/标签、翻页都重新拉取并解析 APC 全量列表（无本地 fixture、无跨请求缓存），覆盖 skill / plugin / mcp / agent 四种 Power 类型；installed 由真实 apm 输出驱动，Agent 菜单固定为 bibit / codex / claude-code / hermes-agent 四个选项。两种 scope 复用同一套筛选、聚合、分页、facets 与 snapshot 规则，与未来 Remote Store 一致。
+market 每次点击类型/标签、翻页都重新拉取并解析 APC 全量列表（无本地 fixture、无跨请求缓存），覆盖 skill / plugin / mcp / agent 四种 Power 类型；installed 由真实 apm 输出驱动，Agent 由标签栏最右侧的独立控件切换，选项固定为 bibit / codex / claude-code / hermes-agent 四个。两种 scope 复用同一套筛选、聚合、分页、facets 与 snapshot 规则，与未来 Remote Store 一致。
 
 APC Base URL 默认测试环境 `https://developer.bianbu.xyz/api-server/apc/api/v1`，可用 `APC_BASE_URL` 环境变量覆盖。测试环境证书不受信，dev-only 传输层（`vite.config.ts`）关闭了 TLS 校验；正式 CLI Provider 必须使用受信 CA。APC 公开目录无按类型列表端点，因此 market 采用“全量列表 + 客户端按 `type` 过滤”的映射。
 
@@ -1544,6 +1555,7 @@ CLI 模式检查 Registry 是否为 `version: 2`、`transport: stdio`、固定�
 - 自动化测试使用 Vitest 覆盖 DTO、dev transport、客户端、组件与页面行为（`src/api/contracts.test.ts` 等与源文件同目录）；
 - 「设置」标签页的样式使用 `.agent-hub*` 命名空间内的独立 CSS，不依赖 `@bibit/feature-ui` 的 Settings Shell（插件已不声明 settings contribution）；
 
+- Agent 控件常驻标签行（含设置页）：在设置页切换没有可见效果，它决定的是下次进入目录时读取哪个 Agent、以及安装目标（§7.2.4）；
 - 明暗主题由宿主的 `color-scheme` 驱动，插件的每个颜色都是 `light-dark()` 成对声明（§7.2.1）；深色一支是推导出来的，**板端实机深色外观尚未验收**，本次证据是离屏 WebKitGTK 探针 `docs/verification/probe-dark-mode.py`；
 - 中英文由插件自带词典（`src/agentHubI18n.tsx`）提供，跟随宿主 `language`，目前只有 `en` 与 `zh-CN` 两种；新增语言需要同时扩展 `agentHubChinese`/`agentHubLocales` 与 `bibit.feature.json` 的 `contributions.locales`；
 - 宿主 `language` 传入组件自 `bi-bit` 0.1.4 起；更早的宿主不传该值时页面固定为英文；

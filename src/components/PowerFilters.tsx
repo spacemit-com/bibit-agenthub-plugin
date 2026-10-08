@@ -1,5 +1,6 @@
-import { useRef, useState, type FocusEvent, type KeyboardEvent } from 'react'
+import { useRef } from 'react'
 import { ScrollThumb } from '../ScrollThumb'
+import { AgentSwitcher } from './AgentSwitcher'
 import { useAgentHubI18n } from '../agentHubI18n'
 import { resolvePowerTypeLabel } from '../displayFields'
 import { POWER_TYPES, type PowerScope, type PowerType } from '../api/contracts'
@@ -37,126 +38,41 @@ export function PowerFilters({
   onTagsChange,
 }: PowerFiltersProps) {
   const t = useAgentHubI18n()
-  const [agentMenuOpen, setAgentMenuOpen] = useState(false)
-  const installedTriggerRef = useRef<HTMLButtonElement>(null)
-  const firstAgentRef = useRef<HTMLButtonElement>(null)
-  const suppressFocusOpenRef = useRef(false)
   const tagsRef = useRef<HTMLDivElement>(null)
-
-  const openAgentMenu = (focusFirst = false) => {
-    if (agents.length === 0) return
-    setAgentMenuOpen(true)
-    if (focusFirst) requestAnimationFrame(() => firstAgentRef.current?.focus())
-  }
-
-  const closeAgentMenu = (restoreFocus = false) => {
-    setAgentMenuOpen(false)
-    if (restoreFocus) {
-      suppressFocusOpenRef.current = true
-      requestAnimationFrame(() => {
-        installedTriggerRef.current?.focus()
-        suppressFocusOpenRef.current = false
-      })
-    }
-  }
-
-  const handleAgentWrapperBlur = (event: FocusEvent<HTMLDivElement>) => {
-    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) closeAgentMenu()
-  }
-
-  const handleAgentMenuKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      closeAgentMenu(true)
-      return
-    }
-    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
-    const items = Array.from(
-      event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')
-    )
-    if (items.length === 0) return
-    event.preventDefault()
-    const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement)
-    const direction = event.key === 'ArrowDown' ? 1 : -1
-    const nextIndex = currentIndex < 0
-      ? (direction === 1 ? 0 : items.length - 1)
-      : (currentIndex + direction + items.length) % items.length
-    items[nextIndex].focus()
-  }
 
   return (
     <div className="power-filters">
-      <div className="power-filters__scopes" role="group" aria-label={t('Scope')}>
-        <div
-          className="power-filters__scope-agent"
-          onMouseEnter={() => openAgentMenu()}
-          onMouseLeave={() => closeAgentMenu()}
-          onFocusCapture={(event) => {
-            if ((event.target as Node | null) === installedTriggerRef.current && !suppressFocusOpenRef.current) {
-              openAgentMenu()
-            }
-          }}
-          onBlurCapture={handleAgentWrapperBlur}
-          onKeyDown={handleAgentMenuKeyDown}
-        >
+      <div className="power-filters__scopes">
+        {/* The tab group and the Agent control share the tab row but not the
+            role: the group is the three scopes, and the Agent control is a
+            sibling of it, not a fourth tab. */}
+        <div className="power-filters__tabs" role="group" aria-label={t('Scope')}>
           <button
-            ref={installedTriggerRef}
             type="button"
             className="power-filters__scope"
             aria-pressed={tab === 'installed'}
-            aria-haspopup="menu"
-            aria-expanded={agentMenuOpen}
-            onClick={() => {
-              if (tab !== 'installed') onTabChange('installed')
-              openAgentMenu()
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'ArrowDown') {
-                event.preventDefault()
-                openAgentMenu(true)
-              }
-            }}
+            onClick={() => tab !== 'installed' && onTabChange('installed')}
           >
-            {t('My Capabilities')} <span aria-hidden="true">⌄</span>
+            {t('My Capabilities')}
           </button>
-          {agentMenuOpen && agents.length > 0 && (
-            <div className="power-filters__agent-menu" role="menu" aria-label={t('Agent')}>
-              {agents.map((value, index) => (
-                <button
-                  ref={index === 0 ? firstAgentRef : undefined}
-                  key={value}
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={value === agent}
-                  onClick={() => {
-                    if (tab !== 'installed') onTabChange('installed')
-                    if (value !== agent) onAgentChange(value)
-                    closeAgentMenu(true)
-                  }}
-                >
-                  {value === agent && <span aria-hidden="true">✓</span>}
-                  {value}
-                </button>
-              ))}
-            </div>
-          )}
+          <button
+            type="button"
+            className="power-filters__scope"
+            aria-pressed={tab === 'market'}
+            onClick={() => tab !== 'market' && onTabChange('market')}
+          >
+            {t('Capability Market')}
+          </button>
+          <button
+            type="button"
+            className="power-filters__scope"
+            aria-pressed={tab === 'settings'}
+            onClick={() => tab !== 'settings' && onTabChange('settings')}
+          >
+            {t('Settings')}
+          </button>
         </div>
-        <button
-          type="button"
-          className="power-filters__scope"
-          aria-pressed={tab === 'market'}
-          onClick={() => tab !== 'market' && onTabChange('market')}
-        >
-          {t('Capability Market')}
-        </button>
-        <button
-          type="button"
-          className="power-filters__scope"
-          aria-pressed={tab === 'settings'}
-          onClick={() => tab !== 'settings' && onTabChange('settings')}
-        >
-          {t('Settings')}
-        </button>
+        <AgentSwitcher agents={agents} agent={agent} onAgentChange={onAgentChange} />
       </div>
       {/* Type and tag filters describe the catalog only; the Settings tab has
           neither, so its panel would be a row of controls that do nothing. */}

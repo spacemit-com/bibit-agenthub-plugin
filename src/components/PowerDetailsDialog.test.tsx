@@ -94,11 +94,12 @@ describe('PowerDetailsDialog', () => {
   })
 
 
-  it.each(['skill', 'plugin', 'mcp'] as const)('offers Hermes as the %s install target', async (type) => {
-    const onAgentChange = vi.fn()
-    render(<PowerDetailsDialog {...props} series={{ ...series, type }} onAgentChange={onAgentChange} />)
-    await userEvent.setup().selectOptions(screen.getByLabelText('Agent'), 'hermes-agent')
-    expect(onAgentChange).toHaveBeenCalledWith('hermes-agent')
+  it.each(['skill', 'plugin', 'mcp'] as const)('shows the Agent read-only for a %s Power', (type) => {
+    render(<PowerDetailsDialog {...props} series={{ ...series, type }} agent="hermes-agent" />)
+
+    expect(screen.getByTestId('dialog-agent-static').textContent).toBe('hermes-agent')
+    // The Agent is chosen once, in the tab row's control; the modal has no chooser.
+    expect(screen.queryByLabelText('Agent')).toBeNull()
   })
 
   it('shows the selected version description and tags', () => {
@@ -189,10 +190,9 @@ describe('PowerDetailsDialog', () => {
     expect((screen.getByLabelText('Version') as HTMLSelectElement).disabled).toBe(false)
   })
 
-  it('locks agent and version and hides install when readOnly even if not installed', () => {
+  it('locks the version and hides install when readOnly even if not installed', () => {
     render(<PowerDetailsDialog {...props} readOnly installation={{ status: 'ready', records: [] }} />)
 
-    expect((screen.getByLabelText('Agent') as HTMLSelectElement).disabled).toBe(true)
     expect((screen.getByLabelText('Version') as HTMLSelectElement).disabled).toBe(true)
     expect(screen.queryByRole('button', { name: 'Install' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Uninstall' })).toBeNull()
@@ -207,7 +207,6 @@ describe('PowerDetailsDialog', () => {
       />
     )
 
-    expect((screen.getByLabelText('Agent') as HTMLSelectElement).disabled).toBe(true)
     expect((screen.getByLabelText('Version') as HTMLSelectElement).disabled).toBe(true)
     expect(screen.getByRole('button', { name: 'Uninstall' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Install' })).toBeNull()
@@ -243,7 +242,7 @@ describe('PowerDetailsDialog', () => {
     expect(screen.queryByRole('button', { name: 'Install' })).toBeNull()
   })
 
-  it.each(['codex', 'hermes-agent'])('offers only a Bibit switch for %s agent-type powers', (agent) => {
+  it.each(['codex', 'hermes-agent'])('only explains that an %s target cannot take agent-type Powers', (agent) => {
     const agentSeries: PowerSeries = {
       type: 'agent',
       name: 'reviewer',
@@ -252,8 +251,11 @@ describe('PowerDetailsDialog', () => {
     render(<PowerDetailsDialog {...props} series={agentSeries} agent={agent} />)
 
     expect(screen.getByText('Only the bibit agent supports this type.')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Switch to bibit' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Install' })).toBeNull()
+    // No corrective Agent control either: the tab row owns that choice.
+    expect(screen.queryByRole('button', { name: 'Switch to bibit' })).toBeNull()
+    expect(screen.queryByLabelText('Agent')).toBeNull()
+    expect(screen.getByTestId('dialog-agent-static').textContent).toBe(agent)
   })
 
   it('shows the active phase and disables writes while busy', () => {
