@@ -57,47 +57,36 @@ const localizedSeries: PowerSeries = {
 }
 
 function renderCard(overrides: Partial<PowerCardProps> = {}) {
-  const onVersionChange = vi.fn()
   const onDetails = vi.fn()
-  const result = render(
-    <PowerCard
-      series={series}
-      selectedVersion="v2.0.0"
-      onVersionChange={onVersionChange}
-      busy={false}
-      onDetails={onDetails}
-      {...overrides}
-    />
-  )
-  return { result, onVersionChange, onDetails }
+  const result = render(<PowerCard series={series} busy={false} onDetails={onDetails} {...overrides} />)
+  return { result, onDetails }
 }
 
-function renderLocalized(language: string, selectedVersion = 'v2.0.0') {
+function renderLocalized(language: string) {
   return render(
     <AgentHubI18nProvider language={language}>
-      <PowerCard
-        series={localizedSeries}
-        selectedVersion={selectedVersion}
-        onVersionChange={vi.fn()}
-        busy={false}
-      />
+      <PowerCard series={localizedSeries} busy={false} />
     </AgentHubI18nProvider>
   )
 }
 
 describe('PowerCard', () => {
-  it('switches the version control label with the host language prop', () => {
+  it('shows the newest version as a label instead of a control', () => {
     const card = (language: string) => (
       <AgentHubI18nProvider language={language}>
-        <PowerCard series={series} selectedVersion="v2.0.0" onVersionChange={vi.fn()} busy={false} />
+        <PowerCard series={series} busy={false} />
       </AgentHubI18nProvider>
     )
     const view = render(card('en'))
-    expect(screen.getByLabelText('Version')).toBeTruthy()
+
+    // Version choice lives in the details dialog, so the card only reports the newest.
+    expect(screen.getByTestId('power-card-version').textContent).toBe('v2.0.0')
+    expect(screen.queryByLabelText('Version')).toBeNull()
+    expect(document.querySelector('.power-card__version')?.tagName).toBe('SPAN')
 
     view.rerender(card('zh-CN'))
-    expect(screen.getByLabelText('版本')).toBeTruthy()
-    expect(screen.queryByLabelText('Version')).toBeNull()
+    expect(screen.getByTestId('power-card-version').textContent).toBe('v2.0.0')
+    expect(screen.queryByLabelText('版本')).toBeNull()
   })
 
   it('renders the series type and name', () => {
@@ -110,12 +99,7 @@ describe('PowerCard', () => {
   it('labels an agent-type series as Expert while keeping the wire type on the card', () => {
     const { container } = render(
       <AgentHubI18nProvider language="en">
-        <PowerCard
-          series={{ ...series, type: 'agent', name: 'reviewer' }}
-          selectedVersion="v2.0.0"
-          onVersionChange={vi.fn()}
-          busy={false}
-        />
+        <PowerCard series={{ ...series, type: 'agent', name: 'reviewer' }} busy={false} />
       </AgentHubI18nProvider>
     )
 
@@ -140,40 +124,27 @@ describe('PowerCard', () => {
     expect(screen.queryByText('带质量门禁的代码审查。')).toBeNull()
   })
 
-  it('falls back per version when a V1 version has no description_zh', () => {
-    renderLocalized('zh-CN', 'v1.0.0')
+  it('falls back per version when the newest version has no description_zh', () => {
+    // The card shows the newest version, so the per-version fallback is exercised on a
+    // series whose newest version is the V1 one that carries no `description_zh`.
+    const v1 = localizedSeries.versions.find((version) => version.version === 'v1.0.0')!
+    render(
+      <AgentHubI18nProvider language="zh-CN">
+        <PowerCard series={{ ...localizedSeries, versions: [v1] }} busy={false} />
+      </AgentHubI18nProvider>
+    )
 
     expect(screen.getByRole('heading', { name: '代码审查' })).toBeTruthy()
     expect(screen.getByText('Peer review workflow.')).toBeTruthy()
   })
 
-  it('keeps the title on the series while the per-version description follows the select', async () => {
-    function Controlled() {
-      const [version, setVersion] = useState('v2.0.0')
-      return (
-        <PowerCard
-          series={localizedSeries}
-          selectedVersion={version}
-          onVersionChange={setVersion}
-          busy={false}
-        />
-      )
-    }
-    const user = userEvent.setup()
-    render(
-      <AgentHubI18nProvider language="zh-CN">
-        <Controlled />
-      </AgentHubI18nProvider>
-    )
+  it('keeps the title on the series and the description on the newest version', () => {
+    renderLocalized('zh-CN')
 
+    // The series title stays put while the description below it is the newest version's.
     expect(screen.getByRole('heading', { name: '代码审查' })).toBeTruthy()
     expect(screen.getByText('带质量门禁的代码审查。')).toBeTruthy()
-
-    await user.selectOptions(screen.getByLabelText('版本'), 'v1.0.0')
-
-    expect(screen.getByRole('heading', { name: '代码审查' })).toBeTruthy()
-    expect(screen.getByText('Peer review workflow.')).toBeTruthy()
-    expect(screen.queryByText('带质量门禁的代码审查。')).toBeNull()
+    expect(screen.queryByText('Peer review workflow.')).toBeNull()
   })
 
   it('shrinks a long name so it stays on one line', () => {
@@ -197,44 +168,21 @@ describe('PowerCard', () => {
     expect(title.style.fontSize).toBe('19px')
   })
 
-  it('uses the type palette hook and hides the visible Version label', () => {
+  it('uses the type palette hook and shows no Version label', () => {
     const { result } = renderCard()
 
     const card = result.container.querySelector('.power-card')
     expect(card?.getAttribute('data-power-type')).toBe('skill')
     expect(screen.queryByText('Version')).toBeNull()
-    expect((screen.getByLabelText('Version') as HTMLSelectElement).value).toBe('v2.0.0')
+    expect(screen.getByTestId('power-card-version').textContent).toBe('v2.0.0')
   })
 
-  it('renders the selected version description and tags', () => {
-    renderCard({ selectedVersion: 'v2.0.0' })
+  it('renders the newest version description and tags', () => {
+    renderCard()
 
     expect(screen.getByText('Peer review with a quality gate.')).toBeTruthy()
     const tags = screen.getByTestId('power-card-tags')
     expect(within(tags).getByText('quality')).toBeTruthy()
-  })
-
-  it('updates the description and tags when the controlled version changes', async () => {
-    function Controlled() {
-      const [version, setVersion] = useState('v2.0.0')
-      return <PowerCard series={series} selectedVersion={version} onVersionChange={setVersion} busy={false} />
-    }
-    const user = userEvent.setup()
-    render(<Controlled />)
-
-    await user.selectOptions(screen.getByLabelText('Version'), 'v1.0.0')
-
-    expect(screen.getByText('Peer review workflow.')).toBeTruthy()
-    const tags = screen.getByTestId('power-card-tags')
-    expect(within(tags).getByText('writing')).toBeTruthy()
-    expect(screen.queryByText('Peer review with a quality gate.')).toBeNull()
-  })
-
-  it('falls back to the first version when the selected version is no longer available', () => {
-    renderCard({ selectedVersion: 'v9.9.9' })
-
-    expect((screen.getByLabelText('Version') as HTMLSelectElement).value).toBe('v2.0.0')
-    expect(screen.getByText('Peer review with a quality gate.')).toBeTruthy()
   })
 
   it('opens details when the card body is clicked', () => {
@@ -245,12 +193,13 @@ describe('PowerCard', () => {
     expect(onDetails).toHaveBeenCalled()
   })
 
-  it('does not open details when the version select is clicked', () => {
+  it('has no interactive version control to swallow the click', () => {
     const { onDetails } = renderCard()
 
-    fireEvent.click(screen.getByLabelText('Version'))
+    // The version slot is plain text now, so clicking it is a normal card click.
+    fireEvent.click(screen.getByTestId('power-card-version'))
 
-    expect(onDetails).not.toHaveBeenCalled()
+    expect(onDetails).toHaveBeenCalled()
   })
 
   it('does not open details when the card is not clickable', () => {
@@ -260,10 +209,12 @@ describe('PowerCard', () => {
     expect(card?.getAttribute('data-clickable')).toBeNull()
   })
 
-  it('disables the version select while busy', () => {
-    renderCard({ busy: true })
+  it('does not open details while a write is in flight', () => {
+    const { onDetails } = renderCard({ busy: true })
 
-    expect((screen.getByLabelText('Version') as HTMLSelectElement).disabled).toBe(true)
+    fireEvent.click(screen.getByRole('heading', { name: 'code-review' }))
+
+    expect(onDetails).not.toHaveBeenCalled()
   })
 
   it('renders the notice when provided', () => {
@@ -272,19 +223,19 @@ describe('PowerCard', () => {
     expect(screen.getByText('Installation complete.')).toBeTruthy()
   })
 
-  it('marks a hand-installed resource and replaces its version select with a label', () => {
+  it('marks a hand-installed resource and labels its version', () => {
     const custom: PowerSeries = {
       type: 'skill',
       name: 'hand-written',
       source: 'custom',
       versions: [{ version: 'v1.2.3', description: 'Hand made.', tags: [] }],
     }
-    const view = render(<PowerCard series={custom} selectedVersion="v1.2.3" onVersionChange={vi.fn()} busy={false} />)
+    const view = render(<PowerCard series={custom} busy={false} />)
 
     const card = view.container.querySelector('.power-card')
     expect(card?.getAttribute('data-source')).toBe('custom')
     expect(screen.getByText('Custom')).toBeTruthy()
-    // Exactly one version exists, so there is no control to pick between them.
+    // No card has a version control any more; the custom one keeps the dashed slot.
     expect(screen.queryByLabelText('Version')).toBeNull()
     expect(screen.getByTestId('power-card-version').textContent).toBe('v1.2.3')
   })
@@ -296,7 +247,7 @@ describe('PowerCard', () => {
       source: 'custom',
       versions: [{ version: '', description: '', tags: [] }],
     }
-    render(<PowerCard series={custom} selectedVersion="" onVersionChange={vi.fn()} busy={false} />)
+    render(<PowerCard series={custom} busy={false} />)
 
     expect(screen.getByTestId('power-card-version').textContent).toBe('No version')
   })
@@ -315,8 +266,24 @@ describe('PowerCard', () => {
     expect(screen.getByText('Installed')).toBeTruthy()
     // The modifier is what carries the success colours instead of the custom ones.
     expect(result.container.querySelector('.power-card__badge--installed')).toBeTruthy()
-    // A market card keeps its version control; only the badge is added.
-    expect(screen.getByLabelText('Version')).toBeTruthy()
+    // The badge is added alongside the version the catalog lists, not instead of it.
+    expect(screen.getByTestId('power-card-version').textContent).toBe('v2.0.0')
+  })
+
+  it('puts the New badge to the left of Installed', () => {
+    const { result } = renderCard({ installed: true, hasNewer: true })
+
+    const badges = Array.from(result.container.querySelectorAll('.power-card__badge'))
+    expect(badges.map((badge) => badge.textContent)).toEqual(['New', 'Installed'])
+    expect(result.container.querySelector('.power-card__badge--new')).toBeTruthy()
+  })
+
+  it('shows no New badge without an install to be newer than', () => {
+    // `New` means "newer than the version you have", so it never stands alone.
+    const { result } = renderCard({ hasNewer: true })
+
+    expect(screen.queryByText('New')).toBeNull()
+    expect(result.container.querySelector('.power-card__badge--new')).toBeNull()
   })
 
   it('shows no installed marker unless the manifest says so', () => {
@@ -335,14 +302,14 @@ describe('PowerCard', () => {
       source: 'custom',
       versions: [{ version: 'v1.2.3', description: 'Hand made.', tags: [] }],
     }
-    render(<PowerCard series={custom} selectedVersion="v1.2.3" onVersionChange={vi.fn()} busy={false} />)
+    render(<PowerCard series={custom} busy={false} />)
 
     expect(screen.getByText('Custom')).toBeTruthy()
     expect(screen.queryByText('Installed')).toBeNull()
 
     cleanup()
 
-    render(<PowerCard series={series} selectedVersion="v2.0.0" onVersionChange={vi.fn()} busy={false} installed />)
+    render(<PowerCard series={series} busy={false} installed />)
     expect(screen.getByText('Installed')).toBeTruthy()
     expect(screen.queryByText('Custom')).toBeNull()
   })

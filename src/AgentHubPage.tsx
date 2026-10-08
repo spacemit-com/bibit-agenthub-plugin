@@ -9,6 +9,7 @@ import {
 import {
   INSTALLED_AGENTS,
   POWER_PAGE_SIZE,
+  comparePowerVersions,
   powerTypesForAgent,
   type ListPowersInput,
   type PowerScope,
@@ -151,10 +152,6 @@ function itemKey(agent: string, type: string, name: string): string {
   return JSON.stringify([agent, type, name])
 }
 
-function versionKey(type: string, name: string): string {
-  return JSON.stringify([type, name])
-}
-
 const EMPTY_SNAPSHOT: InstallationSnapshot = {
   revision: 0,
   items: new Map(),
@@ -250,7 +247,12 @@ export function AgentHubPage(_: FeaturePageProps) {
   const [view, setView] = useState<ViewState>({ status: 'loading' })
   const generationRef = useRef(0)
 
-  const [selectedVersions, setSelectedVersions] = useState<ReadonlyMap<string, string>>(new Map())
+  /**
+   * The version the dialog is showing. The card no longer chooses one, so this is
+   * set when the dialog opens -- always to the newest the series lists -- and only
+   * the dialog's own selector changes it.
+   */
+  const [dialogVersion, setDialogVersion] = useState('')
   const [dialog, setDialog] = useState<PowerSeries | null>(null)
   /** In-flight custom write, keyed by resource so the dialog only shows its own. */
   const [customAction, setCustomAction] = useState<{ key: string; state: CustomActionState } | null>(null)
@@ -476,19 +478,6 @@ export function AgentHubPage(_: FeaturePageProps) {
   }
   const retryLoad = () => setRetry((value) => value + 1)
 
-  const selectedVersionFor = useCallback(
-    (series: PowerSeries) => selectedVersions.get(versionKey(series.type, series.name)) ?? series.versions[0].version,
-    [selectedVersions]
-  )
-
-  const changeVersion = (series: PowerSeries, version: string) => {
-    setSelectedVersions((prev) => {
-      const next = new Map(prev)
-      next.set(versionKey(series.type, series.name), version)
-      return next
-    })
-  }
-
   const inspectTarget = useCallback(
     (targetAgent: string, series: PowerSeries) => {
       if (!installationStore) return
@@ -504,6 +493,8 @@ export function AgentHubPage(_: FeaturePageProps) {
 
   const openDetails = (series: PowerSeries) => {
     setDialog(series)
+    // The dialog opens on the newest version the series lists.
+    setDialogVersion(series.versions[0].version)
     // A hand-installed resource is not in the APM manifest, so an inspect would
     // only ask apm about a Power it does not manage. The custom dialog renders
     // its own facts instead of the installation lifecycle.
@@ -529,7 +520,7 @@ export function AgentHubPage(_: FeaturePageProps) {
         agent,
         type: dialog.type,
         name: dialog.name,
-        version: selectedVersionFor(dialog),
+        version: dialogVersion,
       },
     })
   }
@@ -673,13 +664,23 @@ export function AgentHubPage(_: FeaturePageProps) {
   // `facets.agents` is not read anywhere: the Agent list is the fixed
   // `INSTALLED_AGENTS` constant, so agent discovery is never performed.
   const availableTags = view.status === 'ready' ? view.data.facets.tags : []
-  // `fullLists` is keyed by Agent and is the manifest a market card's badge reads. The
+  // `fullLists` is keyed by Agent and is the manifest a market card's badges read. The
   // market catalog is Agent-independent, so membership has to be resolved against the
   // Agent the user chose rather than against the scope the list was read in. Rebuilt
-  // per publish because the store hands out a fresh Map each time.
-  const installedKeys = useMemo(() => {
-    const records = installationSnapshot.fullLists.get(agent)
-    return new Set((records ?? []).map((record) => powerSeriesKey(record.type, record.name)))
+  // per publish because the store hands out a fresh Map each time. A series could in
+  // principle have several installed records, so the newest wins: "something newer
+  // exists" has to compare against what is actually the latest on disk.
+  const installedVersions = useMemo(() => {
+    const records = installationSnapshot.fullLists.get(agent) ?? []
+    const versions = new Map<string, string>()
+    for (const record of records) {
+      const key = powerSeriesKey(record.type, record.name)
+      const known = versions.get(key)
+      if (known === undefined || comparePowerVersions(record.version, known) > 0) {
+        versions.set(key, record.version)
+      }
+    }
+    return versions
   }, [installationSnapshot.fullLists, agent])
   const totalPages =
     view.status === 'ready' ? Math.max(1, Math.ceil(view.data.total / POWER_PAGE_SIZE)) : 1
@@ -795,27 +796,33 @@ export function AgentHubPage(_: FeaturePageProps) {
               ) : (
                 <>
                   <section className="agent-hub__grid" aria-label={t('Available Powers')}>
-                    {view.data.items.map((series) => (
-                      <PowerCard
-                        key={`${series.type}-${series.name}`}
-                        series={series}
-                        selectedVersion={selectedVersionFor(series)}
-                        onVersionChange={(version) => changeVersion(series, version)}
-                        busy={isBusyFor(agent, series)}
-                        // Only the market needs it: every card on the installed tab is
-                        // installed by definition, so a badge there would be noise.
-                        installed={
-                          scope === 'market' &&
-                          installedKeys.has(powerSeriesKey(series.type, series.name))
-                        }
-                        notice={
-                          scope === 'installed'
-                            ? installationSnapshot.notices.get(itemKey(agent, series.type, series.name))
-                            : undefined
-                        }
-                        onDetails={() => openDetails(series)}
-                      />
-                    ))}
+                    {view.data.items.map((series) => {
+                      // Only the market badges: every card on the installed tab is
+                      // installed by definition, so a badge there would be noise.
+                      const installedVersion =
+                        scope === 'market'
+                          ? installedVersions.get(powerSeriesKey(series.type, series.name))
+                          : undefined
+                      return (
+                        <PowerCard
+                          key={`${series.type}-${series.name}`}
+                          series={series}
+                          busy={isBusyFor(agent, series)}
+                          installed={installedVersion !== undefined}
+                          // `New` is only meaningful relative to an installed version.
+                          hasNewer={
+                            installedVersion !== undefined &&
+                            comparePowerVersions(series.versions[0].version, installedVersion) > 0
+                          }
+                          notice={
+                            scope === 'installed'
+                              ? installationSnapshot.notices.get(itemKey(agent, series.type, series.name))
+                              : undefined
+                          }
+                          onDetails={() => openDetails(series)}
+                        />
+                      )
+                    })}
                   </section>
                   <PowerPagination
                     page={view.data.page}
@@ -832,7 +839,7 @@ export function AgentHubPage(_: FeaturePageProps) {
       {dialog && dialogInstallation && (
         <PowerDetailsDialog
           series={dialog}
-          selectedVersion={selectedVersionFor(dialog)}
+          selectedVersion={dialogVersion}
           agent={agent}
           installation={dialogInstallation}
           active={installationSnapshot.active}
@@ -842,7 +849,7 @@ export function AgentHubPage(_: FeaturePageProps) {
           customNotice={dialogCustomNotice}
           onUpload={uploadDialog}
           onDelete={deleteDialog}
-          onVersionChange={(version) => changeVersion(dialog, version)}
+          onVersionChange={setDialogVersion}
           onInstall={installSelected}
           onUninstall={uninstallDialog}
           onRetry={retryInspect}

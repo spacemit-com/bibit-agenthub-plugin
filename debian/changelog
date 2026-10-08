@@ -1,3 +1,43 @@
+bibit-agenthub-plugin (0.3.19) resolute-porting; urgency=medium
+
+  * The card no longer chooses a version. Its version slot is a static label showing
+    the newest version the series lists, and every version decision moved into the
+    details dialog, which opens on that same newest version. Choosing a version on a
+    card never sat well with a slot that also had to report what is installed.
+  * The dialog's version control is no longer frozen by an install. It used to lock
+    as soon as the record existed, which left "uninstall" as the only reachable
+    action for an installed Power. The primary action is now named after what the
+    chosen version does to the installed one: Install when nothing is installed,
+    Update for a higher version, Uninstall for the installed one, Downgrade for a
+    lower one.
+  * Update, downgrade and uninstall each confirm before they replace or remove a
+    version; a first install still goes straight through. The confirmation is tied
+    to the action, so it cannot survive the selection or the record changing under
+    it.
+  * Version options mark the installed one. When the catalog no longer lists it, the
+    installed version is added back to the list -- otherwise Uninstall would be
+    unreachable, since selecting the installed version is the only way into it.
+  * Market cards can now carry two badges: `New` left of `Installed` when the catalog
+    lists something newer than what the Agent has. `New` is gated on being installed
+    because "newer than yours" is meaningless without something installed. It gets
+    its own indigo family so the three badge meanings stay apart, and the type label
+    now takes the free space in the header -- two badges that each carried
+    `margin-left: auto` would split the space and drift apart.
+  * The two private version comparators (one ascending, one descending) are now one
+    exported `comparePowerVersions`, with the descending order derived from it. It is
+    tolerant on purpose: it runs on manifest data the UI already holds, so a missing
+    or non-canonical version must not throw.
+  * Version 0.3.19 moves package.json, package-lock.json, bibit.feature.json and
+    providerVersion together, as TestProviderVersionMatchesPackageJSON requires even
+    though no Provider code changed.
+  * Known limit: update and downgrade are `apm install <name>=<version>` over an
+    existing install. Whether apm replaces the other version is outside this repo's
+    control and still needs a board check; the frontend now allows the attempt and
+    maps a non-zero exit to its fixed failure copy.
+
+ -- liangjunzhao <junzhao.liang@spacemit.com>  Thu, 08 Oct 2026 16:35:00 +0800
+
+
 bibit-agenthub-plugin (0.3.18) resolute-porting; urgency=medium
 
   * Show an Installed badge on market cards. The market catalog is Agent-

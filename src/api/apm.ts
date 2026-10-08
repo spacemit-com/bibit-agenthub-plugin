@@ -1,6 +1,7 @@
 import {
   POWER_PAGE_SIZE,
   POWER_TYPES,
+  comparePowerVersions,
   type CustomResourceRecord,
   type ListPowersInput,
   type ListPowersResult,
@@ -154,27 +155,13 @@ export function powerSeriesKey(type: string, name: string): string {
   return `${type}\u0000${name}`
 }
 
-function parseVersionParts(version: string): [number, number, number] {
-  const match = VERSION_PATTERN.exec(version)
-  if (!match) throw new Error(`Invalid version: ${version}`)
-  return [Number(match[1]), Number(match[2]), Number(match[3])]
-}
-
 /**
  * Orders versions newest-first. A versionless custom resource sorts last: it is
  * the only entry of its series, and treating "no declared version" as the oldest
  * keeps a hand-installed resource from outranking a real release.
  */
 function compareVersionsDescending(left: string, right: string): number {
-  if (left === '' || right === '') {
-    if (left === right) return 0
-    return left === '' ? 1 : -1
-  }
-  const [lMajor, lMinor, lPatch] = parseVersionParts(left)
-  const [rMajor, rMinor, rPatch] = parseVersionParts(right)
-  if (rMajor !== lMajor) return rMajor - lMajor
-  if (rMinor !== lMinor) return rMinor - lMinor
-  return rPatch - lPatch
+  return -comparePowerVersions(left, right)
 }
 
 function compareSeries(left: PowerSeries, right: PowerSeries): number {

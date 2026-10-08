@@ -1,5 +1,70 @@
 # Changelog
 
+## 2026-10-08 — 卡片固定显示最新版本，详情页按版本给出安装/更新/降级/卸载（0.3.19）
+
+分类：交互重构
+
+用户需求：
+
+> 取消卡片上的版本选择，固定展示最新的版本信息。进入详情页默认展示最新版本。
+> 详情页的版本选项在安装后不再固定，详情页控件根据版本号改为更新（高版本）/卸载（已安装版本）/降级（低版本）/安装（未安装）
+> 详情页版本选项文本需标记已安装版本。
+> 当存在新版本时，在卡片的已安装徽标左侧新增 new 徽标
+
+### 一、卡片：不再选版本
+
+版本槽从「原生 `<select>`」变成**静态标签**，显示该系列当前的最新版本（`series.versions[0]`，聚合层保证降序；自定义资源显示其声明版本，没有则 `No version`）。选择只在详情弹窗里发生。
+
+顺带的收口：原来「管理态 select vs 自定义静态标签」是两套样式，靠 `--hub-version-height` 对齐高度；现在所有卡片共用同一个 `.power-card__version`，`--version--static` 修饰类删除，自定义资源的外观改由 `.power-card[data-source='custom'] .power-card__version` 承担。token 仍保留 31px，目的是卡片度量不因这次改动而变化。
+
+### 二、详情弹窗：动作按「选中版本 vs 已安装版本」命名
+
+| 情形 | 主控件 | 是否需要确认 |
+| --- | --- | --- |
+| 未安装 | `Install` | 否（与改动前一致） |
+| 选中版本高于已安装 | `Update` | 是 |
+| 选中版本等于已安装 | `Uninstall` | 是（沿用原确认） |
+| 选中版本低于已安装 | `Downgrade` | 是 |
+| 只读（我的能力页） | `Uninstall`（仅已安装时） | 是 |
+
+- 版本选择器 `disabled={busy || readOnly}`——**去掉了 `isInstalled`**，这就是「安装后不再固定」。它只在写入进行中或只读视图里禁用。
+- 选项文本标记已安装版本（`{version} (installed)`）。目录若已下架该版本，会把它**补回**选项列表（按降序排序插入）——否则「卸载」这个状态将无法到达。
+- 确认状态与动作绑定：动作一变（换版本，或记录出现/消失）就清掉已按下的确认，避免确认框留在另一个动作上。
+- 只读视图（`readOnly`）保持只读：选择器禁用、动作恒为卸载；未安装时不显示动作。这一条是确认过的——那个 scope 的系列版本来自安装清单，本来没有可选的更新/降级目标。
+
+### 三、`New` 徽标
+
+市场卡片在「该 Agent 已安装、且目录里的最新版本更高」时，于 `Installed` **左侧**再加一个 `New`。`New` 以已安装为前提（「比你手上的新」离开已安装版本就没有意义），因此不会单独出现。它用独立的靛蓝 token（`--hub-new` / `--hub-new-bg` / `--hub-new-line`，`light-dark()` 成对，文字对比度浅色 7.12 / 深色 8.41），与已安装的绿、自定义的玫红都区分开。
+
+头部排布同时改了一处：原来 `.power-card__badge` 带 `margin-left: auto`（只有一个徽标时无妨），两个徽标会**平分空白**把 `New` 与 `Installed` 推开；现在改由 `.power-card__type { margin-right: auto }` 吃下剩余空间，徽标按 DOM 顺序从右往左紧排。布局用例锁住了这一点。
+
+### 四、版本比较器收口
+
+`contracts.ts` 与 `apm.ts` 各有一个私有比较器（一个升序、一个降序），本次又要在弹窗与徽标里比较版本。现在导出 `comparePowerVersions`（升序、`''` 视为最旧、非规范值退化为字符串比较而**不抛异常**——它跑在 UI 已持有的数据上），降序由它取反得到。
+
+### 五、相关文件
+
+- `src/components/PowerCard.tsx`（静态版本槽、`New` 徽标、去掉 `selectedVersion`/`onVersionChange`）、`src/components/PowerDetailsDialog.tsx`（版本选项合并与标记、动作与确认）、`src/AgentHubPage.tsx`（`dialogVersion` 取代 `selectedVersions`；`installedVersions` 取代 `installedKeys`）
+- `src/api/contracts.ts`、`src/api/apm.ts`（比较器收口）、`src/agentHub.css`（版本槽合并、徽标排布、`New` token）、`src/agentHubI18n.tsx`（9 条新文案）
+- 测试：`PowerCard`（+2 净增，改写 8 处）、`PowerDetailsDialog`（+4）、`AgentHubPage`（+3）、`agentHubLayout`（+2）、`contracts`（+1）
+- 文档：开发指南 §1/§7.2/§7.2.4/§10.5/§18/§19，`README.md`，`debian/changelog`，版本 0.3.19
+- `docs/verification/2026-10-08-version-aware-dialog.md`（新增验证记录）
+
+### 六、验证结果
+
+在钉住的 Node 24.16.0 下：`npm test` 30 个文件 / **568 例全通过**、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin`、`make -C provider test vet build`、`gofmt -l`、`git diff --check` 全通过。
+
+反向验证 4 处（均按预期失败）：把 `isInstalled` 加回选择器的 `disabled`；去掉已安装版本的选项合并；把 `New` 徽标放到 `Installed` 之后；让更新/降级跳过确认。
+
+被删除的用例（功能已不存在，非遗漏）：卡片「受控版本切换」「选中版本失效时回退」两条；市场「卡片与弹窗共享选中版本」改写为「卡片恒显示最新版本，选择只发生在弹窗内」。
+
+### 七、限制
+
+- **更新/降级依赖 `apm install <name>=<version>` 能替换已安装的另一个版本**，这不在本仓库控制范围内，需板端实测；前端只把非零退出映射为固定失败文案。已记入开发指南 §19。
+- 不提供 `Update available` 之外的版本比对（例如「已是最新」提示）；卡片上的 `New` 就是全部提示。
+- 卡片固定显示**目录里的最新版本**：装了 v1、目录有 v2 时卡片写 v2 并同时挂 `New` + `Installed`，「装的是旧版」这个事实只能从徽标与弹窗读出。
+- 只读视图仍渲染（禁用的）版本选择器，以便把已安装版本标记出来；此时动作恒为卸载。
+
 ## 2026-10-08 — 市场卡片按安装清单显示 Installed 徽标（0.3.18）
 
 分类：体验优化

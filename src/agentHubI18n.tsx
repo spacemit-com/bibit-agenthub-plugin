@@ -86,6 +86,7 @@ const zh: Readonly<Record<string, string>> = {
   'Tags': '标签',
   'Version': '版本',
   'Installed': '已安装',
+  'New': '新版本',
 
   // ---- details dialog ----
   'Close': '关闭',
@@ -96,7 +97,10 @@ const zh: Readonly<Record<string, string>> = {
   'Confirming installation state…': '确认安装状态…',
   'Not installed': '未安装',
   'Installed {version}': '已安装 {version}',
+  '{version} (installed)': '{version}（已安装）',
   'Install': '安装',
+  'Update': '更新',
+  'Downgrade': '降级',
   'Uninstall': '卸载',
 
   // ---- pagination ----
@@ -162,8 +166,14 @@ const zh: Readonly<Record<string, string>> = {
   'Upload requires Power format v2.': '上传要求资源满足 Power 格式 v2。',
   'Cancel': '取消',
   'Uninstall this Power?': '卸载该 Power？',
+  'Update this Power?': '更新该 Power？',
+  'Downgrade this Power?': '降级该 Power？',
   'Removes {type} "{name}" for {agent}.': '将卸载 {agent} 的 {type} “{name}”。',
+  'Replaces {type} "{name}" for {agent} with {version}.':
+    '将把 {agent} 的 {type} “{name}” 替换为 {version}。',
   'Confirm uninstall': '确认卸载',
+  'Confirm update': '确认更新',
+  'Confirm downgrade': '确认降级',
   'Confirm delete': '确认删除',
   'Delete this resource?': '删除该资源？',
   'Removes the local {type} "{name}" for {agent}. This cannot be undone.':

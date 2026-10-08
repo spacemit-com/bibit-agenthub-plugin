@@ -62,7 +62,6 @@ const props = {
   installation: { status: 'ready' as const, records: [] as APMPowerRecord[] },
   readOnly: false,
   onVersionChange: vi.fn(),
-  onAgentChange: vi.fn(),
   onInstall: vi.fn(),
   onUninstall: vi.fn(),
   onRetry: vi.fn(),
@@ -158,10 +157,11 @@ describe('PowerDetailsDialog', () => {
     expect(onVersionChange).toHaveBeenCalledWith('v1.0.0')
   })
 
-  it('shows the installed version with uninstall only and disables the version select', () => {
+  it('offers Uninstall when the selected version is the installed one', () => {
     render(
       <PowerDetailsDialog
         {...props}
+        selectedVersion="v1.0.0"
         installation={{ status: 'ready', records: [record('v1.0.0')] }}
       />
     )
@@ -169,7 +169,65 @@ describe('PowerDetailsDialog', () => {
     expect(screen.getByText('Installed v1.0.0')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Uninstall' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Install' })).toBeNull()
-    expect((screen.getByLabelText('Version') as HTMLSelectElement).disabled).toBe(true)
+    expect(screen.queryByRole('button', { name: 'Update' })).toBeNull()
+    // Being installed is what the user acts on now, so it must not lock the choice.
+    expect((screen.getByLabelText('Version') as HTMLSelectElement).disabled).toBe(false)
+  })
+
+  it('names the action after what the chosen version does to the installed one', () => {
+    const { rerender } = render(
+      <PowerDetailsDialog
+        {...props}
+        selectedVersion="v2.0.0"
+        installation={{ status: 'ready', records: [record('v1.0.0')] }}
+      />
+    )
+
+    // v2 chosen over an installed v1.
+    expect(screen.getByRole('button', { name: 'Update' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Uninstall' })).toBeNull()
+
+    rerender(
+      <PowerDetailsDialog
+        {...props}
+        selectedVersion="v1.0.0"
+        installation={{ status: 'ready', records: [record('v2.0.0')] }}
+      />
+    )
+
+    // v1 chosen over an installed v2.
+    expect(screen.getByRole('button', { name: 'Downgrade' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Update' })).toBeNull()
+  })
+
+  it('marks the installed version in the version options', () => {
+    render(
+      <PowerDetailsDialog
+        {...props}
+        installation={{ status: 'ready', records: [record('v1.0.0')] }}
+      />
+    )
+
+    const options = Array.from((screen.getByLabelText('Version') as HTMLSelectElement).options)
+    expect(options.map((option) => option.textContent)).toEqual(['v2.0.0', 'v1.0.0 (installed)'])
+  })
+
+  it('keeps the installed version selectable when the catalog dropped it', () => {
+    // Uninstalling is only reachable by selecting the installed version, so an
+    // unpublished version still has to appear in the list.
+    render(
+      <PowerDetailsDialog
+        {...props}
+        installation={{ status: 'ready', records: [record('v3.0.0')] }}
+      />
+    )
+
+    const options = Array.from((screen.getByLabelText('Version') as HTMLSelectElement).options)
+    expect(options.map((option) => option.textContent)).toEqual([
+      'v3.0.0 (installed)',
+      'v2.0.0',
+      'v1.0.0',
+    ])
   })
 
   it('restores install and enables the version select after the record is gone', () => {
@@ -304,23 +362,26 @@ describe('PowerDetailsDialog', () => {
     expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull()
   })
 
-  it('calls install directly and uninstall only after the confirmation', async () => {
+  it('installs directly, while update, downgrade and uninstall confirm first', async () => {
     const user = userEvent.setup()
     const onInstall = vi.fn()
     const onUninstall = vi.fn()
-    const { rerender } = render(
-      <PowerDetailsDialog
-        {...props}
-        onInstall={onInstall}
-        onUninstall={onUninstall}
-        installation={{ status: 'ready', records: [] }}
-      />
-    )
+    const renderWith = (overrides: Partial<typeof props> & { installation: typeof props.installation }) =>
+      render(
+        <PowerDetailsDialog
+          {...props}
+          onInstall={onInstall}
+          onUninstall={onUninstall}
+          {...overrides}
+        />
+      )
+    const { rerender } = renderWith({ installation: { status: 'ready', records: [] } })
 
-    // Installing is not destructive, so it stays a single click.
+    // A first install has nothing to replace, so it stays a single click.
     await user.click(screen.getByRole('button', { name: 'Install' }))
     expect(onInstall).toHaveBeenCalledTimes(1)
 
+    // Replacing does: the selected v2 replaces an installed v1 only after confirming.
     rerender(
       <PowerDetailsDialog
         {...props}
@@ -329,14 +390,68 @@ describe('PowerDetailsDialog', () => {
         installation={{ status: 'ready', records: [record('v1.0.0')] }}
       />
     )
+    await user.click(screen.getByRole('button', { name: 'Update' }))
+    expect(onInstall).toHaveBeenCalledTimes(1)
+    expect(screen.getByText('Update this Power?')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Confirm update' }))
+    expect(onInstall).toHaveBeenCalledTimes(2)
 
-    // Uninstalling is: the first click only opens the confirmation.
+    // Going backwards confirms too.
+    rerender(
+      <PowerDetailsDialog
+        {...props}
+        selectedVersion="v1.0.0"
+        onInstall={onInstall}
+        onUninstall={onUninstall}
+        installation={{ status: 'ready', records: [record('v2.0.0')] }}
+      />
+    )
+    await user.click(screen.getByRole('button', { name: 'Downgrade' }))
+    expect(onInstall).toHaveBeenCalledTimes(2)
+    expect(screen.getByText('Downgrade this Power?')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Confirm downgrade' }))
+    expect(onInstall).toHaveBeenCalledTimes(3)
+
+    // Uninstalling keeps its own confirmation.
+    rerender(
+      <PowerDetailsDialog
+        {...props}
+        selectedVersion="v1.0.0"
+        onInstall={onInstall}
+        onUninstall={onUninstall}
+        installation={{ status: 'ready', records: [record('v1.0.0')] }}
+      />
+    )
     await user.click(screen.getByRole('button', { name: 'Uninstall' }))
     expect(onUninstall).not.toHaveBeenCalled()
-    expect(screen.getByText('Uninstall this Power?')).toBeTruthy()
-
     await user.click(screen.getByRole('button', { name: 'Confirm uninstall' }))
     expect(onUninstall).toHaveBeenCalledTimes(1)
+  })
+
+  it('drops a primed confirmation when the version changes under it', async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(
+      <PowerDetailsDialog
+        {...props}
+        selectedVersion="v1.0.0"
+        installation={{ status: 'ready', records: [record('v1.0.0')] }}
+      />
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Uninstall' }))
+    expect(screen.getByText('Uninstall this Power?')).toBeTruthy()
+
+    rerender(
+      <PowerDetailsDialog
+        {...props}
+        selectedVersion="v2.0.0"
+        installation={{ status: 'ready', records: [record('v1.0.0')] }}
+      />
+    )
+
+    // The confirmation named the old action, so it cannot stay primed on the new one.
+    expect(screen.queryByText('Uninstall this Power?')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Update' })).toBeTruthy()
   })
 
   it('names the exact target in the uninstall confirmation', async () => {
@@ -344,6 +459,7 @@ describe('PowerDetailsDialog', () => {
     render(
       <PowerDetailsDialog
         {...props}
+        selectedVersion="v1.0.0"
         installation={{ status: 'ready', records: [record('v1.0.0')] }}
       />
     )
@@ -369,6 +485,7 @@ describe('PowerDetailsDialog', () => {
       <PowerDetailsDialog
         {...props}
         series={agentSeries}
+        selectedVersion="v1.0.0"
         installation={{
           status: 'ready',
           records: [{ agent: 'bibit', type: 'agent', name: 'reviewer', version: 'v1.0.0', description: '', tags: [] }],
@@ -388,6 +505,7 @@ describe('PowerDetailsDialog', () => {
     render(
       <PowerDetailsDialog
         {...props}
+        selectedVersion="v1.0.0"
         onUninstall={onUninstall}
         installation={{ status: 'ready', records: [record('v1.0.0')] }}
       />
@@ -408,6 +526,7 @@ describe('PowerDetailsDialog', () => {
     const { rerender } = render(
       <PowerDetailsDialog
         {...props}
+        selectedVersion="v1.0.0"
         onUninstall={onUninstall}
         installation={{ status: 'ready', records: [record('v1.0.0')] }}
       />
@@ -422,6 +541,7 @@ describe('PowerDetailsDialog', () => {
     rerender(
       <PowerDetailsDialog
         {...props}
+        selectedVersion="v1.0.0"
         onUninstall={onUninstall}
         installation={{ status: 'ready', records: [record('v1.0.0')] }}
         active={{ intent: { kind: 'uninstall', input: { agent: 'bibit', type: 'skill', name: 'code-review' } }, phase: 'running' }}
@@ -442,6 +562,7 @@ describe('PowerDetailsDialog', () => {
     const { rerender } = render(
       <PowerDetailsDialog
         {...props}
+        selectedVersion="v1.0.0"
         installation={{ status: 'ready', records: [record('v1.0.0')] }}
       />
     )
@@ -456,6 +577,7 @@ describe('PowerDetailsDialog', () => {
       <PowerDetailsDialog
         {...props}
         series={{ ...series, name: 'other-skill' }}
+        selectedVersion="v1.0.0"
         installation={{ status: 'ready', records: [uninstalled()] }}
       />
     )

@@ -310,9 +310,9 @@ describe('Agent Hub layout contract', () => {
     expect(custom.flatMap((block) => declared(block, 'border-style'))).toContain('dashed')
     const badge = rules('.power-card__badge')
     expect(badge.flatMap((block) => declared(block, 'text-transform'))).toContain('uppercase')
-    // The static version label reuses the version slot but drops the control look.
-    const staticVersion = rules('.power-card__version--static')
-    expect(staticVersion.flatMap((block) => declared(block, 'border-style'))).toContain('dashed')
+    // The version slot keeps the dashed rose border only on a custom card.
+    const customVersion = rules(".power-card[data-source='custom'] .power-card__version")
+    expect(customVersion.flatMap((block) => declared(block, 'border-style'))).toContain('dashed')
   })
 
   it('gives the custom accent a hue of its own, away from every Power type', () => {
@@ -436,20 +436,50 @@ describe('Agent Hub layout contract', () => {
     expect(breakpointGridRules).toEqual([])
   })
 
-  it('keeps the version slot one height across managed and custom cards', () => {
-    // A Hub-managed card shows a native <select> (31px at 14px/1.5); the custom card's
-    // static label must fill the same box or the two cards in one row disagree by 5px
-    // and the custom card's title and description sit on a different line.
+  it('keeps the version slot one height on every card', () => {
+    // No card chooses a version any more -- the slot is a label on all of them -- but it
+    // still has to be one fixed height, or a long version grows a header and pushes that
+    // card's title and description onto a different line than its neighbours.
     const token = rules('.agent-hub').flatMap((block) => declared(block, '--hub-version-height'))
     expect(token).toHaveLength(1)
-    const staticVersion = rules('.power-card__version--static')
-    expect(staticVersion.flatMap((block) => declared(block, 'min-height'))).toEqual([
+    const version = rules('.power-card__version')
+    expect(version.flatMap((block) => declared(block, 'min-height'))).toEqual([
       'var(--hub-version-height)',
     ])
-    expect(staticVersion.flatMap((block) => declared(block, 'display'))).toContain('inline-flex')
-    expect(staticVersion.flatMap((block) => declared(block, 'align-items'))).toContain('center')
+    expect(version.flatMap((block) => declared(block, 'display'))).toContain('inline-flex')
+    expect(version.flatMap((block) => declared(block, 'align-items'))).toContain('center')
     // An extreme version must stay inside the slot instead of drawing over the description.
-    expect(staticVersion.flatMap((block) => declared(block, 'overflow'))).toContain('hidden')
+    expect(version.flatMap((block) => declared(block, 'overflow'))).toContain('hidden')
+    // The old control/static distinction is gone, so its modifier must not come back.
+    expect(rules('.power-card__version--static')).toEqual([])
+    expect(version.flatMap((block) => declared(block, 'border-style'))).toEqual([])
+  })
+
+  it('packs several badges against the right edge in DOM order', () => {
+    // `New` sits left of `Installed`. Two badges that each carried `margin-left: auto`
+    // would split the free space between them and push them apart, so the type label
+    // takes the free space instead and the badges pack in order.
+    const type = rules('.power-card__type')
+    expect(type.flatMap((block) => declared(block, 'margin-right'))).toEqual(['auto'])
+    const badge = rules('.power-card__badge')
+    expect(badge.flatMap((block) => declared(block, 'margin-left'))).toEqual([])
+    expect(badge.flatMap((block) => declared(block, 'flex'))).toEqual(['0 0 auto'])
+  })
+
+  it('gives the New badge its own family, apart from installed and custom', () => {
+    const badge = rules('.power-card__badge--new')
+    expect(badge).toHaveLength(1)
+    expect(badge.flatMap((block) => declared(block, 'background'))).toEqual([
+      'var(--hub-new-bg)',
+    ])
+    expect(badge.flatMap((block) => declared(block, 'color'))).toEqual(['var(--hub-new)'])
+    expect(badge.flatMap((block) => declared(block, 'border-color'))).toEqual([
+      'var(--hub-new-line)',
+    ])
+    for (const block of badge) {
+      expect(block.body).not.toContain('--hub-install')
+      expect(block.body).not.toContain('--hub-custom')
+    }
   })
 
   it('parks the Agent control at the right end of the tab row and opens its menu inwards', () => {

@@ -67,6 +67,12 @@
   --hub-custom-badge-bg: light-dark(#ffe9f4, #3c1d2f);
   --hub-custom-badge-text: light-dark(#941f6d, #fdbadf);
   --hub-custom-chip-bg: light-dark(#fff3f9, #361d2b);
+  /* "A newer version than yours exists." Indigo rather than the installed green or the
+     custom rose, so the three badge meanings never read as each other. Values are the
+     page's existing indigo; the text clears 4.5:1 on the badge fill in both themes. */
+  --hub-new: light-dark(#4f3cb3, #c8b7ff);
+  --hub-new-bg: light-dark(#f3f0ff, #272434);
+  --hub-new-line: light-dark(#8f7ee6, #7869a4);
   /* ===== Card width, derived from the host's default window =====
      The card width is fixed, so the host window decides only how many columns fit. It is
      sized so BiBit's default window shows three cards per row, which is the layout the
@@ -93,10 +99,10 @@
   /* The page column is still capped at the width the five-column layout was designed for;
      at 1460px five cards fit (5 x 267.33 + 4 x 20 = 1417), so fullscreen keeps five. */
   --hub-content-max: 1460px;
-  /* A Hub-managed card renders its version as a native <select>, which is 31px
-     high at the inherited 14px/1.5 (measured on WebKitGTK 2.52). The static label a
-     custom card shows instead must fill the very same box, or the two cards put
-     their title and description on different lines. */
+  /* Every card shows its version as a label now, so this is no longer about matching a
+     native control: it guarantees the version slot cannot grow the header and shift the
+     title and description onto a different line than the neighbouring cards. Kept at the
+     31px the old `<select>` measured on WebKitGTK 2.52 so the card metrics do not move. */
   --hub-version-height: 31px;
   /* The header's two action entries are pinned to one height instead of each
      following its own content: a native button sizes itself from the platform's
@@ -315,8 +321,24 @@
 }
 .power-card:hover { transform: translateY(-3px); box-shadow: 0 15px 34px var(--hub-shadow-card-hover); }
 .power-card__header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.power-card__type { color: var(--type); font-size: 11px; font-weight: 850; letter-spacing: .09em; text-transform: uppercase; }
-.power-card__version { max-width: 112px; box-sizing: border-box; border: 1px solid var(--type-line); border-radius: 8px; background: var(--hub-version-chip); color: var(--hub-text); }
+.power-card__type { margin-right: auto; color: var(--type); font-size: 11px; font-weight: 850; letter-spacing: .09em; text-transform: uppercase; }
+.power-card__version {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: var(--hub-version-height);
+  max-width: 112px;
+  box-sizing: border-box;
+  /* An extreme version stays inside the slot instead of drawing over the description. */
+  overflow: hidden;
+  padding: 3px 8px;
+  border: 1px solid var(--type-line);
+  border-radius: 8px;
+  background: var(--hub-version-chip);
+  color: var(--hub-text);
+  font-size: 12px;
+  font-weight: 700;
+}
 /* A hand-installed resource must be recognizable at a glance: a dashed border, a
    rose accent and a "Custom" badge, which no Hub-managed card ever shows. The hue
    is deliberately far from every `data-power-type` accent -- particularly MCP's
@@ -328,7 +350,6 @@
 }
 .power-card__badge {
   flex: 0 0 auto;
-  margin-left: auto;
   padding: 3px 8px;
   border: 1px solid var(--hub-custom-line);
   border-radius: 999px;
@@ -346,27 +367,18 @@
   background: var(--hub-install-bg);
   color: var(--hub-install-text);
 }
-/* The custom card's version is a static label instead of a control, but it must occupy
-   the same box as the `<select>` a Hub-managed card renders (`--hub-version-height`):
-   otherwise the two header heights differ by 5px and the custom card's title, badges
-   and description all sit on a different line than its neighbours in the same row.
-   `overflow: hidden` keeps an extreme version inside the box instead of over the
-   description below; `text-overflow` cannot ellipsise an inline-flex box, so a version
-   longer than 112px is simply clipped (real versions are ~99px at most). */
-.power-card__version--static {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  min-height: var(--hub-version-height);
-  max-width: 112px;
-  overflow: hidden;
-  padding: 3px 8px;
+.power-card__badge--new {
+  border-color: var(--hub-new-line);
+  background: var(--hub-new-bg);
+  color: var(--hub-new);
+}
+/* A hand-installed resource keeps the dashed rose version slot that marks it as
+   outside APM; the layout is shared with every other card's label. */
+.power-card[data-source='custom'] .power-card__version {
   border-style: dashed;
   border-color: var(--hub-custom-line);
   background: var(--hub-custom-chip-bg);
   color: var(--hub-custom);
-  font-size: 12px;
-  font-weight: 700;
 }
 /* A Power name never wraps: the box is exactly one line high on every card (so the grid
    rows line up) and useFittedFontSize shrinks the font size until the name fits. The

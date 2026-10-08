@@ -6,6 +6,7 @@ import {
   parseListPowersInput,
   parseListPowersResult,
   parsePowersWireInput,
+  comparePowerVersions,
   parsePowersWireResult,
   powerTypesForAgent,
   supportsAgentType,
@@ -604,6 +605,22 @@ describe('parsePowersWireResult', () => {
     expect(() =>
       parsePowersWireResult({ scope: 'market', status: 'data', snapshot: 'abc', catalogJson: {} })
     ).toThrow()
+  })
+
+  it('orders versions oldest-first, with a missing version oldest of all', () => {
+    expect(comparePowerVersions('v1.0.0', 'v2.0.0')).toBeLessThan(0)
+    expect(comparePowerVersions('v2.0.0', 'v1.0.0')).toBeGreaterThan(0)
+    expect(comparePowerVersions('v2.0.0', 'v2.0.0')).toBe(0)
+    expect(comparePowerVersions('v1.0.0', 'v1.2.0')).toBeLessThan(0)
+    expect(comparePowerVersions('v1.2.0', 'v1.2.3')).toBeLessThan(0)
+    // A hand-installed resource that declares no version sorts oldest.
+    expect(comparePowerVersions('', 'v1.0.0')).toBeLessThan(0)
+    expect(comparePowerVersions('v1.0.0', '')).toBeGreaterThan(0)
+    expect(comparePowerVersions('', '')).toBe(0)
+    // This runs on data the UI already holds, so it must never throw on a value that
+    // is not a canonical version.
+    expect(comparePowerVersions('nightly', 'v1.0.0')).not.toBeNaN()
+    expect(comparePowerVersions('nightly', 'nightly')).toBe(0)
   })
 
   it('limits the type filter to the types an Agent can take', () => {

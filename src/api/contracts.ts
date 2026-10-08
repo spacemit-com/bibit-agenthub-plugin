@@ -301,13 +301,29 @@ function parseVersionParts(version: string): [number, number, number] {
   return [Number(major), Number(minor), Number(patch)]
 }
 
-function compareVersions(a: string, b: string): number {
+/**
+ * Orders versions oldest-first. `''` -- a hand-installed resource that declares no
+ * version -- sorts oldest, and a value that is not a canonical version falls back to
+ * a string compare, so a caller that renders a badge from manifest data can never
+ * throw on it. The only other order in the plugin is the reverse one, which
+ * `apm.ts` derives from this.
+ */
+export function comparePowerVersions(a: string, b: string): number {
+  if (a === '' || b === '') {
+    if (a === b) return 0
+    return a === '' ? -1 : 1
+  }
+  if (!VERSION_PATTERN.test(a) || !VERSION_PATTERN.test(b)) {
+    return a < b ? -1 : a > b ? 1 : 0
+  }
   const [amajor, aminor, apatch] = parseVersionParts(a)
   const [bmajor, bminor, bpatch] = parseVersionParts(b)
   if (amajor !== bmajor) return amajor - bmajor
   if (aminor !== bminor) return aminor - bminor
   return apatch - bpatch
 }
+
+const compareVersions = comparePowerVersions
 
 function assertDescendingVersions(versions: PowerVersion[]): void {
   for (let i = 1; i < versions.length; i++) {

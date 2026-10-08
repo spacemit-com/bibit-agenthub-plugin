@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ScrollThumb } from '../ScrollThumb'
 import { useAgentHubI18n, useAgentHubLanguage, type TranslatableText } from '../agentHubI18n'
 import { resolvePowerDescription, resolvePowerTitle, resolvePowerTypeLabel } from '../displayFields'
-import { powerTypesForAgent, type PowerSeries } from '../api/contracts'
+import { comparePowerVersions, powerTypesForAgent, type PowerSeries } from '../api/contracts'
 import type { ActiveMutation, InstallationState } from '../api/installationStore'
 
 /** A custom-resource write in flight; both custom actions disable while it runs. */
@@ -44,6 +44,31 @@ const CUSTOM_PHASE_LABELS: Record<CustomActionState['kind'], Record<CustomAction
   delete: { running: 'Deleting…', reconciling: 'Confirming installation state…' },
 }
 
+/**
+ * What the chosen version does to the installed one. `install` means nothing is
+ * installed yet; the other three replace or remove what is. Only the three replacing
+ * or removing actions confirm, so their copy is keyed by the narrower type.
+ */
+type PrimaryAction = 'install' | 'update' | 'downgrade' | 'uninstall'
+type ConfirmingAction = Exclude<PrimaryAction, 'install'>
+
+const ACTION_LABELS: Record<PrimaryAction, string> = {
+  install: 'Install',
+  update: 'Update',
+  downgrade: 'Downgrade',
+  uninstall: 'Uninstall',
+}
+const CONFIRM_TITLES: Record<ConfirmingAction, string> = {
+  update: 'Update this Power?',
+  downgrade: 'Downgrade this Power?',
+  uninstall: 'Uninstall this Power?',
+}
+const CONFIRM_LABELS: Record<ConfirmingAction, string> = {
+  update: 'Confirm update',
+  downgrade: 'Confirm downgrade',
+  uninstall: 'Confirm uninstall',
+}
+
 export function PowerDetailsDialog({
   series,
   selectedVersion,
@@ -72,17 +97,17 @@ export function PowerDetailsDialog({
   // next resource the user opens.
   const [customForm, setCustomForm] = useState<'none' | 'upload' | 'delete'>('none')
   const [publishMessage, setPublishMessage] = useState('')
-  // Uninstall is destructive, so it is a two-step action like the custom delete.
-  // Leaving the dialog drops the confirmation, so reopening a Power never starts
-  // on a primed destructive button.
-  const [confirmingUninstall, setConfirmingUninstall] = useState(false)
+  // Replacing or removing an installed version is destructive, so those actions are
+  // two-step like the custom delete. Leaving the dialog drops the confirmation, so
+  // reopening a Power never starts on a primed destructive button.
+  const [confirmingAction, setConfirmingAction] = useState<ConfirmingAction | null>(null)
 
   // The dialog is reused across Powers without a remount (the page swaps `series`),
   // so transient action state has to be reset when the target changes.
   useEffect(() => {
     setCustomForm('none')
     setPublishMessage('')
-    setConfirmingUninstall(false)
+    setConfirmingAction(null)
   }, [series.type, series.name, agent])
 
   useEffect(() => {
@@ -117,10 +142,41 @@ export function PowerDetailsDialog({
   // an `agent` Power is bibit-only; that is a fact about the type, not a choice
   // this dialog makes, so the hint stays and the install button simply hides.
   const agentValidForInstall = powerTypesForAgent(agent).includes(series.type)
-  const targetLocked = busy || isInstalled || readOnly
+  // The version stays selectable once installed: picking a higher or lower one is how
+  // the user updates or downgrades. Only a pending write or a read-only view locks it.
+  const versionLocked = busy || readOnly
   const writeEnabled = installation.status === 'ready' && !busy
-  const showInstall = installation.status === 'ready' && !isInstalled && agentValidForInstall && !readOnly
-  const showUninstall = installation.status === 'ready' && isInstalled
+  // The installed version may have been unpublished from the catalog, but it still has
+  // to be selectable -- otherwise the Uninstall state would be unreachable.
+  const versionOptions = useMemo(() => {
+    const listed = series.versions.map((version) => version.version)
+    const merged =
+      installedVersion === undefined ? listed : [...new Set([...listed, installedVersion])]
+    return merged.sort((left, right) => comparePowerVersions(right, left))
+  }, [series.versions, installedVersion])
+  // One primary action, named after what the chosen version does to the installed one.
+  const comparison = isInstalled ? comparePowerVersions(selectedVersion, installedVersion ?? '') : 0
+  const action: PrimaryAction = !isInstalled
+    ? 'install'
+    : readOnly
+      ? 'uninstall'
+      : comparison > 0
+        ? 'update'
+        : comparison < 0
+          ? 'downgrade'
+          : 'uninstall'
+  // Same gates as before: an uninstall is always offered once installed, while the
+  // writing actions need a writable view and a target Agent that takes this type.
+  const actionAllowed = isInstalled ? true : !readOnly && agentValidForInstall
+  const showAction = installation.status === 'ready' && actionAllowed
+  const confirming = confirmingAction === action
+
+  // A confirmation names the action the selection produced, so it cannot survive that
+  // action changing -- a different version, or the record appearing or disappearing
+  // while the store refreshes under it.
+  useEffect(() => {
+    setConfirmingAction(null)
+  }, [action])
   const customBusy = customAction !== undefined
   const messageValid = publishMessage.trim().length > 0 && publishMessage.length <= 200
 
@@ -139,10 +195,14 @@ export function PowerDetailsDialog({
     setCustomForm('none')
   }
 
-  const confirmUninstall = () => {
-    if (!writeEnabled || !onUninstall) return
-    onUninstall()
-    setConfirmingUninstall(false)
+  const confirmPrimary = () => {
+    if (!writeEnabled) return
+    setConfirmingAction(null)
+    if (action === 'uninstall') {
+      onUninstall()
+      return
+    }
+    onInstall()
   }
 
   return (
@@ -187,13 +247,15 @@ export function PowerDetailsDialog({
           ) : (
             <select
               aria-label={t('Version')}
-              value={current.version}
-              disabled={targetLocked}
+              value={selectedVersion}
+              disabled={versionLocked}
               onChange={(event) => onVersionChange(event.target.value)}
             >
-              {series.versions.map((version) => (
-                <option key={version.version} value={version.version}>
-                  {version.version}
+              {versionOptions.map((version) => (
+                <option key={version} value={version}>
+                  {version === installedVersion
+                    ? t('{version} (installed)', { version })
+                    : version}
                 </option>
               ))}
             </select>
@@ -343,47 +405,61 @@ export function PowerDetailsDialog({
           )}
         </footer>
       )}
-      {!custom && (showInstall || showUninstall) && (
+      {!custom && showAction && (
         <footer className="agent-hub-dialog__footer">
-          {showInstall && (
-            <button type="button" className="agent-hub-dialog__install" disabled={!writeEnabled} onClick={onInstall}>
-              {t('Install')}
-            </button>
-          )}
-          {showUninstall && !confirmingUninstall && (
+          {!confirming && (
             <button
               type="button"
-              className="agent-hub-dialog__uninstall"
+              className={action === 'uninstall' ? 'agent-hub-dialog__uninstall' : 'agent-hub-dialog__install'}
               disabled={!writeEnabled}
-              onClick={() => setConfirmingUninstall(true)}
+              onClick={() => {
+                // A first install has nothing to replace, so it goes straight through.
+                if (action === 'install') onInstall()
+                else setConfirmingAction(action)
+              }}
             >
-              {t('Uninstall')}
+              {t(ACTION_LABELS[action])}
             </button>
           )}
-          {showUninstall && confirmingUninstall && (
-            <div className="agent-hub-dialog__confirm" role="alertdialog" aria-label={t('Uninstall this Power?')}>
-              <p>{t('Uninstall this Power?')}</p>
+          {confirming && confirmingAction !== null && (
+            <div
+              className="agent-hub-dialog__confirm"
+              role="alertdialog"
+              aria-label={t(CONFIRM_TITLES[confirmingAction])}
+            >
+              <p>{t(CONFIRM_TITLES[confirmingAction])}</p>
               <p className="agent-hub-dialog__hint">
-                {t('Removes {type} "{name}" for {agent}.', {
-                  type: resolvePowerTypeLabel(series.type),
-                  name: series.name,
-                  agent,
-                })}
+                {confirmingAction === 'uninstall'
+                  ? t('Removes {type} "{name}" for {agent}.', {
+                      type: resolvePowerTypeLabel(series.type),
+                      name: series.name,
+                      agent,
+                    })
+                  : t('Replaces {type} "{name}" for {agent} with {version}.', {
+                      type: resolvePowerTypeLabel(series.type),
+                      name: series.name,
+                      agent,
+                      version: selectedVersion,
+                    })}
               </p>
               <div className="agent-hub-dialog__custom-actions">
                 <button
                   type="button"
-                  className="agent-hub-dialog__uninstall"
+                  className={
+                    confirmingAction === 'uninstall'
+                      ? 'agent-hub-dialog__uninstall'
+                      : 'agent-hub-dialog__install'
+                  }
                   disabled={!writeEnabled}
-                  onClick={confirmUninstall}
+                  onClick={confirmPrimary}
                 >
-                  {t('Confirm uninstall')}
+                  {t(CONFIRM_LABELS[confirmingAction])}
                 </button>
                 <button
                   type="button"
                   className="agent-hub-dialog__install"
                   disabled={busy}
-                  onClick={() => setConfirmingUninstall(false)}
+                  onClick={() => setConfirmingAction(null)}
                 >
                   {t('Cancel')}
                 </button>

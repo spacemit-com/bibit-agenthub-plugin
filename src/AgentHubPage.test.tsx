@@ -1304,7 +1304,7 @@ describe('AgentHubPage', () => {
       }))
     }
 
-    it('shares the selected version between the card and the details dialog', async () => {
+    it('keeps the card on the newest version while the dialog picks one', async () => {
       const user = userEvent.setup()
       const { hostApi } = makeStoreHost((input) => {
         const params = wireParamsOf(input)
@@ -1321,18 +1321,119 @@ describe('AgentHubPage', () => {
       await user.click(screen.getByRole('button', { name: 'Capability Market' }))
       await screen.findByRole('heading', { name: 'market-translate' })
 
-      await user.selectOptions(screen.getByLabelText('Version'), 'v1.0.0')
-      expect(screen.getByText('Translates v1.')).toBeTruthy()
+      // The card is display-only: it reports the newest version the catalog lists.
+      expect(screen.getByTestId('power-card-version').textContent).toBe('v2.0.0')
+      expect(screen.getByText('Translates v2.')).toBeTruthy()
+      expect(screen.queryByLabelText('Version')).toBeNull()
 
       await user.click(screen.getByRole('heading', { name: 'market-translate' }))
       const dialog = within(document.querySelector('dialog') as HTMLElement)
-      expect(dialog.getByText('Translates v1.')).toBeTruthy()
-      expect((dialog.getByLabelText('Version') as HTMLSelectElement).value).toBe('v1.0.0')
+      // Opening the dialog starts on the newest version too.
+      expect((dialog.getByLabelText('Version') as HTMLSelectElement).value).toBe('v2.0.0')
+      expect(dialog.getByText('Translates v2.')).toBeTruthy()
 
-      await user.selectOptions(dialog.getByLabelText('Version'), 'v2.0.0')
+      await user.selectOptions(dialog.getByLabelText('Version'), 'v1.0.0')
+      expect(dialog.getByText('Translates v1.')).toBeTruthy()
+
       await user.click(dialog.getByRole('button', { name: 'Close' }))
 
+      // The card never followed the dialog's choice.
       await waitFor(() => expect(screen.getByText('Translates v2.')).toBeTruthy())
+      expect(screen.queryByText('Translates v1.')).toBeNull()
+    })
+
+    it('marks a market card New when the chosen Agent is a version behind', async () => {
+      const user = userEvent.setup()
+      const behind = JSON.stringify([
+        { ...codeReviewRecord, name: 'market-translate', version: 'v1.0.0' },
+      ])
+      const { hostApi } = makeStoreHost((input) => {
+        if (input.operationId === 'powers.custom.list.v1') return customData()
+        const params = wireParamsOf(input)
+        return params.scope === 'market' ? twoVersionMarketData() : installedData(behind)
+      })
+      renderPage(hostApi)
+      await screen.findByRole('heading', { name: 'market-translate' })
+
+      await user.click(screen.getByRole('button', { name: 'Capability Market' }))
+      await screen.findByRole('heading', { name: 'market-translate' })
+
+      // The catalog's newest is v2 and the Agent has v1, so both badges appear, with
+      // `New` to the left of `Installed`.
+      await waitFor(() => expect(screen.getByText('New')).toBeTruthy())
+      expect(
+        Array.from(document.querySelectorAll('.power-card__badge')).map((badge) => badge.textContent)
+      ).toEqual(['New', 'Installed'])
+      // The card still reports the newest version the catalog lists.
+      expect(screen.getByTestId('power-card-version').textContent).toBe('v2.0.0')
+    })
+
+    it('shows no New badge once the newest version is the installed one', async () => {
+      const user = userEvent.setup()
+      const current = JSON.stringify([
+        { ...codeReviewRecord, name: 'market-translate', version: 'v2.0.0' },
+      ])
+      const { hostApi } = makeStoreHost((input) => {
+        if (input.operationId === 'powers.custom.list.v1') return customData()
+        const params = wireParamsOf(input)
+        return params.scope === 'market' ? twoVersionMarketData() : installedData(current)
+      })
+      renderPage(hostApi)
+      await screen.findByRole('heading', { name: 'market-translate' })
+
+      await user.click(screen.getByRole('button', { name: 'Capability Market' }))
+      await screen.findByRole('heading', { name: 'market-translate' })
+
+      await waitFor(() => expect(screen.getByText('Installed')).toBeTruthy())
+      expect(screen.queryByText('New')).toBeNull()
+    })
+
+    it('updates an installed Power to the chosen version after confirming', async () => {
+      const user = userEvent.setup()
+      let installCall: StoreRequest | undefined
+      const { hostApi } = makeStoreHost((input) => {
+        const params = wireParamsOf(input)
+        if (input.operationId === 'powers.list.v1') {
+          return params.scope === 'market' ? twoVersionMarketData() : installedData('[]')
+        }
+        if (input.operationId === 'powers.custom.list.v1') return customData()
+        if (input.operationId === 'powers.inspect.v1') {
+          return {
+            listJson: JSON.stringify([
+              { agent: 'bibit', type: 'skill', name: 'market-translate', version: 'v1.0.0', description: '', tags: [] },
+            ]),
+          }
+        }
+        if (input.operationId === 'powers.install.v1') {
+          installCall = input
+          return { status: 'exited', exitCode: 0 }
+        }
+        throw new Error('unexpected op ' + input.operationId)
+      })
+      renderPage(hostApi)
+      await user.click(screen.getByRole('button', { name: 'Capability Market' }))
+      await screen.findByRole('heading', { name: 'market-translate' })
+
+      await user.click(screen.getByRole('heading', { name: 'market-translate' }))
+      const dialog = within(document.querySelector('dialog') as HTMLElement)
+      // The dialog opens on the newest, which for an installed v1 is an update.
+      await dialog.findByText('Installed v1.0.0')
+      expect(dialog.getByRole('button', { name: 'Update' })).toBeTruthy()
+
+      await user.click(dialog.getByRole('button', { name: 'Update' }))
+      // Replacing the installed version confirms first.
+      expect(installCall).toBeUndefined()
+      expect(dialog.getByText('Update this Power?')).toBeTruthy()
+
+      await user.click(dialog.getByRole('button', { name: 'Confirm update' }))
+
+      await waitFor(() => expect(installCall?.operationId).toBe('powers.install.v1'))
+      expect(installCall?.params).toEqual({
+        agent: 'bibit',
+        type: 'skill',
+        name: 'market-translate',
+        version: 'v2.0.0',
+      })
     })
 
     it('installs the selected version from the market details dialog', async () => {
@@ -1558,8 +1659,12 @@ describe('AgentHubPage custom resources', () => {
     await screen.findByRole('heading', { name: 'hand-written' })
     expect(screen.getByText('Custom')).toBeTruthy()
     expect(document.querySelector('.power-card[data-source="custom"]')).toBeTruthy()
-    // Two series are on the page, so exactly one version select exists.
-    expect(screen.getAllByLabelText('Version')).toHaveLength(1)
+    // No card chooses a version any more, the hand-installed one included: its slot is
+    // the label the scanner's declared version (here: none) renders into.
+    expect(screen.queryByLabelText('Version')).toBeNull()
+    expect(
+      document.querySelector('.power-card[data-source="custom"] .power-card__version')?.textContent
+    ).toBe('No version')
   })
 
   it('shows the declared name of a v1 resource instead of its directory name', async () => {
