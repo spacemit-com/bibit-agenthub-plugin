@@ -1148,14 +1148,14 @@ npm run keygen
 | 上游 Node（nodejs.org / nvm） | `1.3.1-e00f703` | 101289 字节 |
 | Bianbu / Debian 打包的同一版本 | `1.3.1.zlib-ng` | 102084 字节 |
 
-所以 `scripts/check-node.mjs` 把**版本 + zlib 串**成对校验，任何一项不符都直接失败、不产出 bundle。CI 与板端跑的都是 Bianbu 那一种，它是权威运行时。
+所以 `scripts/check-node.mjs` 把两者一起看：**版本不符是硬失败**（这正是 CI 打包失败的那一处），**zlib 串不符给警告**并说明该哈希不是发布哈希——本机没有板端那种 Node 时仍能出本地包，但不会误把它的 SHA-256 记成发布值。CI 与板端跑的都是 Bianbu 那一种，它是权威运行时，发布用的 bundle 一律在板端构建。
 
 ```bash
 node --version                  # 22.22.1（CI / 板端那一种）
 node -p process.versions.zlib   # 1.3.1.zlib-ng
 ```
 
-`npm run build:plugin` 会先跑 `scripts/check-node.mjs`；版本不符时**直接失败并打印当前 zlib 版本与修复命令**，不会产出另一份 bundle。`debian/rules` 同样先跑这个检查，并且用 `.nvmrc` 解析出的解释器去跑 `npm ci` / `npx bibit-plugin build`（把它的 `bin` 放在 `PATH` 最前面），所以打包路径与本地构建产出同一份字节。构造时需要换解释器可以显式指定：
+`npm run build:plugin` 会先跑 `scripts/check-node.mjs`；版本不符时**直接失败并打印当前 zlib 与修复命令**，不会产出另一份 bundle。`debian/rules` 同样先跑这个检查，并且用 `.nvmrc` 解析出的解释器去跑 `npm ci` / `npx bibit-plugin build`（把它的 `bin` 放在 `PATH` 最前面），所以打包路径与本地构建产出同一份字节。构造时需要换解释器可以显式指定：
 
 ```bash
 NODE="$HOME/.nvm/versions/node/v22.22.1/bin/node" dpkg-buildpackage -us -uc -b
