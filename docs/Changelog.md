@@ -46,6 +46,23 @@ CI 打包跑在板端环境（Node **v22.22.1** / npm **9.2.0**），而 `0.3.16
 
 CI（板端）是权威运行时，故本版 bundle 的 SHA-256 以板端产出为准并已重记；`DEVELOPMENT` 侧无法产出该字节（本机只有 Node 24 / zlib upstream 与系统 Node 18），按约定在板端构建。
 
+### 验证结果（板端构建，Node 22.22.1 / zlib-ng）
+
+在板端（`bianbu@10.0.91.51`，riscv64，Node **22.22.1** / npm **9.2.0** / zlib **1.3.1.zlib-ng**，即 CI 环境）用 `git archive HEAD` 的源码构建：
+
+| 检查 | 结果 |
+| --- | --- |
+| `npm ci` | 成功，**无 EBADENGINE**（`0.4.1` 的 `engines.node` 已是 `22.22.1`） |
+| `node scripts/check-node.mjs` | `Node 22.22.1 (zlib 1.3.1.zlib-ng) matches the pinned toolchain` |
+| `npm test` | **569/569**，30 个文件，0 失败 |
+| `npm run typecheck` / `build:dev` / `build:plugin` | 通过 |
+| `make -C provider test vet build` | 通过（含 `TestProviderVersionMatchesPackageJSON`） |
+| `--self-test` / `gofmt -l provider/` | exit 0 / 无输出 |
+| `dpkg-buildpackage -us -uc -b -a riscv64 -d` | **成功**，产出 `bibit-agenthub-plugin_0.4.1_all.deb`、`bibit-agenthub-cli_0.4.1_riscv64.deb` |
+| deb 内 bundle 与 `artifacts/` | `ec15c016…`，**逐字节相同** |
+
+本版 bundle：`artifacts/agent-hub-0.4.1.bibit-plugin.tgz`，sha256 `ec15c016d8c29a972d270ebedc63a371d457e5e4a23e6ec95bf3bd06e63da4f2`（101944 字节）。此前记的 `2284e1a4…`（101158 字节）是 Node 24 / upstream zlib 产出的，**只对那台机器成立**，随 pin 变更作废。
+
 ## 2026-10-08 — 资源类型 agent 更名为 expert（0.3.20，联动 apm 0.0.2）
 
 分类：契约变更（Power 类型取值改为 `expert`；显示映射删除）

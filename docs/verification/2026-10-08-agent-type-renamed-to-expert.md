@@ -1,7 +1,7 @@
 # 0.4.1 验证记录：资源类型 agent 更名为 expert（联动 apm 0.0.2）
 
 - 变更版本：插件 **0.4.1**（记录含两部分：改名本体准备为 0.3.20、随版本号提升发为 0.4.0；类型调色板修复发为 0.4.1。上一版 0.3.19）；apm 0.0.2（上一版 0.0.1）
-- 验证环境：amd64 开发机；**Node 24.16.0**（`.nvmrc` 钉住的版本，`npm run build:plugin` 会先跑 `scripts/check-node.mjs`）；**Go 1.26.5**
+- 验证环境：**板端 `bianbu@10.0.91.51`（riscv64）**，Node **22.22.1** / npm **9.2.0** / zlib **1.3.1.zlib-ng**（`32ffb75` 起 `.nvmrc` 钉住的工具链，等同 CI）；Go **1.26.0**。此前 §4 在 amd64 + Node 24.16.0 下跑过，结论未变，但产物哈希随工具链变更作废，见 §4 注
 - 相关设计：apm `ivory-tower/adr/ADR-044-rename-agent-power-type-to-expert.md`
 
 ## 1. 用户需求
@@ -48,17 +48,23 @@
 
 ## 4. 门禁结果
 
-### 插件（Node 24.16.0）
+### 插件（板端，Node 22.22.1 / zlib 1.3.1.zlib-ng —— 与 CI 相同）
 
 | 检查 | 结果 |
 | --- | --- |
+| `npm ci` | 成功，无 EBADENGINE（`engines.node` = `22.22.1`） |
+| `node scripts/check-node.mjs` | `Node 22.22.1 (zlib 1.3.1.zlib-ng) matches the pinned toolchain` |
 | `npm test` | **569/569**，30 个文件，0 失败 |
 | `npm run typecheck` | 无输出 |
 | `npm run build:dev` | 成功 |
-| `npm run build:plugin` | 成功，`check-node` 通过；`artifacts/agent-hub-0.4.1.bibit-plugin.tgz`，sha256 `2284e1a4801fe77248d76b375af0cc956d3ff5bb9d46dffbc92f101ca3c5e088`（101158 字节） |
-| `make -C provider test vet build` | 通过（含 `TestProviderVersionMatchesPackageJSON`，`providerVersion` 已同步 0.4.0） |
+| `npm run build:plugin` | 成功；`artifacts/agent-hub-0.4.1.bibit-plugin.tgz`，sha256 `ec15c016d8c29a972d270ebedc63a371d457e5e4a23e6ec95bf3bd06e63da4f2`（101944 字节） |
+| `make -C provider test vet build` | 通过（含 `TestProviderVersionMatchesPackageJSON`，`providerVersion` 已同步 `0.4.1`） |
+| `--self-test` | exit 0 |
 | `gofmt -l provider/` | 无输出 |
+| `dpkg-buildpackage -us -uc -b -a riscv64 -d` | 成功；deb 内 bundle 与 `artifacts/` **逐字节相同**（均为 `ec15c016…`） |
 | `git diff --check` | 无输出 |
+
+**哈希变更说明**：本表此前记的是 `2284e1a4…`（101158 字节），那是 amd64 + Node **24.16.0** / upstream zlib 的产物。`32ffb75` 把 pin 降到 CI 实际使用的 **22.22.1 / zlib-ng** 后，同一份源码压出的字节不同（同一份 tar：upstream 101289 → zlib-ng 102084 字节），故旧哈希作废、以板端产出为准。这也是 `check-node` 现在连 zlib 串一起校验的原因。
 
 ### apm
 
