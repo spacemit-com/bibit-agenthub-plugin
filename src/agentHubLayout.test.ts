@@ -285,6 +285,26 @@ describe('Agent Hub layout contract', () => {
     expect(actions.flatMap((block) => declared(block, 'flex'))).toContain('0 0 auto')
   })
 
+  it('marks an installed market card with the success family, not the custom one', () => {
+    // The Installed badge overrides the custom badge's colours; it has to read from
+    // tokens so the light/dark contract above keeps covering it, and it must not
+    // inherit the rose that identifies a hand-installed resource.
+    const installed = rules('.power-card__badge--installed')
+    expect(installed).toHaveLength(1)
+    expect(installed.flatMap((block) => declared(block, 'background'))).toEqual([
+      'var(--hub-install-bg)',
+    ])
+    expect(installed.flatMap((block) => declared(block, 'color'))).toEqual([
+      'var(--hub-install-text)',
+    ])
+    expect(installed.flatMap((block) => declared(block, 'border-color'))).toEqual([
+      'var(--hub-install-line)',
+    ])
+    for (const block of installed) {
+      expect(block.body).not.toContain('--hub-custom')
+    }
+  })
+
   it('keeps a custom Power card visibly distinct from a Hub-managed one', () => {
     const custom = rules(".power-card[data-source='custom']")
     expect(custom.flatMap((block) => declared(block, 'border-style'))).toContain('dashed')

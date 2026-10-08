@@ -308,4 +308,42 @@ describe('PowerCard', () => {
     expect(card?.getAttribute('data-source')).toBeNull()
     expect(screen.queryByText('Custom')).toBeNull()
   })
+
+  it('marks a Power the target Agent already has installed', () => {
+    const { result } = renderCard({ installed: true })
+
+    expect(screen.getByText('Installed')).toBeTruthy()
+    // The modifier is what carries the success colours instead of the custom ones.
+    expect(result.container.querySelector('.power-card__badge--installed')).toBeTruthy()
+    // A market card keeps its version control; only the badge is added.
+    expect(screen.getByLabelText('Version')).toBeTruthy()
+  })
+
+  it('shows no installed marker unless the manifest says so', () => {
+    const { result } = renderCard()
+
+    expect(screen.queryByText('Installed')).toBeNull()
+    expect(result.container.querySelector('.power-card__badge--installed')).toBeNull()
+  })
+
+  it('never shows the custom and installed markers together', () => {
+    // A custom resource only comes from the local scan on the installed tab, and the
+    // installed flag is only set for market cards, so the page cannot produce both.
+    const custom: PowerSeries = {
+      type: 'skill',
+      name: 'hand-written',
+      source: 'custom',
+      versions: [{ version: 'v1.2.3', description: 'Hand made.', tags: [] }],
+    }
+    render(<PowerCard series={custom} selectedVersion="v1.2.3" onVersionChange={vi.fn()} busy={false} />)
+
+    expect(screen.getByText('Custom')).toBeTruthy()
+    expect(screen.queryByText('Installed')).toBeNull()
+
+    cleanup()
+
+    render(<PowerCard series={series} selectedVersion="v2.0.0" onVersionChange={vi.fn()} busy={false} installed />)
+    expect(screen.getByText('Installed')).toBeTruthy()
+    expect(screen.queryByText('Custom')).toBeNull()
+  })
 })

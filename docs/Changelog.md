@@ -1,5 +1,57 @@
 # Changelog
 
+## 2026-10-08 — 市场卡片按安装清单显示 Installed 徽标（0.3.18）
+
+分类：体验优化
+
+用户需求：
+
+> 市场页预载目标 Agent 的安装清单，使 market 卡片根据安装清单显示 installed 徽标
+
+### 一、问题
+
+`scope=market` 的列表请求**不带 agent**（APC 目录与 Agent 无关），所以市场卡片当时无法说明「你选中的 Agent 是不是已经装了它」——只有点开详情弹窗、走一次 `powers.inspect.v1` 之后才知道。
+
+### 二、修法
+
+安装 store 的快照里**本来就有** `fullLists: Map<agent, readonly APMPowerRecord[]>`（按 Agent 存的完整清单），只是此前**没有任何消费方**。市场页现在：
+
+1. **预载清单**：进入市场 / 切换 Agent / 窗口重新聚焦时调一次 `installationStore.refreshAgent(agent, signal)`（即 `powers.list.v1` + `scope=installed` + `agent`）。频率与「我的能力」一致——那个 scope 本来也在同样的时机重读自己的清单。守卫用 `tab === 'market'` 而不是 `scope === 'market'`：设置页下 `scope` 仍是上一次的目录 scope，但那时不渲染卡片。
+2. **算好集合**：`installedKeys = new Set(fullLists.get(agent).map(r => powerSeriesKey(r.type, r.name)))`，`useMemo` 依赖 `fullLists` 与 `agent`。
+3. **只给市场卡片挂牌**：`installed={scope === 'market' && installedKeys.has(powerSeriesKey(series.type, series.name))}`。installed 页的卡片按定义都已安装，逐个挂徽标是噪声。
+
+### 三、两个刻意的取舍（已与你确认）
+
+- **徽标版本无关**：装了任意版本就算 `Installed`。卡片上的版本选择器是「安装目标版本」，不是磁盘上那一个；具体装的哪一版看详情弹窗（它显示 `已安装 {version}`）。代价是「装了 v1、选了 v2」时卡片仍写 Installed。
+- **每次进市场都重读清单**：与 installed scope 的行为一致，窗口聚焦也会刷新（外部工具装了东西能反映到徽标）。代价是每次进市场多一次 `apm list --installed`。
+
+另外，清单读取失败时**静默降级**：市场照常可用、只是没有徽标，不新增错误态（安装动作会在真正尝试时给出自己的文案）。
+
+### 四、实现
+
+- `src/AgentHubPage.tsx`：新增预载 effect；新增 `installedKeys` memo；给 `PowerCard` 传 `installed`；`import { powerSeriesKey } from './api/apm'`。
+- `src/components/PowerCard.tsx`：新增可选 `installed?: boolean`，渲染 `<span className="power-card__badge power-card__badge--installed">Installed</span>`。两个徽标不会共存（自定义资源只来自 installed 页的本机扫描，而 `installed` 只在市场为真）。
+- `src/agentHub.css`：`.power-card__badge--installed` 复用安装按钮那套成功色（`--hub-install-line/bg/text`）——都是「已安装」语义，应当一起变；不新增颜色 token，因此 0.3.15 的明暗成对契约无需扩表。
+- `src/agentHubI18n.tsx`：新增 `'Installed': '已安装'`。
+- 测试：`PowerCard.test.tsx`（+3）、`AgentHubPage.test.tsx`（+4）、`agentHubLayout.test.ts`（+1）。其中市场用例特意让**首次** installed 读返回空清单、后续返回含目标 Power 的清单，这样徽标只能来自预载，去掉预载 effect 就会失败。
+
+### 五、版本
+
+0.3.18：`package.json`、`package-lock.json`、`bibit.feature.json` 与 Provider 的 `providerVersion`（`TestProviderVersionMatchesPackageJSON` 要求相等）。
+
+### 六、验证结果
+
+在钉住的 Node 24.16.0 下：`npm test` 30 个文件 / **558 例全通过**、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin`、`make -C provider test vet build`、`gofmt -l`、`git diff --check` 全通过；产物 `artifacts/agent-hub-0.3.18.bibit-plugin.tgz`。
+
+反向验证 4 处（均按预期失败）：去掉预载 effect（2 条市场用例失败）；让徽标无视 scope（installed 页用例失败）；让徽标改读 `items` 而不是 `fullLists`（2 条市场用例失败）；让市场请求带上 `agent`（8 条用例失败，0.3.16 的不变量确实被守住）。
+
+### 七、限制
+
+- 徽标是版本无关的，不做 `Update available`；「装了旧版」在卡片上看不出来（详情弹窗能看出来）。
+- 清单读取失败静默降级，不提示原因。
+- 每次进入市场 / 切 Agent / 窗口聚焦各多一次 installed 读。
+- 市场卡片新增徽标后的板端实机外观尚未验收。
+
 ## 2026-10-08 — 非 bibit 的 Agent 隐藏 Expert 类型标签（0.3.17）
 
 分类：缺陷修复 / 体验优化

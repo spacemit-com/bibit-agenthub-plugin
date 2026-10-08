@@ -12,6 +12,13 @@ export interface PowerCardProps {
   onDetails?: () => void
   busy: boolean
   notice?: TranslatableText
+  /**
+   * Set by the market scope when the chosen Agent's install manifest already has
+   * this Power. Version-agnostic on purpose: the card's version select is the
+   * *install target*, so a Power that is installed at another version still reads
+   * as installed, and the dialog is where the exact version is shown.
+   */
+  installed?: boolean
 }
 
 export function PowerCard({
@@ -21,6 +28,7 @@ export function PowerCard({
   onDetails,
   busy,
   notice,
+  installed,
 }: PowerCardProps) {
   const t = useAgentHubI18n()
   const language = useAgentHubLanguage()
@@ -54,6 +62,10 @@ export function PowerCard({
       <div className="power-card__header">
         <span className="power-card__type">{resolvePowerTypeLabel(series.type)}</span>
         {custom && <span className="power-card__badge">{t('Custom')}</span>}
+        {/* The two badges never co-exist: a custom resource only ever comes from the
+            local scan on the installed tab, while `installed` is only set for market
+            cards. */}
+        {installed && <span className="power-card__badge power-card__badge--installed">{t('Installed')}</span>}
         {custom ? (
           <span className="power-card__version power-card__version--static" data-testid="power-card-version">
             {current.version || t('No version')}

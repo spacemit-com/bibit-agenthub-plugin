@@ -339,6 +339,13 @@
   letter-spacing: .08em;
   text-transform: uppercase;
 }
+/* The installed badge shares the success family with the Install button: both say
+   "installed", so they should move together. */
+.power-card__badge--installed {
+  border-color: var(--hub-install-line);
+  background: var(--hub-install-bg);
+  color: var(--hub-install-text);
+}
 /* The custom card's version is a static label instead of a control, but it must occupy
    the same box as the `<select>` a Hub-managed card renders (`--hub-version-height`):
    otherwise the two header heights differ by 5px and the custom card's title, badges

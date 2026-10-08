@@ -64,6 +64,15 @@ const codeReviewRecord = {
 
 const codeReviewList = JSON.stringify([codeReviewRecord])
 
+/**
+ * An install manifest that already has one of the market catalog's Powers, used by
+ * the market-badge cases. `market-translate` is the skill the market fixture lists.
+ */
+const installedManifest = JSON.stringify([
+  codeReviewRecord,
+  { ...codeReviewRecord, name: 'market-translate' },
+])
+
 function installedData(listJson: string) {
   return { scope: 'installed', status: 'data', listJson }
 }
@@ -477,8 +486,14 @@ describe('AgentHubPage', () => {
       const params = wireParamsOf(input)
       return params.scope === 'market' ? marketData() : installedData(codeReviewList)
     })
-    const lastListParams = () => {
-      const listCalls = calls.filter((call) => call.operationId === 'powers.list.v1')
+    // Per scope, not "the last call": the market preload also reads
+    // `powers.list.v1` (with scope=installed) for the card badges, so the newest
+    // call overall is not necessarily the one this test is asking about.
+    const lastListParams = (scope: 'installed' | 'market') => {
+      const listCalls = calls.filter(
+        (call) =>
+          call.operationId === 'powers.list.v1' && wireParamsOf(call).scope === scope
+      )
       return wireParamsOf(listCalls[listCalls.length - 1])
     }
     renderPage(hostApi)
@@ -486,14 +501,14 @@ describe('AgentHubPage', () => {
 
     await user.hover(screen.getByRole('button', { name: 'Agent: bibit' }))
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'codex' }))
-    await waitFor(() => expect(lastListParams().agent).toBe('codex'))
+    await waitFor(() => expect(lastListParams('installed').agent).toBe('codex'))
 
     await user.click(screen.getByRole('button', { name: 'Capability Market' }))
-    await waitFor(() => expect(lastListParams().scope).toBe('market'))
+    await waitFor(() => expect(lastListParams('market').scope).toBe('market'))
 
     await user.click(screen.getByRole('button', { name: 'My Capabilities' }))
     await waitFor(() => {
-      const last = lastListParams()
+      const last = lastListParams('installed')
       expect(last.scope).toBe('installed')
       expect(last.agent).toBe('codex')
     })
@@ -639,6 +654,110 @@ describe('AgentHubPage', () => {
     await user.click(screen.getByRole('button', { name: 'Agent: codex' }))
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'bibit' }))
     await waitFor(() => expect(screen.getByRole('button', { name: 'Expert' })).toBeTruthy())
+  })
+
+  it('preloads the manifest so market cards can show what is installed', async () => {
+    const user = userEvent.setup()
+    let installedReads = 0
+    const { hostApi, calls } = makeStoreHost((input) => {
+      if (input.operationId === 'powers.custom.list.v1') return customData()
+      const params = wireParamsOf(input)
+      if (params.scope === 'market') return marketData()
+      installedReads += 1
+      // The first read is the installed tab's own list, which is empty; every later
+      // one is the market preload. The badge below therefore cannot come from the
+      // installed visit -- only from the preload.
+      return installedData(installedReads === 1 ? '[]' : installedManifest)
+    })
+    renderPage(hostApi)
+    await screen.findByText('No Powers are available.')
+    expect(screen.queryByText('Installed')).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Capability Market' }))
+    await screen.findByRole('heading', { name: 'market-translate' })
+
+    // Entering the market read the manifest again, and the card it covers is marked.
+    await waitFor(() => expect(installedReads).toBeGreaterThan(1))
+    await waitFor(() => expect(screen.getByText('Installed')).toBeTruthy())
+    expect(screen.getAllByText('Installed')).toHaveLength(1)
+
+    // The badge came from the manifest preload, which must not leak into the market
+    // wire request: the catalog is still read without an Agent.
+    const marketCalls = calls.filter(
+      (call) => call.operationId === 'powers.list.v1' && wireParamsOf(call).scope === 'market'
+    )
+    expect(marketCalls.length).toBeGreaterThan(0)
+    expect('agent' in wireParamsOf(marketCalls[marketCalls.length - 1])).toBe(false)
+  })
+
+  it('re-reads the manifest for the new Agent when it changes on the market', async () => {
+    const user = userEvent.setup()
+    const { hostApi, calls } = makeStoreHost((input) => {
+      if (input.operationId === 'powers.custom.list.v1') return customData()
+      const params = wireParamsOf(input)
+      if (params.scope === 'market') return marketData()
+      // bibit has the market Power; codex does not.
+      return installedData(params.agent === 'bibit' ? installedManifest : '[]')
+    })
+    renderPage(hostApi)
+    await screen.findByRole('heading', { name: 'code-review' })
+
+    await user.click(screen.getByRole('button', { name: 'Capability Market' }))
+    await screen.findByRole('heading', { name: 'market-translate' })
+    await waitFor(() => expect(screen.getByText('Installed')).toBeTruthy())
+
+    await user.hover(screen.getByRole('button', { name: 'Agent: bibit' }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'codex' }))
+
+    await waitFor(() => {
+      const reads = calls.filter(
+        (call) =>
+          call.operationId === 'powers.list.v1' &&
+          wireParamsOf(call).scope === 'installed' &&
+          wireParamsOf(call).agent === 'codex'
+      )
+      expect(reads.length).toBeGreaterThan(0)
+      // The badge follows the new Agent's manifest, which has nothing installed.
+      expect(screen.queryByText('Installed')).toBeNull()
+    })
+  })
+
+  it('leaves the market usable when the manifest cannot be read', async () => {
+    const user = userEvent.setup()
+    const { hostApi } = makeStoreHost((input) => {
+      if (input.operationId === 'powers.custom.list.v1') return customData()
+      const params = wireParamsOf(input)
+      if (params.scope === 'market') return marketData()
+      throw Object.assign(new Error('apm is missing'), {
+        version: 1,
+        code: 'unavailable',
+        retryable: true,
+      })
+    })
+    renderPage(hostApi)
+    // The installed tab cannot read it either, so it reports its own error.
+    await screen.findByRole('alert')
+
+    await user.click(screen.getByRole('button', { name: 'Capability Market' }))
+    await screen.findByRole('heading', { name: 'market-translate' })
+
+    // The badge is an addition to browsing: a manifest that cannot be read leaves
+    // the cards unmarked rather than turning the market into an error.
+    expect(screen.queryByText('Installed')).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('does not badge the installed tab', async () => {
+    const { hostApi } = makeStoreHost((input) => {
+      if (input.operationId === 'powers.custom.list.v1') return customData()
+      return installedData(installedManifest)
+    })
+    renderPage(hostApi)
+
+    // Every card on this tab is installed by definition, so a badge would be noise.
+    await screen.findByRole('heading', { name: 'code-review' })
+    await screen.findByRole('heading', { name: 'market-translate' })
+    expect(screen.queryByText('Installed')).toBeNull()
   })
 
   it('clears tags and resets the page when selecting the plugin type', async () => {

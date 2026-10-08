@@ -85,6 +85,7 @@ const zh: Readonly<Record<string, string>> = {
   'Type': '类型',
   'Tags': '标签',
   'Version': '版本',
+  'Installed': '已安装',
 
   // ---- details dialog ----
   'Close': '关闭',

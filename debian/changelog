@@ -1,3 +1,32 @@
+bibit-agenthub-plugin (0.3.18) resolute-porting; urgency=medium
+
+  * Show an Installed badge on market cards. The market catalog is Agent-
+    independent -- its list request carries no agent -- so a market card had no way
+    to say whether the Power was already installed for the Agent the user chose,
+    and the answer only appeared after opening the dialog.
+  * The page now preloads that Agent's install manifest on entering the market, on
+    an Agent change and on the window-focus refresh, matching the installed scope,
+    which re-reads its manifest on the same occasions. The snapshot already carried
+    `fullLists` keyed by Agent; nothing consumed it until now.
+  * Badge membership is version-agnostic by decision: a Power installed at any
+    version reads as installed, because the card's version select is the *install
+    target* rather than what is on disk. The dialog remains the place that names
+    the installed version.
+  * The read is best-effort. A manifest that cannot be read leaves the catalog
+    usable and simply shows no badges; the install action still reports the same
+    failure with its own message when it is attempted.
+  * Only the market is badged: every card on the installed tab is installed by
+    definition, so a badge there would be noise.
+  * Cost: one extra `powers.list.v1` with scope=installed per market entry / Agent
+    change / focus, accepted for freshness. The market wire request still carries
+    no agent, and that invariant now has a test.
+  * Version 0.3.18 moves package.json, package-lock.json, bibit.feature.json and
+    providerVersion together, as 00eb0db's TestProviderVersionMatchesPackageJSON
+    requires even though no Provider code changed.
+
+ -- liangjunzhao <junzhao.liang@spacemit.com>  Thu, 08 Oct 2026 15:05:00 +0800
+
+
 bibit-agenthub-plugin (0.3.17) resolute-porting; urgency=medium
 
   * Hide the Expert type in the filter row for every Agent but bibit. An

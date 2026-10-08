@@ -20,6 +20,7 @@ import { ScrollThumb } from './ScrollThumb'
 import { useAgentHubI18n, type TranslatableText } from './agentHubI18n'
 import { resolvePowerTypeLabel } from './displayFields'
 import { listPowers } from './api/powerCatalogClient'
+import { powerSeriesKey } from './api/apm'
 import { deleteCustomResource, submissionIdFrom, uploadCustomResource } from './api/customResources'
 import {
   ACTIONS_UNAVAILABLE_TEXT,
@@ -385,6 +386,26 @@ export function AgentHubPage(_: FeaturePageProps) {
     return () => listController.abort()
   }, [store, scope, tab, listAgent, type, tags, page, retry])
 
+  // ---- the market preloads the chosen Agent's install manifest ----
+  // The market catalog is Agent-independent -- its list request carries no `agent` --
+  // but a market card still has to say whether the Power is already installed for the
+  // Agent the user chose. Read on entering the market, on an Agent change and on the
+  // window-focus refresh, matching the installed scope, which re-reads its manifest on
+  // the same occasions.
+  //
+  // `tab` rather than `scope` is the guard: on the Settings tab `scope` still holds the
+  // previous catalog scope, and no list (and so no badge) is rendered there.
+  //
+  // Best-effort: the badge is an addition to browsing, so an unreadable manifest must
+  // leave the catalog usable and simply show no badges. The install action surfaces the
+  // same failure with its own message when it is attempted.
+  useEffect(() => {
+    if (tab !== 'market' || !installationStore) return
+    const controller = new AbortController()
+    void installationStore.refreshAgent(agent, controller.signal).catch(() => {})
+    return () => controller.abort()
+  }, [tab, agent, installationStore, retry])
+
   // ---- the page owns its scroll: size it to the box the host actually hands over ----
   // A page contribution is mounted in a min-height based box (SidebarProvider /
   // SidebarInset are `min-h-svh`), so a percentage height never resolves and the page
@@ -652,6 +673,14 @@ export function AgentHubPage(_: FeaturePageProps) {
   // `facets.agents` is not read anywhere: the Agent list is the fixed
   // `INSTALLED_AGENTS` constant, so agent discovery is never performed.
   const availableTags = view.status === 'ready' ? view.data.facets.tags : []
+  // `fullLists` is keyed by Agent and is the manifest a market card's badge reads. The
+  // market catalog is Agent-independent, so membership has to be resolved against the
+  // Agent the user chose rather than against the scope the list was read in. Rebuilt
+  // per publish because the store hands out a fresh Map each time.
+  const installedKeys = useMemo(() => {
+    const records = installationSnapshot.fullLists.get(agent)
+    return new Set((records ?? []).map((record) => powerSeriesKey(record.type, record.name)))
+  }, [installationSnapshot.fullLists, agent])
   const totalPages =
     view.status === 'ready' ? Math.max(1, Math.ceil(view.data.total / POWER_PAGE_SIZE)) : 1
 
@@ -773,6 +802,12 @@ export function AgentHubPage(_: FeaturePageProps) {
                         selectedVersion={selectedVersionFor(series)}
                         onVersionChange={(version) => changeVersion(series, version)}
                         busy={isBusyFor(agent, series)}
+                        // Only the market needs it: every card on the installed tab is
+                        // installed by definition, so a badge there would be noise.
+                        installed={
+                          scope === 'market' &&
+                          installedKeys.has(powerSeriesKey(series.type, series.name))
+                        }
                         notice={
                           scope === 'installed'
                             ? installationSnapshot.notices.get(itemKey(agent, series.type, series.name))

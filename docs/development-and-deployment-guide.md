@@ -492,6 +492,7 @@ Agent 的选择只有一处：标签栏（`.power-filters__scopes`）最右侧�
 - **三个标签页都在**：控件常驻标签行，`设置` 页也显示。设置页本身不发 `powers.list.v1`，所以在那里切换不产生请求、也没有可见变化；它决定的是下次进入目录时读取哪个 Agent（以及安装目标）。
 - **清空筛选只在真正相关时发生**：只有 `installed` 的列表按 Agent 读取，因此在 `installed` 下切换 Agent 会重置页码/标签/snapshot；`market` 的目录与 Agent 无关（请求体不带 `agent`），在市场上切换**不重发请求、也不清掉用户已选的标签**，只改变安装目标。
 - **`Expert`（`agent` 类型）只在 bibit 下出现**：`agent` 类型的 Power 只能装进 bibit，所以选中其它 Agent 时类型筛选行根本不渲染 `Expert`。这条规则集中在 `src/api/contracts.ts` 的 `powerTypesForAgent`（`supportsAgentType` 是它的原语），两处 wire 目标校验与详情弹窗的「能否安装」读的是同一处，不再各写一遍。切换 Agent 时如果当前类型正好是被隐藏的那个，类型会回退到该 Agent 支持的第一个类型（`skill`），并按一次显式类型切换重置标签/页码/snapshot——否则列表会停在一个用户既看不见、也切不走的类型上。
+- **市场卡片显示 `Installed` 徽标**：市场列表与 Agent 无关（wire 请求不带 `agent`），所以徽标读的是**目标 Agent 的安装清单**（快照里的 `fullLists`，按 Agent 存）——页面进入市场/切 Agent/窗口聚焦时预载一次。徽标是**版本无关**的：装了任意版本就算已安装，卡片上的版本选择器是「安装目标版本」，具体装的哪一版看详情弹窗（它`已安装 {version}`）。installed 页不加这个徽标（那里的卡片按定义都已安装）。清单读取失败时市场仍可用，只是没有徽标。
 - **详情弹窗只读显示 Agent**：弹窗不再提供 Agent 选项（它本身是 `showModal()` 模态，用户也够不到标签栏上的控件）。`agent` 类型遇到非 bibit 目标时仍显示「该类型仅支持 bibit Agent。」并隐藏安装按钮，但不再有「切换到 bibit」的纠正按钮——要换 Agent 请关闭弹窗、用控件切换。
 - 实现上 `dialogAgent` 这个第二份 state 已删除：列表查询、弹窗、安装/卸载、自定义资源的上传与删除全部读同一个 `agent`。
 
@@ -1009,6 +1010,8 @@ Go Provider 每次请求先 `GET {base}/resources/version`；`catalog_sha256` �
 {scope:"market", status:"data", snapshot:"<sha256>", catalogJson:"{...}"}
 ```
 
+market 列表本身**不带 agent**，但卡片要回答「选中的 Agent 是否已经装了它」，所以进入市场 / 切换 Agent / 窗口重新聚焦时，页面会额外为该 Agent 预载一次安装清单（`installationStore.refreshAgent`，走 `powers.list.v1` + `scope=installed` + `agent`），卡片据此显示 `Installed` 徽标（见 §7.2.4）。这次预载是**尽力而为**：清单读不到时市场照常可用，只是不显示徽标，不新增错误态；卸载/安装后 `reconcile` 会重新读清单，徽标随之更新。代价是每次进入市场会多一次 installed 读。
+
 APC 全量约束：只调用 `resources/version` 与 `resources`，不调用 `resources/list` 或 `resources/tags`；类型过滤、tag AND 过滤、系列聚合、分页与 facets 全在前端 `buildPowersResult` 完成。前端在解析 `catalogJson` 前先用 Web Crypto 对原始 UTF-8 字节计算 SHA-256 并与 `snapshot` 比对（`src/api/catalogIntegrity.ts`），不一致抛可重试 `unavailable` 且不写入缓存。默认 base 为 `https://developer.bianbu.xyz/api-server/apc/api/v1`；HTTP 客户端使用系统受信 CA，重定向 ≤5 跳且禁止 https→http 降级，无跳过 TLS 校验的开关。
 
 ### 10.8 部署与发布前置项
@@ -1061,7 +1064,7 @@ npm run dev
 
 浏览器打开 Vite 输出地址；首页地址追加 `?lang=zh-CN` 即为中文界面，右上角下拉框可随时切换语言（不刷新页面）。Feature Dev Host 读取真实 Manifest 和 Feature Module，并通过 `dev/main.tsx` 的 `serviceConnections` 把 `powers.list.v1` / `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` / `powers.custom.list.v1` / `powers.upload.v1` / `powers.delete.v1` / `settings.get.v2` / `settings.keys.add.v1` / `settings.keys.delete.v1` / `settings.keys.enable.v1` 路由到 Vite 中间件（`vite.config.ts` → `dev/store.ts`）提供的 Store。`scope=installed` 会真实执行 PATH 中的 `apm list --installed --agent=<selected> --json`（身份记录）；详情/安装/卸载分别执行 `apm list <name> --installed ...` / `apm install <name>=<version> ...` / `apm uninstall <name> ...`（argv 与 Go Provider 一致，读 30s / 写 120s）；`scope=market` 会每次请求真实拉取 APC 公开目录（`GET /resources/version` 取快照 + `GET /resources` 跟随重定向取全量列表），再按 `type` 过滤聚合；`settings.get.v2` / `settings.keys.add.v1` / `settings.keys.delete.v1` / `settings.keys.enable.v1` 使用内存设置（Key 只保留在 dev 进程内，只回传遮蔽 `preview`）；`powers.custom.list.v1` 扫描**本机真实 home**（`dev/custom.ts` 复刻 Provider 的目录、最低格式与展示名兜底规则），`powers.upload.v1` / `powers.delete.v1` 分别调用本机 `apm validate` + `apm submit` 与真实删除。此模式不启动、不编译 Bibit，也不要求远程 Store 后端在线；未安装 `apm` 时 installed 页显示可重试的 unavailable 错误，APC 不可达时 market 页显示可重试的 unavailable 错误。
 
-market 每次点击类型/标签、翻页都重新拉取并解析 APC 全量列表（无本地 fixture、无跨请求缓存），覆盖 skill / plugin / mcp / agent 四种 Power 类型（筛选行里 `agent` 只在 bibit 下出现）；installed 由真实 apm 输出驱动，Agent 由标签栏最右侧的独立控件切换，选项固定为 bibit / codex / claude-code / hermes-agent 四个。两种 scope 复用同一套筛选、聚合、分页、facets 与 snapshot 规则，与未来 Remote Store 一致。
+market 每次点击类型/标签、翻页都重新拉取并解析 APC 全量列表（无本地 fixture、无跨请求缓存），并在进入市场/切 Agent/窗口聚焦时额外读一次目标 Agent 的安装清单（只用于卡片徽标），覆盖 skill / plugin / mcp / agent 四种 Power 类型（筛选行里 `agent` 只在 bibit 下出现）；installed 由真实 apm 输出驱动，Agent 由标签栏最右侧的独立控件切换，选项固定为 bibit / codex / claude-code / hermes-agent 四个。两种 scope 复用同一套筛选、聚合、分页、facets 与 snapshot 规则，与未来 Remote Store 一致。
 
 APC Base URL 默认测试环境 `https://developer.bianbu.xyz/api-server/apc/api/v1`，可用 `APC_BASE_URL` 环境变量覆盖。测试环境证书不受信，dev-only 传输层（`vite.config.ts`）关闭了 TLS 校验；正式 CLI Provider 必须使用受信 CA。APC 公开目录无按类型列表端点，因此 market 采用“全量列表 + 客户端按 `type` 过滤”的映射。
 
@@ -1574,6 +1577,7 @@ CLI 模式检查 Registry 是否为 `version: 2`、`transport: stdio`、固定�
 - 「设置」标签页的样式使用 `.agent-hub*` 命名空间内的独立 CSS，不依赖 `@bibit/feature-ui` 的 Settings Shell（插件已不声明 settings contribution）；
 
 - Agent 控件常驻标签行（含设置页）：在设置页切换没有可见效果，它决定的是下次进入目录时读取哪个 Agent、以及安装目标（§7.2.4）；
+- 市场的 `Installed` 徽标是版本无关的（装了任意版本即算已安装），且清单读取失败时**静默**降级为「没有徽标」，不提示原因；板端实机外观尚未验收；
 - 明暗主题由宿主的 `color-scheme` 驱动，插件的每个颜色都是 `light-dark()` 成对声明（§7.2.1）；深色一支是推导出来的，**板端实机深色外观尚未验收**，本次证据是离屏 WebKitGTK 探针 `docs/verification/probe-dark-mode.py`；
 - 中英文由插件自带词典（`src/agentHubI18n.tsx`）提供，跟随宿主 `language`，目前只有 `en` 与 `zh-CN` 两种；新增语言需要同时扩展 `agentHubChinese`/`agentHubLocales` 与 `bibit.feature.json` 的 `contributions.locales`；
 - 宿主 `language` 传入组件自 `bi-bit` 0.1.4 起；更早的宿主不传该值时页面固定为英文；
