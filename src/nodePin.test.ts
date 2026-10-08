@@ -4,15 +4,18 @@ import packageJson from '../package.json'
 
 /**
  * The plugin bundle is a gzipped tar, so its bytes depend on the zlib the Node
- * runtime ships: Node 18 carries zlib 1.3 and Node 24 carries 1.3.1, and the same
- * source produces two different `.bibit-plugin.tgz` files (and therefore two
- * different SHA-256 values) depending on which one ran the build.
+ * runtime ships. That is both a version and a flavour question: one version
+ * string covers an upstream build (plain zlib) and the Bianbu/Debian build
+ * (zlib-ng), and they gzip the same tar to different bytes. `.nvmrc` pins the
+ * version and `scripts/check-node.mjs` checks it together with the zlib string,
+ * so a build that would produce a second, silently different bundle fails
+ * instead of shipping.
  *
- * `.nvmrc` is the single source of truth. `debian/rules` reads it to pick the
- * interpreter, `scripts/check-node.mjs` fails a build that runs on anything else,
- * and `npm run build:plugin` calls that check first. This test keeps the version
- * declared in `package.json` `engines` from drifting away from the pin, which
- * would otherwise leave a warning that no longer matches what the build enforces.
+ * `.nvmrc` is the single source of truth for the version half. `debian/rules`
+ * reads it to pick the interpreter, `npm run build:plugin` calls the check
+ * first, and this test keeps `package.json` `engines` from drifting away from
+ * the pin -- which would otherwise leave a warning that no longer matches what
+ * the build enforces.
  */
 describe('pinned Node version', () => {
   const pinned = readFileSync('.nvmrc', 'utf8').trim()

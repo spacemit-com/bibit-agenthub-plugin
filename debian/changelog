@@ -17,6 +17,14 @@ bibit-agenthub-plugin (0.4.1) resolute-porting; urgency=medium
     instead of rendering as an unstyled chip.
   * 0.4.0 already shipped with the defect, so this carries only the fix above plus
     the version bump; the Expert rename and its notes are unchanged below.
+  * Retargets the pinned build Node from 24.16.0 to 22.22.1, and checks the zlib
+    flavour alongside the version. CI packs on the board runtime (Node v22.22.1,
+    npm 9.2.0), so the 24.16.0 pin failed packaging twice over: `npm ci` printed
+    EBADENGINE and `scripts/check-node.mjs` exited 1. That check now pins a pair,
+    because one version string covers two builds that compress differently --
+    upstream Node (plain zlib) and the Bianbu build (zlib-ng) both report
+    22.22.1 and gzip the same tar to 101289 vs 102084 bytes. CI is the canonical
+    runtime, so the bundle recorded for this version is the one it produces.
 
  -- liangjunzhao <junzhao.liang@spacemit.com>  Thu, 08 Oct 2026 20:05:00 +0800
 

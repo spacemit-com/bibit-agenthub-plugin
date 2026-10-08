@@ -38,6 +38,14 @@ level=ERROR msg="command failed" error="invalid --type \"expert\": must be skill
 
 已发布的 `0.4.0` deb 里确认带此缺陷（`0.4.0` 的 `dist/agent-hub-plugin.css` 里只有 `data-power-type=agent`，没有 `expert`），因此修复单独发为 **0.4.1**；版本在四处同步（`package.json`、`package-lock.json`、`bibit.feature.json`、`providerVersion`），开发指南的插件版本行与产物名一并更新（`@bibit/feature-*` 是宿主 SDK 版本，不动）。
 
+### CI 打包失败：构建 pin 从 24.16.0 降到 22.22.1
+
+CI 打包跑在板端环境（Node **v22.22.1** / npm **9.2.0**），而 `0.3.16` 引入的构建 pin 是 `24.16.0`，于是打包两处都失败：`npm ci` 打 `EBADENGINE`（`required: { node: '24.16.0' }, current: { node: 'v22.22.1' }`），然后 `scripts/check-node.mjs` 直接 exit 1。pin 因此降到 **22.22.1**。
+
+顺带发现**只钉版本号并不够**，这也是本次把检查加强的原因：同一个版本号覆盖两种压缩行为不同的构建 —— 上游 Node（nodejs.org / nvm）带 plain zlib，Bianbu/Debian 打包的同一版本带 zlib-ng，两者都自报 `22.22.1`，压同一份 tar 却分别是 **101289** 与 **102084** 字节。只比版本号时，在任一运行时上都会通过，于是记下的 SHA-256 只描述了产出它的那台机器。`scripts/check-node.mjs` 现在把**版本 + zlib 串**成对校验。
+
+CI（板端）是权威运行时，故本版 bundle 的 SHA-256 以板端产出为准并已重记；`DEVELOPMENT` 侧无法产出该字节（本机只有 Node 24 / zlib upstream 与系统 Node 18），按约定在板端构建。
+
 ## 2026-10-08 — 资源类型 agent 更名为 expert（0.3.20，联动 apm 0.0.2）
 
 分类：契约变更（Power 类型取值改为 `expert`；显示映射删除）

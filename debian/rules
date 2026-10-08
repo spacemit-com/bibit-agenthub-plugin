@@ -14,15 +14,17 @@ AGENT_HUB_SIGNING_KEY ?= .bibit-keys/agent-hub-development-private.pem
 
 # `node` used for both the version lookup and the bundle step. The bundle is a
 # gzipped tar, so its bytes -- and the SHA-256 a release records -- come from the
-# zlib the Node runtime ships. Node 18 carries zlib 1.3 and Node 24 carries
-# 1.3.1, and no gzip level or strategy makes the two agree, so the runtime is
-# pinned in .nvmrc and `scripts/check-node.mjs` fails the build rather than
-# emitting a second, silently different bundle.
+# zlib the Node runtime ships. The version pin is not enough on its own: one
+# version string covers two builds that compress differently -- upstream Node
+# carries plain zlib and the Bianbu/Debian build carries zlib-ng, and the same
+# tar gzipped to 101289 vs 102084 bytes. `.nvmrc` pins the version and
+# `scripts/check-node.mjs` checks it together with the zlib string, failing the
+# build rather than emitting a second, silently different bundle.
 #
 # Default resolution order: the interpreter nvm keeps for the pinned version,
-# then a system-wide Node 24 install, then plain `node` (which the check will
-# reject with instructions if it is the wrong version). Override explicitly with
-#   NODE="$HOME/.nvm/versions/node/v24.16.0/bin/node" dpkg-buildpackage -us -uc -b
+# then a system-wide Node install, then plain `node` (which the check will
+# reject with instructions if it is the wrong runtime). Override explicitly with
+#   NODE="$HOME/.nvm/versions/node/v22.22.1/bin/node" dpkg-buildpackage -us -uc -b
 NODE_PIN := $(shell cat .nvmrc 2>/dev/null)
 NODE_FROM_NVM := $(HOME)/.nvm/versions/node/v$(NODE_PIN)/bin/node
 NODE ?= $(if $(wildcard $(NODE_FROM_NVM)),$(NODE_FROM_NVM),$(if $(wildcard /usr/local/bin/node),/usr/local/bin/node,node))
