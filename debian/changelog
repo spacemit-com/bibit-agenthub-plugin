@@ -1,5 +1,23 @@
 bibit-agenthub-plugin (0.3.16) resolute-porting; urgency=medium
 
+  * Keep the version the Provider reports in `bibit.initialize` equal to the
+    version of the deb that ships it. providerVersion is a Go constant while the
+    deb version comes from package.json, and nothing compared the two: 0.3.14,
+    0.3.15 and 0.3.16 all shipped a Provider still announcing 0.3.13 because
+    none of those releases touched provider/. It is 0.3.16 now, and
+    TestProviderVersionMatchesPackageJSON reads package.json so the next release
+    cannot drift silently.
+  * Pin the Node version used to build the bundle. That bundle is a gzipped tar,
+    so its bytes -- and the SHA-256 a release records -- come from the zlib the
+    Node runtime ships. Node 18 carries zlib 1.3 and Node 24 carries 1.3.1, and
+    the same source produced two different artifacts (91692583... vs
+    ab8695b4...) because the gate built on Node 24 while dpkg-buildpackage used
+    the system Node 18. Levels 0-9 across all five strategies were tested and
+    none agrees across the two runtimes, so the toolchain is pinned in .nvmrc
+    (24.16.0) and `scripts/check-node.mjs` fails a build on anything else
+    instead of emitting a second, silently different bundle. debian/rules reads
+    the same pin and runs npm/npx with that interpreter's bin directory first,
+    so packaging and hand builds now agree byte for byte.
   * Move the Agent choice out of the "My Capabilities" tab into its own control
     at the right end of the tab row. That tab now only switches scope; the new
     control carries hover and click to open a menu of

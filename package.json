@@ -4,12 +4,16 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "check:node": "node scripts/check-node.mjs",
     "dev": "vite --host 0.0.0.0",
     "build:dev": "vite build",
     "typecheck": "tsc --noEmit",
     "keygen": "bibit-plugin keygen --out .bibit-keys --key-id agent-hub-development",
-    "build:plugin": "bibit-plugin build --key .bibit-keys/agent-hub-development-private.pem --key-id agent-hub-development",
+    "build:plugin": "npm run check:node && bibit-plugin build --key .bibit-keys/agent-hub-development-private.pem --key-id agent-hub-development",
     "test": "vitest run"
+  },
+  "engines": {
+    "node": "24.16.0"
   },
   "bibitPlugin": {
     "entry": "src/plugin.tsx",

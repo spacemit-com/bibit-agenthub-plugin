@@ -1,5 +1,55 @@
 # Changelog
 
+## 2026-10-08 — providerVersion 追平 + 钉住构建用 Node（0.3.16 追加修复）
+
+分类：发布工程 / 可复现性
+
+两处都是发布一致性问题，不改变任何插件行为，因此仍归在 `0.3.16` 下，不单独发版。
+
+### 一、`providerVersion` 落后三版
+
+`provider/internal/provider/server.go` 的 `providerVersion` 是 Go 常量，deb 版本来自 `package.json`（经 `debian/rules`），此前**没有任何东西比较两者**。0.3.14 / 0.3.15 / 0.3.16 都是纯前端改动、都没碰 `provider/`，于是连续三版发出的 CLI 包里，Provider 在 `bibit.initialize` 里自报的还是 `0.3.13`。
+
+- `providerVersion` → `0.3.16`；
+- 新增 `TestProviderVersionMatchesPackageJSON`：读 `../../..` 的 `package.json` 并断言两者相等，下次再漂移会在 `go test` 阶段失败；
+- `docs/cli-provider-development-and-deployment.md` 的 `bibit.initialize` 示例同步为 `0.3.16`；
+- 开发指南版本表、构建示例里残留的 `0.3.10` 一并更新（11 处）。
+
+### 二、bundle 字节随 Node 版本漂移
+
+现象：同一次提交，deb 内的 bundle 是 `91692583…`（100635 字节），而门禁 `npm run build:plugin` 产出的是 `ab8695b4…`（100451 字节）。逐字节定位：
+
+- 解压后的 **tar 流完全相同**（425984 字节、`cmp` 一致），四个成员（`plugin.json`/`plugin.sig`/`dist/plugin.js`/`dist/agent-hub.css`）哈希全部相同，gzip 头也相同；**只有 deflate 压缩流从第 13 字节起不同**。
+
+根因是**运行时的 zlib 版本**：`dpkg-buildpackage` 走系统 Node **18.19.1**（zlib 1.3），门禁走 nvm Node **24.16.0**（zlib 1.3.1）。用系统 Node 重跑同一命令即精确复现 `91692583…`。为确认不是压缩参数问题，对同一个 tar 流遍历 **level 0–9 × 5 种 strategy = 20 种组合**，两个运行时**没有任何一种**得到相同字节，因此只能钉工具链。
+
+修复：
+
+| 文件 | 内容 |
+| --- | --- |
+| `.nvmrc`（新） | `24.16.0`，唯一真值来源 |
+| `scripts/check-node.mjs`（新） | 读 `.nvmrc` 校验当前解释器；不符时打印实际 zlib 版本与修复命令并以 1 退出，**不会产出第二份 bundle** |
+| `package.json` | 新增 `check:node` 脚本；`build:plugin` 先跑该检查；新增 `engines.node: 24.16.0` |
+| `debian/rules` | 由 `.nvmrc` 解析出 `NODE`（nvm 安装路径 → `/usr/local/bin/node` → `node`），并把它的 `bin` 前置到 `PATH` 后再跑 `npm ci` / `npx bibit-plugin build`；构建前强制 `check-node.mjs` |
+| `src/nodePin.test.ts`（新） | 3 条契约：`.nvmrc` 必须是精确版本、`engines.node` 必须与之相等、`build:plugin` 必须串上 `check:node` |
+
+修完后 **deb 内 bundle 与 `npm run build:plugin` 产物逐字节相同**（都是 `ab8695b4…`）。注意：`91692583…` 是 Node 18 的压缩结果，旧验证文档里记的正是它；因为 deb 已用新 pin 重建，0.3.16 的 bundle 哈希随之变为 `ab8695b4…`。
+
+### 三、门禁与反向验证
+
+`npm test` **547/547**（30 个文件）、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin`、`make -C provider test vet build`、`--self-test` exit 0、`gofmt` 无输出。
+
+反向验证 4 项，逐条撤掉对应机制后必须失败：
+
+| # | 变异 | 期望失败 | 实测 |
+| --- | --- | --- | --- |
+| 1 | `providerVersion` 退回 `0.3.13` | 版本一致性用例 | 1 failed ✓ |
+| 2 | 用系统 Node 18 跑 `npm run build:plugin` | `check-node` 拦截 | exit 1，且 `artifacts/` 未被覆盖（哈希仍为 `ab8695b4…`）✓ |
+| 3 | `NODE=/usr/bin/node` 跑 `debian/rules` 的构建目标 | `check-node` 拦截 | `Error 1` ✓ |
+| 4 | `.nvmrc` 改成 `24.15.0`（与 `engines` 不一致） | pin 一致性用例 | 1 failed ✓ |
+
+详见 `docs/verification/2026-10-08-release-consistency.md`。
+
 ## 2026-09-30 — Agent 选择抽成标签栏最右侧的独立控件（0.3.16）
 
 分类：体验优化 / 交互重构

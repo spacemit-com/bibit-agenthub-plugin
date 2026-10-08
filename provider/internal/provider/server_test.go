@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -50,6 +52,30 @@ func TestInitializeV1(t *testing.T) {
 	}
 	if result.ProtocolVersion != 1 {
 		t.Fatal("must negotiate v1")
+	}
+}
+
+// TestProviderVersionMatchesPackageJSON keeps the version the provider reports
+// in `bibit.initialize` equal to the version of the deb that ships it. The two
+// drifted apart for three releases (0.3.14-0.3.16 shipped a provider still
+// announcing 0.3.13) because nothing compared them: the deb version comes from
+// package.json via debian/rules, and providerVersion is a Go constant.
+func TestProviderVersionMatchesPackageJSON(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "package.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	if manifest.Version == "" {
+		t.Fatal("package.json has no version")
+	}
+	if providerVersion != manifest.Version {
+		t.Fatalf("providerVersion %q must equal package.json version %q", providerVersion, manifest.Version)
 	}
 }
 

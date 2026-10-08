@@ -38,7 +38,12 @@ const (
 	// maxIDLength bounds a JSON-RPC string id; the host uses 1..128.
 	maxIDLength = 128
 
-	providerVersion = "0.3.13"
+	// providerVersion is what `bibit.initialize` reports, so it must track the
+	// package version in package.json: the deb carries the package version, and a
+	// provider that self-reports an older one makes every bug report ambiguous.
+	// `TestProviderVersionMatchesPackageJSON` reads package.json to keep the two
+	// from drifting again.
+	providerVersion = "0.3.16"
 )
 
 // declaredOperations is the closed set reported to the host at initialize and

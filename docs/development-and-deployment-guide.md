@@ -6,7 +6,7 @@
 
 | 项目 | 当前版本 |
 | --- | --- |
-| Agent Hub 插件 | `0.3.10` |
+| Agent Hub 插件 | `0.3.16` |
 
 | `manifestSchemaVersion` | `1` |
 | `sdkApiVersion` | `1` |
@@ -15,6 +15,7 @@
 | `@bibit/feature-plugin-sdk` | `0.4.0` |
 | `@bibit/feature-dev-host` | `0.4.0` |
 | React / React DOM | `19.0.0` |
+| 构建用 Node（bundle 字节取决于它的 zlib） | `24.16.0`（`.nvmrc`、`package.json` `engines`、`scripts/check-node.mjs` 三处一致） |
 | 已验证目标 Bibit | `b5387833927e052fe3728bc0631cef2df0138092`（`bianbu/0.1.8`，插件加载与商店链路） |
 | 宿主语言支持 | 插件中英文文案跟随宿主 `language`；需要 `bi-bit` 0.1.4 及以上的宿主。插件已不声明 settings contribution，因此不再有设置菜单 `titleKey` |
 | 新会话入口所需宿主 | 页头「创建资源」入口需要登记了 `conversation.compose` 的宿主：`conversation.compose` 的类型与 `host:actions` capability 只在 `@bibit/feature-*@0.4.0`（随 bibit 主线 `0e3d7b4f820f3a75c1ac549f4488c6f2fd45c91d` 发布）里，已发布的 `bi-bit`（板端 0.1.18、`bianbu/0.1.22`）只有 `conversation.create`，此时入口提示「当前宿主不支持发起会话」 |
@@ -237,7 +238,7 @@ src/
   "manifestSchemaVersion": 1,
   "sdkApiVersion": 1,
   "id": "agent-hub",
-  "version": "0.3.10",
+  "version": "0.3.16",
 
   "owner": "agent-hub-team",
   "display": {
@@ -1132,6 +1133,22 @@ npm run keygen
 .bibit-keys/agent-hub-development-trust-store.json
 ```
 
+构建用的 Node 版本是**钉死的**（`.nvmrc` = `24.16.0`）。插件 bundle 是一个 gzip 压缩的 tar，压缩用的是 Node 运行时的 zlib：Node 18 带 zlib 1.3、Node 24 带 1.3.1，同一份源码在两者下会产出**两份字节不同**的 `.bibit-plugin.tgz`（SHA-256 也不同）。按 level 0–9 × 5 种 strategy 共 20 种组合逐一验证，没有一种能跨这两个运行时得到相同字节，所以只能钉工具链，不能靠调压缩参数。
+
+```bash
+nvm install            # 读 .nvmrc，装 24.16.0
+nvm use                # 之后所有构建都在这个版本下
+node --version         # 24.16.0
+```
+
+`npm run build:plugin` 会先跑 `scripts/check-node.mjs`；版本不符时**直接失败并打印当前 zlib 版本与修复命令**，不会产出另一份 bundle。`debian/rules` 同样先跑这个检查，并且用 `.nvmrc` 解析出的解释器去跑 `npm ci` / `npx bibit-plugin build`（把它的 `bin` 放在 `PATH` 最前面），所以打包路径与本地构建产出同一份字节。构造时需要换解释器可以显式指定：
+
+```bash
+NODE="$HOME/.nvm/versions/node/v24.16.0/bin/node" dpkg-buildpackage -us -uc -b
+```
+
+要改这个 pin，改 `.nvmrc` 一处即可（`package.json` 的 `engines.node` 由 `src/nodePin.test.ts` 约束为同值）；但**必须重新构建并重记所有已发布的 bundle SHA-256**，因为那些哈希只对旧 pin 成立。
+
 构建：
 
 ```bash
@@ -1144,17 +1161,17 @@ npm run build:plugin
 产物：
 
 ```text
-artifacts/agent-hub-0.3.10.bibit-plugin.tgz
+artifacts/agent-hub-0.3.16.bibit-plugin.tgz
 
 ```
 
 检查：
 
 ```bash
-tar -tzf artifacts/agent-hub-0.3.10.bibit-plugin.tgz
-tar -xOf artifacts/agent-hub-0.3.10.bibit-plugin.tgz plugin.json
-tar -xOf artifacts/agent-hub-0.3.10.bibit-plugin.tgz plugin.sig
-sha256sum artifacts/agent-hub-0.3.10.bibit-plugin.tgz
+tar -tzf artifacts/agent-hub-0.3.16.bibit-plugin.tgz
+tar -xOf artifacts/agent-hub-0.3.16.bibit-plugin.tgz plugin.json
+tar -xOf artifacts/agent-hub-0.3.16.bibit-plugin.tgz plugin.sig
+sha256sum artifacts/agent-hub-0.3.16.bibit-plugin.tgz
 
 ```
 
@@ -1206,7 +1223,7 @@ Settings > Extensions > Trusted plugins
 选择：
 
 ```text
-artifacts/agent-hub-0.3.10.bibit-plugin.tgz
+artifacts/agent-hub-0.3.16.bibit-plugin.tgz
 ```
 
 Bibit 会验签、校验 hash、安装、激活并刷新 Feature Registry。确认主导航出现 Agent Hub（插件已不声明 settings contribution，因此设置子菜单里不再有 Agent Hub 条目）。
@@ -1232,7 +1249,7 @@ Agent Hub 插件 deb 应安装：
 
 ```bash
 sudo install -Dm0644 \
-  artifacts/agent-hub-0.3.10.bibit-plugin.tgz \
+  artifacts/agent-hub-0.3.16.bibit-plugin.tgz \
 
   /usr/lib/bibit/plugins/agent-hub.bibit-plugin.tgz
 sudo install -Dm0644 \
@@ -1316,7 +1333,7 @@ dpkg-buildpackage -us -uc -b
 K3DEB1 的 Release 部署必须使用正式签名、且 `keyId` 已进入目标 Bibit 内置信任库的 bundle：
 
 ```bash
-export SIGNED_AGENT_HUB_BUNDLE=/absolute/path/agent-hub-0.3.10.bibit-plugin.tgz
+export SIGNED_AGENT_HUB_BUNDLE=/absolute/path/agent-hub-0.3.16.bibit-plugin.tgz
 
 test -f "$SIGNED_AGENT_HUB_BUNDLE"
 tar -xOf "$SIGNED_AGENT_HUB_BUNDLE" plugin.json
@@ -1411,7 +1428,7 @@ npm run build:plugin
 
 - 目标 Bibit 信任正式 `keyId`；
 - 系统目录只有预期 Agent Hub bundle；
-- Bibit 插件管理页显示 `agent-hub@0.3.10` 已激活；
+- Bibit 插件管理页显示 `agent-hub@0.3.16` 已激活；
 - 主导航出现 Agent Hub；
 - 设置子菜单**不再**出现 Agent Hub（插件已不声明 settings contribution）；
 - Agent Hub 页面一级标签为「我的 Power / Power 市场 / 设置」；
