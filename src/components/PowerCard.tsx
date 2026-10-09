@@ -78,7 +78,32 @@ export function PowerCard({
           {current.version || t('No version')}
         </span>
       </div>
-      <h2 ref={titleRef}>{title}</h2>
+      <h2 ref={titleRef}>
+        {/* The whole card opens the details with a mouse, but a pointer-only target has
+            no keyboard equivalent. A button *inside* the heading is the standard
+            clickable-card pattern: the heading keeps its semantics and therefore its
+            accessible name, the control lands in the tab order, and -- unlike an
+            overlay button stretched across the card -- the description's own scroller
+            stays reachable. When the card has no details target it is plain text
+            again. */}
+        {onDetails ? (
+          <button
+            type="button"
+            className="power-card__open"
+            disabled={busy}
+            onClick={(event) => {
+              // The article's own onClick would otherwise fire too, opening the dialog
+              // twice for a single press.
+              event.stopPropagation()
+              openDetails()
+            }}
+          >
+            {title}
+          </button>
+        ) : (
+          title
+        )}
+      </h2>
       <p className="power-card__description" ref={descriptionRef}>
         {description}
         <ScrollThumb targetRef={descriptionRef} />

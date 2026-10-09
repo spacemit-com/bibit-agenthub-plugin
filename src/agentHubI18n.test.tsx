@@ -60,19 +60,34 @@ describe('AgentHubI18nProvider', () => {
   it('renders the English source unchanged for English hosts', () => {
     render(
       <AgentHubI18nProvider language="en">
-        <Probe source="No Powers are available." />
+        <Probe source="No powers match these tags." />
       </AgentHubI18nProvider>
     )
-    expect(screen.getByTestId('value').textContent).toBe('No Powers are available.')
+    expect(screen.getByTestId('value').textContent).toBe('No powers match these tags.')
   })
 
   it('renders Chinese copy for a Chinese host', () => {
     render(
       <AgentHubI18nProvider language="zh-CN">
-        <Probe source="No Powers are available." />
+        <Probe source="No powers match these tags." />
       </AgentHubI18nProvider>
     )
-    expect(screen.getByTestId('value').textContent).toBe('没有可用的 Power。')
+    expect(screen.getByTestId('value').textContent).toBe('没有匹配这些标签的能力。')
+  })
+
+  it('interpolates the type and agent into the empty-list copy', () => {
+    // The empty-list copy is the one place a translated string carries the filters that
+    // produced it, so the placeholders have to survive into both languages.
+    function EmptyProbe() {
+      const t = useAgentHubI18n()
+      return <p data-testid="value">{t('No {type} powers are installed for {agent}.', { type: 'expert', agent: 'bibit' })}</p>
+    }
+    render(
+      <AgentHubI18nProvider language="zh-CN">
+        <EmptyProbe />
+      </AgentHubI18nProvider>
+    )
+    expect(screen.getByTestId('value').textContent).toBe('bibit 没有安装 expert 类型的能力。')
   })
 
   it('switches copy when only the language prop changes', () => {

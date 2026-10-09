@@ -791,7 +791,27 @@ export function AgentHubPage(_: FeaturePageProps) {
                 </p>
               ))}
               {view.data.items.length === 0 ? (
-                <p className="agent-hub__status">{t('No Powers are available.')}</p>
+                /* One message for every empty list hid the cause: a tag selection that
+                   matched nothing and a type the chosen Agent has none of both read
+                   "No Powers are available.", and only the first has a fix to click.
+                   Name the filter that is actually excluding the results. The type is
+                   not named as the culprit when tags are set, because both are filters
+                   and only the tag selection is cleared by the one action offered --
+                   the type chips are already on screen for that. */
+                <div className="agent-hub__empty" role="status">
+                  <p>
+                    {tags.length > 0
+                      ? t('No powers match these tags.')
+                      : scope === 'installed'
+                        ? t('No {type} powers are installed for {agent}.', { type, agent })
+                        : t('No {type} powers in the catalog.', { type })}
+                  </p>
+                  {tags.length > 0 && (
+                    <button type="button" onClick={() => changeTags([])}>
+                      {t('Clear tags')}
+                    </button>
+                  )}
+                </div>
               ) : (
                 <>
                   <section className="agent-hub__grid" aria-label={t('Available Powers')}>

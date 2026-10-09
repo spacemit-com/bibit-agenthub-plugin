@@ -329,7 +329,7 @@ describe('AgentHubPage', () => {
     await screen.findByRole('heading', { name: 'code-review' })
   })
 
-  it('shows Loading Powers… then the empty copy when the result has no items', async () => {
+  it('shows Loading Powers… then a copy naming the Agent that has nothing installed', async () => {
     const resolvers: Array<(value: unknown) => void> = []
     const { hostApi } = makeStoreHost((input) => {
       if (input.operationId === 'powers.custom.list.v1') return customData()
@@ -341,7 +341,81 @@ describe('AgentHubPage', () => {
 
     resolvers[0](installedData('[]'))
 
-    expect(await screen.findByText('No Powers are available.')).toBeTruthy()
+    expect(await screen.findByText('No skill powers are installed for bibit.')).toBeTruthy()
+  })
+
+  it('names the tag filter when a tag selection empties the list', async () => {
+    const user = userEvent.setup()
+    const { hostApi } = makeStoreHost((input) => {
+      if (input.operationId === 'powers.custom.list.v1') return customData()
+      return installedData(
+        JSON.stringify([
+          { ...codeReviewRecord, tags: ['quality'] },
+          { ...codeReviewRecord, name: 'other-skill', tags: ['writing'] },
+        ])
+      )
+    })
+    renderPage(hostApi)
+    await screen.findByRole('heading', { name: 'code-review' })
+
+    // The tags facet only offers tags that exist, and the filter is an intersection, so
+    // selecting both tags matches no version -- the empty case under test.
+    const tagGroup = screen.getByRole('group', { name: 'Tags' })
+    expect(within(tagGroup).getAllByRole('button').length).toBeGreaterThan(1)
+    // Re-query between clicks: selecting a tag re-reads the list, and a node captured
+    // before the re-render is detached.
+    await user.click(within(tagGroup).getByRole('button', { name: 'quality' }))
+    await user.click(within(screen.getByRole('group', { name: 'Tags' })).getByRole('button', { name: 'writing' }))
+
+    // The message names the tag filter, not the type: that is the filter that is
+    // excluding everything, and the one the offered action clears.
+    expect(await screen.findByText('No powers match these tags.')).toBeTruthy()
+  })
+
+  it('offers to clear the tags and restores the list when clicked', async () => {
+    const user = userEvent.setup()
+    const { hostApi } = makeStoreHost((input) => {
+      if (input.operationId === 'powers.custom.list.v1') return customData()
+      return installedData(
+        JSON.stringify([
+          { ...codeReviewRecord, tags: ['quality'] },
+          { ...codeReviewRecord, name: 'other-skill', tags: ['writing'] },
+        ])
+      )
+    })
+    renderPage(hostApi)
+    await screen.findByRole('heading', { name: 'code-review' })
+
+    const tagGroup = screen.getByRole('group', { name: 'Tags' })
+    await user.click(within(tagGroup).getByRole('button', { name: 'quality' }))
+    await user.click(within(screen.getByRole('group', { name: 'Tags' })).getByRole('button', { name: 'writing' }))
+    await screen.findByText('No powers match these tags.')
+
+    // The empty state carries the one action that fixes it, instead of telling the user
+    // only that there is nothing to see.
+    await user.click(screen.getByRole('button', { name: 'Clear tags' }))
+
+    expect(await screen.findByRole('heading', { name: 'code-review' })).toBeTruthy()
+    expect(screen.queryByText('No powers match these tags.')).toBeNull()
+  })
+
+  it('names the type filter when the type has nothing in the market', async () => {
+    const user = userEvent.setup()
+    const { hostApi } = makeStoreHost((input) => {
+      if (input.operationId === 'powers.custom.list.v1') return customData()
+      const params = wireParamsOf(input)
+      // The catalog only carries skills, so the expert type legitimately has none.
+      return params.scope === 'market' ? marketData() : installedData('[]')
+    })
+    renderPage(hostApi)
+    await user.click(screen.getByRole('button', { name: 'Capability Market' }))
+    await screen.findByRole('heading', { name: 'market-translate' })
+
+    await user.click(screen.getByRole('button', { name: 'expert' }))
+
+    expect(await screen.findByText('No expert powers in the catalog.')).toBeTruthy()
+    // No action is offered here: the type chips are already on screen.
+    expect(screen.queryByRole('button', { name: 'Clear tags' })).toBeNull()
   })
 
   it('omits the agent and hides Agent controls when switching to the market', async () => {
@@ -531,7 +605,7 @@ describe('AgentHubPage', () => {
       throw new Error('unexpected op ' + input.operationId)
     })
     renderPage(hostApi)
-    await screen.findByText('No Powers are available.')
+    await screen.findByText('No skill powers are installed for bibit.')
 
     // Choosing an Agent no longer requires opening a dialog: the tab-row control
     // owns it, and the market install must follow the same choice.
@@ -580,7 +654,7 @@ describe('AgentHubPage', () => {
       throw new Error('unexpected op ' + input.operationId)
     })
     renderPage(hostApi)
-    await screen.findByText('No Powers are available.')
+    await screen.findByText('No skill powers are installed for bibit.')
 
     await user.click(screen.getByRole('button', { name: 'Capability Market' }))
     await screen.findByRole('heading', { name: 'market-translate' })
@@ -670,7 +744,7 @@ describe('AgentHubPage', () => {
       return installedData(installedReads === 1 ? '[]' : installedManifest)
     })
     renderPage(hostApi)
-    await screen.findByText('No Powers are available.')
+    await screen.findByText('No skill powers are installed for bibit.')
     expect(screen.queryByText('Installed')).toBeNull()
 
     await user.click(screen.getByRole('button', { name: 'Capability Market' }))
@@ -1117,7 +1191,7 @@ describe('AgentHubPage', () => {
       wireParamsOf(input).scope === 'market' ? translatedCatalog : installedData('[]')
     )
     renderLocalizedPage(hostApi, 'zh-CN')
-    await screen.findByText('没有可用的 Power。')
+    await screen.findByText('bibit 没有安装 skill 类型的能力。')
 
     await user.click(screen.getByRole('button', { name: '能力市场' }))
 
@@ -1223,7 +1297,7 @@ describe('AgentHubPage', () => {
       )
     })
     renderPage(hostApi)
-    await screen.findByText('No Powers are available.')
+    await screen.findByText('No skill powers are installed for bibit.')
 
     await user.hover(screen.getByRole('button', { name: 'Agent: bibit' }))
 
@@ -1509,7 +1583,7 @@ describe('AgentHubPage', () => {
       // The Power is gone, so the dialog must not stay open on it: the page returns
       // to the refreshed list instead.
       await waitFor(() => expect(document.querySelector('dialog')).toBeNull())
-      expect(await screen.findByText('No Powers are available.')).toBeTruthy()
+      expect(await screen.findByText('No skill powers are installed for bibit.')).toBeTruthy()
     })
 
     it('keeps the dialog with its reason when an uninstall fails', async () => {
@@ -1533,7 +1607,7 @@ describe('AgentHubPage', () => {
 
       expect(await dialog.findByText('The command failed; version v1.0.0 is still installed.')).toBeTruthy()
       expect(document.querySelector('dialog')).toBeTruthy()
-      expect(screen.queryByText('No Powers are available.')).toBeNull()
+      expect(screen.queryByText('No skill powers are installed for bibit.')).toBeNull()
     })
 
     it('does not uninstall when the confirmation is cancelled', async () => {
@@ -1774,7 +1848,7 @@ describe('AgentHubPage custom resources', () => {
     })
     // The write refreshes the list, so the uploaded resource disappears from the
     // scan and the page falls back to the empty copy.
-    expect(await screen.findByText('No Powers are available.')).toBeTruthy()
+    expect(await screen.findByText('No skill powers are installed for bibit.')).toBeTruthy()
   })
 
   it('surfaces a missing APC key as a settings hint instead of a raw provider error', async () => {
@@ -1868,7 +1942,7 @@ describe('AgentHubPage custom resources', () => {
     expect(deleteCall?.params).toEqual({ agent: 'bibit', type: 'skill', name: 'hand-written' })
     // The resource is gone, so its dialog must not stay open on a Power that no
     // longer exists: the page returns to the list, which has already refreshed.
-    expect(await screen.findByText('No Powers are available.')).toBeTruthy()
+    expect(await screen.findByText('No skill powers are installed for bibit.')).toBeTruthy()
     await waitFor(() => expect(document.querySelector('dialog')).toBeNull())
     expect(screen.queryByText('Deleted skill "hand-written".')).toBeNull()
   })

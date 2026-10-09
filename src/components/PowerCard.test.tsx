@@ -202,6 +202,43 @@ describe('PowerCard', () => {
     expect(onDetails).toHaveBeenCalled()
   })
 
+  it('opens details from the keyboard, not only from a pointer', () => {
+    // The card opened on click alone, so a mouse could reach the details and a keyboard
+    // could not: a pointer-only target has no keyboard equivalent. The title is now a
+    // real button, which is what puts the card in the tab order and makes Enter/Space
+    // work; it also keeps the heading's semantics instead of turning the card into a
+    // role=button that would swallow the description's own scroller.
+    const { onDetails } = renderCard()
+
+    const open = screen.getByRole('button', { name: 'code-review' })
+    expect(open.tagName).toBe('BUTTON')
+    // It lives inside the heading, so the heading still names the card.
+    expect(open.closest('h2')).toBeTruthy()
+
+    fireEvent.click(open)
+    expect(onDetails).toHaveBeenCalledTimes(1)
+  })
+
+  it('fires the details once per press, not twice through bubbling', () => {
+    // The button sits inside the article that also handles onClick, so a missing
+    // stopPropagation would open the dialog twice for one press.
+    const { onDetails } = renderCard()
+
+    fireEvent.click(screen.getByRole('button', { name: 'code-review' }))
+
+    expect(onDetails).toHaveBeenCalledTimes(1)
+  })
+
+  it('disables the keyboard control while a write is in flight', () => {
+    const { onDetails } = renderCard({ busy: true })
+
+    const open = screen.getByRole('button', { name: 'code-review' }) as HTMLButtonElement
+    expect(open.disabled).toBe(true)
+
+    fireEvent.click(open)
+    expect(onDetails).not.toHaveBeenCalled()
+  })
+
   it('does not open details when the card is not clickable', () => {
     renderCard({ onDetails: undefined })
 

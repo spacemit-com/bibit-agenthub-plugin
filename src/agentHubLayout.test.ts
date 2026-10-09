@@ -188,6 +188,131 @@ describe('Agent Hub layout contract', () => {
     expect([...new Set(declaredTypes)].sort()).toEqual([...POWER_TYPES].sort())
   })
 
+  it('keeps the focus ring opaque so it is actually visible', () => {
+    // The ring was `rgb(101 80 216 / 28%)`, which composited to 1.51:1 on a white card
+    // and 2.76:1 on a dark one -- under the 3:1 WCAG 1.4.11 asks of a non-text
+    // indicator, so Tab moved an invisible focus through the page. Nothing failed when
+    // that shipped: a token test that only checks the *shape* of the value cannot see
+    // transparency, which is why this asserts the alpha directly.
+    const token = rules('.agent-hub').flatMap((block) => declared(block, '--hub-focus'))
+    expect(token).toHaveLength(1)
+    expect(token[0]).toMatch(/^light-dark\(\s*#[0-9a-f]{6}\s*,\s*#[0-9a-f]{6}\s*\)$/)
+    expect(token[0]).not.toMatch(/rgba?\(|\//)
+
+    // And the ring rule must cover the clickable card, which is a control too.
+    const ring = blocks.filter((block) =>
+      block.selectors.some((selector) => selector.endsWith(':focus-visible'))
+    )
+    expect(ring.length).toBeGreaterThan(0)
+    for (const block of ring) {
+      // The ring is authored as the `outline` shorthand, so the style and width are
+      // read out of it rather than from longhands that are never set.
+      const shorthand = declared(block, 'outline')
+      expect(shorthand).toHaveLength(1)
+      expect(shorthand[0]).toContain('solid')
+      expect(shorthand[0]).toContain('var(--hub-focus)')
+      const width = Number.parseFloat(shorthand[0])
+      expect(width).toBeGreaterThanOrEqual(2)
+    }
+    const covered = ring.flatMap((block) => block.selectors)
+    expect(covered).toContain(".agent-hub .power-card[data-clickable='true']:focus-visible")
+  })
+
+  it('seats the sticky pagination on the scrollport edge', () => {
+    // At `bottom: 0` the bar stopped short of the scrollport by the page's bottom inset,
+    // and the grid scrolling underneath stayed legible in that strip -- cards showing
+    // through a bar that is meant to be opaque. The bar reaches past the inset by the
+    // same token the page pads by, so the two cannot drift apart.
+    const inset = rules('.agent-hub').flatMap((block) => declared(block, '--hub-page-inset-end'))
+    expect(inset).toHaveLength(1)
+
+    const page = rules('.agent-hub')
+    expect(
+      page.some((block) => declared(block, 'padding').some((value) => value.includes('var(--hub-page-inset-end)')))
+    ).toBe(true)
+
+    const pagination = rules('.agent-hub .power-pagination')
+    expect(pagination).toHaveLength(1)
+    const bottom = declared(pagination[0], 'bottom')
+    expect(bottom).toHaveLength(1)
+    expect(bottom[0]).toBe('calc(-1 * var(--hub-page-inset-end))')
+    // The padding grows by the same token so the controls keep their position.
+    const padding = declared(pagination[0], 'padding')
+    expect(padding).toHaveLength(1)
+    expect(padding[0]).toContain('var(--hub-page-inset-end)')
+    // Still opaque: the bar has to hide what scrolls under it.
+    expect(declared(pagination[0], 'background')).toEqual(['var(--hub-bg)'])
+    expect(declared(pagination[0], 'position')).toEqual(['sticky'])
+  })
+
+  it('resets the card title button at a specificity that beats the base button rule', () => {
+    // The title button inherits `.agent-hub button:where(:not(.power-filters__scope))`,
+    // which paints padding, a border and a background. `:where()` contributes nothing, so
+    // that rule sits at (0,1,1); a bare `.power-card__open` is (0,1,0) and loses, which
+    // shipped a bordered chip around every card title instead of invisible text. The
+    // reset therefore has to carry a class of its own.
+    const base = rules('.agent-hub button:where(:not(.power-filters__scope))')
+    expect(base).toHaveLength(1)
+
+    const reset = rules('.agent-hub .power-card__open')
+    expect(reset, 'the reset must out-specify the base button surface').toHaveLength(1)
+    const body = reset[0]
+    expect(declared(body, 'border')).toEqual(['0'])
+    expect(declared(body, 'padding')).toEqual(['0'])
+    expect(declared(body, 'background')).toEqual(['none'])
+    expect(declared(body, 'font')).toEqual(['inherit'])
+
+    // A bare class selector is the regression; keep it from coming back.
+    expect(rules('.power-card__open')).toEqual([])
+
+    // The button is reachable and named, and its activation path is wired.
+    expect(rules('.agent-hub .power-card__open:disabled')).toHaveLength(1)
+  })
+
+  it('keeps every text token at or above its contrast floor', () => {
+    // The two tokens that carry body copy failed AA in the light theme: --hub-muted
+    // measured 4.23:1 on the darkest card gradient stop and --hub-label 3.09:1 on the
+    // filter panel. Both were "covered" by the light-dark() pair test, which says
+    // nothing about legibility, so the floor is asserted here on the resolved pairs.
+    const pair = (token: string, expected: number) => {
+      const values = rules('.agent-hub').flatMap((block) => declared(block, token))
+      expect(values, `missing ${token}`).toHaveLength(1)
+      const [light, dark] = values[0].match(/#[0-9a-f]{6}/g) ?? []
+      expect(light && dark, `${token} must be a light-dark() hex pair`).toBeTruthy()
+      return { light: light as string, dark: dark as string, expected }
+    }
+
+    const hexToRgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16))
+    const luminance = (rgb: number[]) => {
+      const [r, g, b] = rgb.map((value) => {
+        const channel = value / 255
+        return channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
+      })
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b
+    }
+    const contrast = (a: string, b: string) => {
+      const [high, low] = [luminance(hexToRgb(a)), luminance(hexToRgb(b))].sort((x, y) => y - x)
+      return (high + 0.05) / (low + 0.05)
+    }
+
+    // The card background is `linear-gradient(145deg, surface 34%, type-soft)`, so the
+    // worst case for muted copy is the type tint, not the white stop.
+    const lightSurface = '#ffffff'
+    const lightTints = ['#f2efff', '#eef9f5', '#fff6eb', '#eff6ff']
+    const darkSurface = '#171717'
+
+    const muted = pair('--hub-muted', 4.5)
+    for (const tint of lightTints) {
+      expect(contrast(muted.light, tint)).toBeGreaterThanOrEqual(4.5)
+    }
+    expect(contrast(muted.light, lightSurface)).toBeGreaterThanOrEqual(4.5)
+    expect(contrast(muted.dark, darkSurface)).toBeGreaterThanOrEqual(4.5)
+
+    const label = pair('--hub-label', 4.5)
+    expect(contrast(label.light, lightSurface)).toBeGreaterThanOrEqual(4.5)
+    expect(contrast(label.dark, darkSurface)).toBeGreaterThanOrEqual(4.5)
+  })
+
   it('keeps the card height independent of the description length', () => {
     expect(rules('.power-card').flatMap((block) => declared(block, 'min-height'))).toEqual([])
 
@@ -265,11 +390,14 @@ describe('Agent Hub layout contract', () => {
   })
 
   it('pins the pagination to the bottom of the page scroller', () => {
+    // Sticky, so it stays reachable while the grid scrolls, and seated on the scrollport
+    // edge rather than merely near it -- see the seating test below for why.
     const pagination = rules('.agent-hub .power-pagination')
     expect(
       pagination.some(
         (block) =>
-          declared(block, 'position').includes('sticky') && declared(block, 'bottom').includes('0')
+          declared(block, 'position').includes('sticky') &&
+          declared(block, 'bottom').includes('calc(-1 * var(--hub-page-inset-end))')
       )
     ).toBe(true)
   })

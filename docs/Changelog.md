@@ -1,5 +1,70 @@
 # Changelog
 
+## 2026-10-09 — UI 精修：焦点环、对比度、键盘可达与空状态（0.4.2）
+
+分类：界面精修（前端）
+
+用户需求：
+
+> 用 impeccable 优化插件 UI，只修改前端。
+
+数据来源：这次不是「读 CSS 猜问题」，而是把真实 dev preview 跑起来量出来的——`npm run dev`（`APM_PATH` 指向本仓 apm、`NODE_OPTIONS=--use-system-ca` 让 APC 目录可达）+ WebDriver BiDi 驱动截图/点击/按键/几何测量，明暗两套、1440×900 与 1024×800。量出来的东西和读代码得出的印象差得远。
+
+### 一、修掉的缺陷（附实测值）
+
+| 缺陷 | 实测 | 修复后 |
+| --- | --- | --- |
+| **键盘焦点环不可见** | `--hub-focus` 是 28% alpha 的同色，合成后对白卡 **1.51:1**、深卡 **2.76:1**（WCAG 1.4.11 要求非文本指示 ≥3:1）。Tab 在整页移动却看不见焦点 | 改为不透明，**5.69:1 / 8.65:1**；色相不变，只去掉 alpha |
+| 卡片描述对比度不足 | **4.23:1**（14px 正文需 4.5）。卡片底色是 `linear-gradient(145deg, surface 34%, type-soft)`，最差一站是类型色底而不是白色 | **4.99:1** |
+| 筛选标签对比度不足 | **3.09:1**（11px/800 的 TYPE / TAGS / AGENT / VERSION） | **4.73:1** |
+| **卡片不可键盘操作** | `.power-card` 只有 `onClick`，无 `tabindex`/`role`；详情弹窗键盘完全到不了 | 标题改为 heading 内的真实 `<button>`，Tab 可达（实测第 18 个 Tab 落上） |
+| 空状态不区分层级 | 「No Powers are available.」在标签筛选无结果、类型无结果、真的没装、市场为空四种情况都是同一句 | 按筛选分层命名，标签场景给「Clear tags」动作 |
+| 分页条下方漏内容 | sticky 分页在 `bottom: 0` 时因页面底部内边距停在离滚动口边缘 10px 处，卡片从这条缝里透出来 | 用 `--hub-page-inset-end` 让分页条盖住到边缘（实测 gap 0），几何上确认最后一行仍完整可读 |
+
+### 二、关键决策
+
+- **卡片标题用 heading 内的真 button，而不是给 `<article>` 加 `role="button"`**：后者会把 heading 与描述从无障碍树里剪掉（button 的子节点是 presentational），描述又恰是卡片的主体内容；而「铺满整卡的 overlay button」会盖住卡片自己的描述滚动区——那是用户明确要求保留的。heading 内放 button 是标准的可点击卡片模式：heading 语义保留、按钮进 Tab 序、滚动区照常可用。按钮加 `stopPropagation`，否则一次点击会经冒泡把弹窗开两次。
+- **对比度按卡片渐变的最差一站断言**，而不是按白色。这是这次最容易搞错的地方：`--hub-muted` 在白底上是 4.79:1（达标），只有算上类型色底才暴露出 4.23:1。
+- **空状态只在标签场景给动作**：类型筛选的「修复手段」就是屏幕上已经存在的类型 chip，再放一个按钮是冗余；标签选择则没有别的出口。
+- **分页间距收口到 token**：页面底部内边距与被分页条覆盖的 10px 原本是两处独立字面量，抽成 `--hub-page-inset-end` 后两者不可能再漂移。
+
+### 三、契约测试（这次的核心）
+
+这几个缺陷的共同点是**静默**：值和结构都「有测试」，但「在真实渲染里是否可见/生效」从没被断言过。所以每处修复都补在原来缺的那一层：
+
+- `agentHubLayout.test.ts`：焦点环必须是不含 alpha 的 `light-dark(#hex, #hex)`，且 `outline` 简写含 `solid`、线宽 ≥2；`--hub-muted` / `--hub-label` 必须对**最差渐变站**达标；标题按钮的重置规则必须带 `.agent-hub`（**特异性 (0,2,0) 压过基础按钮规则的 (0,1,1)**，并且禁止裸 `.power-card__open` 回归）；分页条必须用 `--hub-page-inset-end` 贴边且不透明。
+- `PowerCard.test.tsx`：标题按钮存在且在 heading 内、`closest('h2')` 成立、一次按下只触发一次、`busy` 时禁用。
+- `AgentHubPage.test.tsx`：标签筛选清空时给出「No powers match these tags.」并可用「Clear tags」恢复；类型在市场中无结果时给出「No expert powers in the catalog.」且不提供多余动作。
+
+反向验证（均按预期失败）：把焦点环改回 28% alpha、把两个 token 改回旧值、把标题按钮的 `.agent-hub` 去掉、去掉标签专属空状态文案、把分页 `bottom` 改回 `0`。
+
+### 四、过程中自己踩到并修掉的一个坑
+
+第一版标题按钮写成 `.power-card__open`（(0,1,0)），被基础按钮规则 `.agent-hub button:where(:not(.power-filters__scope))`（(0,1,1)）压过——`:where()` 不贡献特异性。结果是**每张卡片的标题都套上了一个带边框的方块**。这是截图看出来的，不是测试：jsdom 不做层叠计算，只有真实渲染才暴露。修法是让选择器带上 `.agent-hub` 到 (0,2,0)，并补上特异性契约测试。
+
+### 五、相关文件
+
+- `src/agentHub.css`（焦点环、两个 token、标题按钮样式与特异性、空状态块、分页贴边、`--hub-page-inset-end`）
+- `src/components/PowerCard.tsx`（标题按钮 + `stopPropagation`）
+- `src/AgentHubPage.tsx`（空状态分层）
+- `src/agentHubI18n.tsx`（4 条新文案，含 2 条带占位符）
+- 测试：`agentHubLayout.test.ts`（+5 条契约）、`PowerCard.test.tsx`（+3）、`AgentHubPage.test.tsx`（+3）、`agentHubI18n.test.tsx`（改写 1、新增 1）
+- 版本 0.4.2（`package.json` / `package-lock.json` / `bibit.feature.json` / `providerVersion`），`debian/changelog`
+- `docs/verification/2026-10-09-ui-polish.md`（新增验证记录）
+
+### 六、验证结果
+
+在钉住的 Node 24.16.0 下：`npm test` 30 个文件 / **580 例全通过**、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin`，以及 `make -C provider test vet build`、`gofmt -l provider/`、`git diff --check` 全通过。检测器扫描只报 1 条，经核对是误报（Tab 下划线，`border-radius: 0`）。
+
+浏览器复核：明暗两套主题、1440×900 与 1024×800，确认焦点环可见、对比度达标、分页贴边且最后一行不被遮、卡片标题无多余边框。
+
+### 七、已知取舍与限制
+
+- **卡片描述保留卡内滚动**（用户确认）：实测 10 张卡片里有 58%～71% 的描述默认不可见，且是嵌套滚动。这是当初为「卡片等高、行列严格对齐」有意做的设计，本轮不动。
+- **headless 环境无法验证 Enter/Space 激活**：`document.hasFocus()` 为 false 时浏览器不为任何按钮合成 click（用既有按钮做了对照验证）。因此键盘**可达性**在真实浏览器里验证（Tab 能落到卡片按钮），**激活行为**由 jsdom 测试覆盖。
+- 只改前端：不动服务契约、wire 协议、Provider、operation ID 与 `dev/` mock 行为。
+- 未做重塑：配色体系、字体、卡片形态与信息架构保持原样。
+
 ## 2026-10-08 — Expert 重命名随 0.4.0 发布（版本号提升）
 
 分类：发布工程 / 契约变更

@@ -1,3 +1,36 @@
+bibit-agenthub-plugin (0.4.2) resolute-porting; urgency=medium
+
+  * UI polish across the page, found by rendering the real dev preview in both
+    themes and measuring it rather than by reading the stylesheet.
+  * The keyboard focus ring is visible again. It was the same hue at 28% alpha,
+    which composited to 1.51:1 on a white card and 2.76:1 on a dark one -- under
+    the 3:1 WCAG 1.4.11 asks of a non-text indicator, so Tab moved an invisible
+    focus through the whole page. Opaque, it measures 5.69:1 and 8.65:1.
+  * Two text tokens failed AA in the light theme. --hub-muted measured 4.23:1 on
+    the darkest stop of the card gradient and --hub-label 3.09:1 on the filter
+    panel; they are now 4.99:1 and 4.73:1, hues unchanged. The card background is
+    a gradient toward the type tint, so the floor is asserted against the tint and
+    not against white.
+  * Cards open their details from the keyboard. The card was a pointer-only
+    target: an article with onClick and no tabindex, so the dialog was unreachable
+    without a mouse. The title is now a real button inside the heading, which keeps
+    the heading's semantics and the description's own scroller -- an overlay button
+    or role="button" on the article would have swallowed one or the other.
+  * The empty list says which filter emptied it and, when a tag selection is the
+    cause, offers to clear it. Every empty case used to read "No Powers are
+    available.", including a type the Agent simply has none of.
+  * The sticky pagination is seated on the scrollport edge. It stopped short by the
+    page's bottom inset, and the grid scrolling underneath stayed legible in that
+    10px strip below a bar that is meant to be opaque.
+  * Each fix carries a contract test at the level that was missing: the ring's
+    opacity, the contrast floor, the title button's specificity against the base
+    button rule, the card's keyboard path, and the pagination's seating. Those are
+    the checks whose absence let the first two ship.
+  * Frontend only: no service contract, wire protocol or Provider change.
+
+ -- liangjunzhao <junzhao.liang@spacemit.com>  Fri, 09 Oct 2026 11:20:00 +0800
+
+
 bibit-agenthub-plugin (0.4.1) resolute-porting; urgency=medium
 
   * Fix the Expert type losing its palette. The type's accent is selected by the
