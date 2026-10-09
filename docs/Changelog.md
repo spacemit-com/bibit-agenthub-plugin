@@ -54,7 +54,9 @@
 
 ### 六、验证结果
 
-在钉住的 Node 24.16.0 下：`npm test` 30 个文件 / **580 例全通过**、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin`，以及 `make -C provider test vet build`、`gofmt -l provider/`、`git diff --check` 全通过。检测器扫描只报 1 条，经核对是误报（Tab 下划线，`border-radius: 0`）。
+单元测试与静态检查在 amd64 开发机（Node 24.16.0）跑：`npm test` 30 个文件 / **580 例全通过**、`npm run typecheck`、`npm run build:dev`，以及 `make -C provider test vet build`、`gofmt -l provider/`、`git diff --check` 全通过。检测器扫描只报 1 条，经核对是误报（Tab 下划线，`border-radius: 0`）。
+
+**bundle 与 deb 在板端构建**（Node 22.22.1 / npm 9.2.0 / zlib-ng，即 CI 运行时）：`check-node` 通过、`npm ci` 无 `EBADENGINE`、`npm test` **580/580**、`npm run build:plugin` 与 `dpkg-buildpackage -us -uc -b -a riscv64 -d` 成功；deb 内 bundle 与 `artifacts/` 逐字节相同（`d67c688c…`，102526 字节）；`bibit.initialize` 实跑报 `providerVersion: "0.4.2"`。本机只跑单元测试——`.nvmrc` 的 `22.22.1` 是 Bianbu/Debian 的 Node 构建（zlib-ng），不是 nvm 可安装的上游版本，且 `check-node` 对版本是硬门禁，所以 bundling 一律在板端/CI 做。
 
 浏览器复核：明暗两套主题、1440×900 与 1024×800，确认焦点环可见、对比度达标、分页贴边且最后一行不被遮、卡片标题无多余边框。
 
