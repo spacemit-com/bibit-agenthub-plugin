@@ -2049,6 +2049,28 @@ describe('create-resource entry (host:actions)', () => {
   const draft = CREATE_RESOURCE_PROMPT_LINES.join('\n')
   const createButton = () => screen.getByRole('button', { name: 'Create' })
 
+  it('stages the Chinese draft the create entry asks for', async () => {
+    // The entry exists to pre-fill this text, so the localized copy is asserted
+    // end to end -- page -> composePrompt -> the host action's payload -- rather
+    // than only in the translator's own unit test.
+    const user = userEvent.setup()
+    const { actions, calls } = makeComposeActions()
+    const { hostApi } = makeStoreHost(undefined, actions)
+    renderLocalizedPage(hostApi, 'zh-CN')
+    await screen.findByRole('heading', { name: 'code-review' })
+
+    await user.click(screen.getByRole('button', { name: '创建' }))
+
+    await waitFor(() => expect(calls).toHaveLength(1))
+    expect(calls[0].input).toEqual({
+      prompt: [
+        '请使用using-apm技能帮我新建一个能力资源。',
+        '资源类型（Skill/Plugin/MCP/Expert）：',
+        '资源的要求：',
+      ].join('\n'),
+    })
+  })
+
   it('asks the host to compose a new conversation with the preset draft', async () => {
     const user = userEvent.setup()
     const { actions, calls } = makeComposeActions()

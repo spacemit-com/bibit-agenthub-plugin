@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { FeatureHostActionApiV1 } from '@bibit/feature-sdk'
 import type { FeatureHostActionResultV1 } from '@bibit/feature-contracts'
+import { agentHubChinese } from '../agentHubI18n'
 import {
   ACTIONS_UNAVAILABLE_TEXT,
   COMPOSE_RETRY_HINT,
@@ -32,6 +33,37 @@ describe('composePrompt', () => {
 
   it('names the skill the platform ships for creating Powers', () => {
     expect(CREATE_RESOURCE_PROMPT_LINES.some((line) => line.includes('using-apm'))).toBe(true)
+  })
+
+  it('is the three-line draft the entry stages', () => {
+    // The copy is the deliverable, so it is asserted rather than described: the
+    // request, then the two blanks the user is meant to fill in.
+    const chinese = composePrompt((source) => agentHubChinese[source] ?? source)
+    expect(chinese).toBe(
+      [
+        '请使用using-apm技能帮我新建一个能力资源。',
+        '资源类型（Skill/Plugin/MCP/Expert）：',
+        '资源的要求：',
+      ].join('\n')
+    )
+    expect(CREATE_RESOURCE_PROMPT_LINES).toHaveLength(3)
+  })
+
+  it('offers the Expert type, not the retired Agent spelling', () => {
+    // `Agent` is the value the type carried before the rename to `expert`; the
+    // draft must not reintroduce it as a resource type.
+    const draft = CREATE_RESOURCE_PROMPT_LINES.join('\n')
+    expect(draft).toContain('Expert')
+    expect(draft).not.toContain('Agent')
+  })
+
+  it('asks for nothing beyond the type and the requirement', () => {
+    // The draft used to ask the model to confirm the details back before
+    // starting, and to ask for a target Agent and version. Both were dropped, so
+    // guard against a reintroduction that would lengthen the draft again.
+    const draft = CREATE_RESOURCE_PROMPT_LINES.join('\n')
+    expect(draft).not.toMatch(/confirm/i)
+    expect(draft).not.toMatch(/version/i)
   })
 
   it('stays well inside the host prompt limit and holds no placeholder slots', () => {

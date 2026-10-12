@@ -1,3 +1,20 @@
+bibit-agenthub-plugin (0.4.3) resolute-porting; urgency=medium
+
+  * Simplify the preset draft the "create resource" entry stages into the new
+    conversation. It was five lines; it is now the request plus the two blanks the
+    user has to fill in:
+      - the type list names Expert, the value the resource vocabulary settled on
+        after the rename, instead of the retired Agent spelling;
+      - the line asking the model to confirm the details back before starting is
+        gone, as is the one asking for a target Agent and version. The draft now
+        only asks for what has to be answered for the task to begin.
+  * The Chinese copy is asserted verbatim, end to end: a page test renders the
+    page in zh-CN and checks the exact payload the host action receives, so the
+    draft cannot drift from the wording the entry is meant to stage.
+
+ -- liangjunzhao <junzhao.liang@spacemit.com>  Mon, 12 Oct 2026 16:30:00 +0800
+
+
 bibit-agenthub-plugin (0.4.2) resolute-porting; urgency=medium
 
   * UI polish across the page, found by rendering the real dev preview in both

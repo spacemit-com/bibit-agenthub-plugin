@@ -6,9 +6,16 @@ import type {
 import type { AgentHubTranslate } from '../agentHubI18n'
 
 /**
- * The draft this entry stages into the new session, split into one translatable
- * line per sentence. The page renders it through the plugin translator and joins
- * the lines with newlines, so each line is also a key in the Chinese dictionary.
+ * The draft this entry stages into the new session, one translatable line each.
+ * The page renders it through the plugin translator and joins the lines with
+ * newlines, so each line is also a key in the Chinese dictionary.
+ *
+ * Three lines: the request, then the two blanks the user is meant to fill in.
+ * The draft deliberately does not ask the model to confirm the details back
+ * before starting, nor for a target Agent and version -- both were dropped to
+ * keep the draft to what the user has to answer for the task to begin, and the
+ * type list names the Expert type the resource vocabulary settled on, not the
+ * `Agent` value it used to carry.
  *
  * The draft names the skill the platform ships for this job instead of staging
  * the skill itself: `using-apm` is a preset skill on every expert, so staging it
@@ -17,10 +24,8 @@ import type { AgentHubTranslate } from '../agentHubI18n'
  */
 export const CREATE_RESOURCE_PROMPT_LINES = [
   'Use the using-apm skill to create a new Power resource.',
-  'Confirm these details with me before you start:',
-  'Resource type (Skill / Plugin / MCP / Agent):',
+  'Resource type (Skill/Plugin/MCP/Expert):',
   'What the resource should do:',
-  'Target Agent and version:',
 ] as const
 
 /** The registered host action this entry asks for. */

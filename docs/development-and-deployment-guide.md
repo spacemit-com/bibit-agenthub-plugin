@@ -6,7 +6,7 @@
 
 | 项目 | 当前版本 |
 | --- | --- |
-| Agent Hub 插件 | `0.4.2` |
+| Agent Hub 插件 | `0.4.3` |
 
 | `manifestSchemaVersion` | `1` |
 | `sdkApiVersion` | `1` |
@@ -238,7 +238,7 @@ src/
   "manifestSchemaVersion": 1,
   "sdkApiVersion": 1,
   "id": "agent-hub",
-  "version": "0.4.2",
+  "version": "0.4.3",
 
   "owner": "agent-hub-team",
   "display": {
@@ -1175,17 +1175,17 @@ npm run build:plugin
 产物：
 
 ```text
-artifacts/agent-hub-0.4.2.bibit-plugin.tgz
+artifacts/agent-hub-0.4.3.bibit-plugin.tgz
 
 ```
 
 检查：
 
 ```bash
-tar -tzf artifacts/agent-hub-0.4.2.bibit-plugin.tgz
-tar -xOf artifacts/agent-hub-0.4.2.bibit-plugin.tgz plugin.json
-tar -xOf artifacts/agent-hub-0.4.2.bibit-plugin.tgz plugin.sig
-sha256sum artifacts/agent-hub-0.4.2.bibit-plugin.tgz
+tar -tzf artifacts/agent-hub-0.4.3.bibit-plugin.tgz
+tar -xOf artifacts/agent-hub-0.4.3.bibit-plugin.tgz plugin.json
+tar -xOf artifacts/agent-hub-0.4.3.bibit-plugin.tgz plugin.sig
+sha256sum artifacts/agent-hub-0.4.3.bibit-plugin.tgz
 
 ```
 
@@ -1237,7 +1237,7 @@ Settings > Extensions > Trusted plugins
 选择：
 
 ```text
-artifacts/agent-hub-0.4.2.bibit-plugin.tgz
+artifacts/agent-hub-0.4.3.bibit-plugin.tgz
 ```
 
 Bibit 会验签、校验 hash、安装、激活并刷新 Feature Registry。确认主导航出现 Agent Hub（插件已不声明 settings contribution，因此设置子菜单里不再有 Agent Hub 条目）。
@@ -1263,7 +1263,7 @@ Agent Hub 插件 deb 应安装：
 
 ```bash
 sudo install -Dm0644 \
-  artifacts/agent-hub-0.4.2.bibit-plugin.tgz \
+  artifacts/agent-hub-0.4.3.bibit-plugin.tgz \
 
   /usr/lib/bibit/plugins/agent-hub.bibit-plugin.tgz
 sudo install -Dm0644 \

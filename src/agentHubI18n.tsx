@@ -72,12 +72,10 @@ const zh: Readonly<Record<string, string>> = {
     '宿主拒绝了发起会话的请求。',
   'Clear the input box, then click again.': '请先清空输入框，再重试。',
   'Use the using-apm skill to create a new Power resource.':
-    '请使用 using-apm 技能帮我新建一个 Power 资源。',
-  'Confirm these details with me before you start:': '开始前请先和我确认以下信息：',
-  'Resource type (Skill / Plugin / MCP / Agent):':
-    '资源类型（Skill / Plugin / MCP / Agent）：',
-  'What the resource should do:': '资源的用途和要实现的能力：',
-  'Target Agent and version:': '目标 Agent 与版本：',
+    '请使用using-apm技能帮我新建一个能力资源。',
+  'Resource type (Skill/Plugin/MCP/Expert):':
+    '资源类型（Skill/Plugin/MCP/Expert）：',
+  'What the resource should do:': '资源的要求：',
 
   // ---- filters and cards ----
   'Scope': '范围',

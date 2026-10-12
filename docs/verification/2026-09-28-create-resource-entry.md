@@ -1,5 +1,7 @@
 # 「创建资源」入口：用 using-apm 预置新会话（0.3.10）
 
+> **后续变更（2026-10-12，0.4.3）**：本文记录的是 0.3.10 当时的 5 行草稿，其内容**已不再是最新文案**；下方「指令与文案」一节保留为当时的历史证据，未改写。0.4.3 把草稿简化为 3 行（`Expert` 取代 `Agent`，去掉「开始前请先和我确认」与「目标 Agent 与版本」），最新文案与断言见 `docs/Changelog.md` 的 0.4.3 条目与 `src/api/conversationCompose.ts` 的 `CREATE_RESOURCE_PROMPT_LINES`。入口的行为、能力降级与失败处理均未变。
+
 日期：2026-09-28，2026-09-29 合入 `bianbu-26.04`
 范围：`bibit-agenthub-plugin` 0.3.10。功能分支 `hub-compose-create-resource` 从 `bianbu-26.04` / `091836c`（0.3.2）切出，随后合入已推进到 0.3.9 的主线，版本统一为 0.3.10
 上游依据：宿主动作 `conversation.compose`，bibit 主线 `0e3d7b4f820f3a75c1ac549f4488c6f2fd45c91d`
