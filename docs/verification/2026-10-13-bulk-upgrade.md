@@ -82,7 +82,7 @@ powers.upgrade.v1
 | `make -C provider test vet build` | 通过 |
 | `gofmt -l provider/` | 无输出 |
 | `git diff --check` | 无输出 |
-| `npm run build:plugin` | **本机无法运行**：`.nvmrc` 钉 Bianbu Node 22.22.1（nvm 装不到的上游版本），`scripts/check-node.mjs` 只读 `.nvmrc` 与运行时，故与本次改动无关；bundle 需在 CI/板端构建并记录该环境哈希 |
+| `npm run build:plugin` | **在板端构建**（见 §11）：本机无法运行——`.nvmrc` 钉 Bianbu Node 22.22.1（nvm 装不到的上游版本），`scripts/check-node.mjs` 对版本是硬门禁；bundle 在 CI/板端构建并记录该环境哈希 |
 
 注：本机 Go 构建缓存默认落在只读的 `~/.cache/go-build`，验证时以 `GOCACHE=/tmp/gocache` 运行。
 
@@ -120,6 +120,41 @@ mkdir /run/user/1000/snap.firefox: read-only file system
 - Dev：`dev/store.ts`、`dev/sources.ts`、`vite.config.ts`
 - 文档：`docs/Changelog.md`、`docs/development-and-deployment-guide.md`（§10.5.1）、`README.md`
 
-## 11. 提交状态
+## 11. 板端构建与打包（Node 22.22.1 / zlib-ng —— 与 CI 相同）
+
+用 `git archive HEAD` 的源码在板端（`bianbu@10.0.91.51`，riscv64）构建：
+
+| 检查 | 结果 |
+| --- | --- |
+| `node scripts/check-node.mjs` | `Node 22.22.1 (zlib 1.3.1.zlib-ng) matches the pinned toolchain` |
+| `npm ci` | 成功，**EBADENGINE 0 条** |
+| `npm test` | **631/631**，31 个文件，0 失败 |
+| `npm run typecheck` / `build:dev` / `build:plugin` | 通过 |
+| `make -C provider test vet build` | 通过 |
+| `--self-test` / `gofmt -l provider/` | exit 0 / 无输出 |
+| `dpkg-buildpackage -us -uc -b -a riscv64 -d` | 成功 |
+| deb 内 bundle 与 `artifacts/` | `5b3a557b…`，**逐字节相同** |
+| `bibit.initialize` 实跑 | `providerVersion: "0.4.4"`，**12 项** operation（含 `powers.upgrade.v1`） |
+| grants conffile | 含 `powers.upgrade.v1`，装包时由 dpkg 静默升级（在装副本未被改动，不弹提示） |
+
+本版 bundle：`artifacts/agent-hub-0.4.4.bibit-plugin.tgz`，sha256 `5b3a557bffeafa8fd453e2e4fec61a5a89fa2da3a235037d689ef85c6689452d`（104855 字节）。
+产物：`bibit-agenthub-plugin_0.4.4_all.deb`（`92b04606…`）、`bibit-agenthub-cli_0.4.4_riscv64.deb`（`c61c85d4…`）。
+
+## 12. 板端依赖阻塞：`--yes` 需要 apm 0.3.2，板上是 0.3.1
+
+`debian/control` 写的是 `agent-power-manager (>= 0.0.4)`，但这个下界**在板端不成立**，因为 apm 有两条版本线：
+
+| 来源 | deb 版本 | 上游 changelog | `apm upgrade --yes` |
+| --- | --- | --- | --- |
+| 板上（archive `resolute-porting`） | **0.3.1** | 0.0.3 | **✗**，实测 `unknown flag: --yes` |
+| apm 仓库 tag `bianbu/0.3.2` | 0.3.2 | 0.0.4 | ✓ |
+
+dpkg 的版本比较是 `0.3.1 >= 0.0.4` → **判定满足**，于是插件能装、`Depends` 不报错；但真正执行 `apm upgrade --yes --json` 时会在**取锁之前**因未知 flag 失败。也就是说这条依赖约束在当前版本线上**起不到保护作用**，是「装了但新功能不可用」的静默错配，与 0.3.20 / 0.4.0 那次 `--type=expert` 的错配同类。
+
+插件侧的处理是既定的：stdout 不是预期 JSON 时，把**净化后的 stderr 句子**呈现出来，而不是渲染成空的成功列表——所以点「全部更新」会看到明确报错，其余功能（列表、详情、安装、卸载、自定义扫描）不受影响（apm 0.3.1 已接受 `--type=expert`）。
+
+**结论：0.4.4 上板后「全部更新」要等 apm 0.3.2 一起上板才可用。** apm 0.3.2 目前只在仓库里有 tag（`bianbu/0.3.2`），archive 上还没有；打包线是 `origin/packaging/bianbu-26.04`（changelog 仍停在 0.3.1），其版本号取自 tag 名（`Sync change from bianbu/0.3.x`），所以 0.3.2 需要按该流程出包，而不是直接用仓库 HEAD 的 `debian/changelog`（那是 0.0.4，会被 dpkg 当成降级）。
+
+## 13. 提交状态
 
 插件 `bianbu-26.04` 分支，本记录所在提交；尚未 push。

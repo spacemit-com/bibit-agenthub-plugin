@@ -50,6 +50,14 @@
 
 0.4.4（`package.json` / `package-lock.json` / `bibit.feature.json` / `providerVersion`），`debian/changelog`，`debian/agenthub-feature-grants.json` 新 operation，`debian/agenthub-provider.json` `requestTimeoutMs` 300000，`debian/control` 依赖下界。
 
+门禁：单元测试与静态检查在开发机（Node 24.16.0）跑 **631/631**；bundle 与 deb 在板端（Node 22.22.1 / npm 9.2.0 / zlib-ng，即 CI 运行时）构建，`check-node` 通过、`npm ci` 无 `EBADENGINE`、`dpkg-buildpackage` 成功，deb 内 bundle 与 `artifacts/` 逐字节相同（`5b3a557b…`，104855 字节），`bibit.initialize` 报 `providerVersion: "0.4.4"` 与 **12 项** operation。
+
+### 七、上板前置：`--yes` 需要 apm 0.3.2，板上仍是 0.3.1
+
+`debian/control` 的下界写的是 `agent-power-manager (>= 0.0.4)`，但 apm 有两条版本线，这个下界在板端**起不到保护作用**：板上是打包线 **0.3.1**（上游 changelog 0.0.3，实测 `apm upgrade --yes` 报 `unknown flag: --yes`），而带 `--yes` 的是 **0.3.2**（上游 0.0.4，仓库 tag `bianbu/0.3.2`）。dpkg 比较 `0.3.1 >= 0.0.4` 判定满足，于是插件能装、`Depends` 不报错，但点「全部更新」时会在取锁前失败——属「装了但新功能不可用」的静默错配。
+
+插件对此的既定行为是把净化后的 stderr 句子呈现出来，而不是渲染成空的成功列表；列表、详情、安装、卸载、自定义扫描不受影响。**所以 0.4.4 的「全部更新」要等 apm 0.3.2 一起上板才可用**（写进 `docs/verification/2026-10-13-bulk-upgrade.md` §12）。
+
 ## 2026-10-12 — 简化「创建资源」入口的预设提示词（0.4.3）
 
 分类：文案 / 交互
