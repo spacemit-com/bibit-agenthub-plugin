@@ -19,6 +19,7 @@ import {
   type MutationResult,
   type PowerTarget,
 } from '../src/api/powerOperations'
+import { parseUpgradeScope } from '../src/api/upgrade'
 
 /**
  * Pure dev Store core for the Feature Dev Host. It contains no Node APIs and no
@@ -114,6 +115,15 @@ export interface UploadResultShape {
   stdout?: string
 }
 
+export interface UpgradeResultShape {
+  status: 'exited'
+  exitCode: number
+  items: unknown[]
+  reason?: string
+}
+
+export type UpgradeSource = (agent: string, signal: AbortSignal) => Promise<UpgradeResultShape>
+
 export interface StoreSources {
   readInstalled: InstalledSource
   readMarket: MarketSource
@@ -122,6 +132,7 @@ export interface StoreSources {
   readCustom: CustomListSource
   upload: CustomUploadSource
   removeCustom: CustomDeleteSource
+  upgrade: UpgradeSource
 }
 
 export class StoreError extends Error {
@@ -209,6 +220,9 @@ export async function handleStoreRequest(
   }
   if (operationId === 'powers.uninstall.v1') {
     return sources.mutate({ kind: 'uninstall', input: parsePowerTarget(params) }, signal)
+  }
+  if (operationId === 'powers.upgrade.v1') {
+    return sources.upgrade(parseUpgradeScope(params), signal)
   }
   throw new StoreError('incompatible', false, 'Unknown operation: ' + operationId)
 }

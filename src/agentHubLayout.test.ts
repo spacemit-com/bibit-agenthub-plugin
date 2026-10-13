@@ -638,11 +638,17 @@ describe('Agent Hub layout contract', () => {
   })
 
   it('parks the Agent control at the right end of the tab row and opens its menu inwards', () => {
-    // The control is the tab row's right-hand tenant: `margin-left: auto` is the
-    // whole of "far right", and `position: relative` is the containing block its
-    // absolutely positioned menu is measured against.
+    // The right-hand group is the bulk-upgrade entry plus the Agent control, and
+    // `margin-left: auto` on that wrapper is the whole of "far right". It must not
+    // live on the switcher as well: two auto margins would split the free space and
+    // the pair would drift apart instead of staying adjacent.
+    const actions = rules('.power-filters__actions')
+    expect(actions.flatMap((block) => declared(block, 'margin-left'))).toEqual(['auto'])
+
+    // `position: relative` is the containing block the absolutely positioned menu
+    // is measured against.
     const switcher = rules('.power-filters__agent-switcher')
-    expect(switcher.flatMap((block) => declared(block, 'margin-left'))).toEqual(['auto'])
+    expect(switcher.flatMap((block) => declared(block, 'margin-left'))).toEqual([])
     expect(switcher.flatMap((block) => declared(block, 'position'))).toEqual(['relative'])
 
     // The trigger sits on the page edge, so the menu must open leftwards; anchored
@@ -654,6 +660,34 @@ describe('Agent Hub layout contract', () => {
 
     // The triggers live outside the scope tab group, which keeps its own role.
     expect(rules('.power-filters__scope-agent')).toEqual([])
+  })
+
+  it('draws the bulk-upgrade spinner from a token and respects reduced motion', () => {
+    // The spinner is the only animated thing on the page, so it is the only place
+    // reduced motion has to be honoured. The ring's colour must come from an
+    // existing token rather than a literal, so it follows the theme.
+    // The base rule only: the reduced-motion branch below overrides `animation`,
+    // so it must not be counted as a second declaration of the same property.
+    const spinner = rules('.agent-hub__spinner').filter((block) => block.conditions.length === 0)
+    expect(spinner).toHaveLength(1)
+    const border = spinner[0].body
+    expect(border).toContain('var(--hub-scope)')
+    expect(border).not.toMatch(/(?<!var\(--[\w-]+\))(?:#[0-9a-f]{3,8}\b|rgba?\()/i)
+
+    // Rotating only: nothing that moves or resizes the layout.
+    const animated = declared(spinner[0], 'animation')
+    expect(animated).toHaveLength(1)
+    expect(animated[0]).toContain('linear')
+    expect(animated[0]).toContain('infinite')
+
+    // Under `prefers-reduced-motion: reduce` the rotation stops, but the ring stays
+    // on screen: the state must remain visible without movement.
+    const reduced = blocks.filter((block) =>
+      block.conditions.some((condition) => condition.includes('prefers-reduced-motion'))
+    )
+    const spinnerRule = reduced.find((block) => block.selectors.includes('.agent-hub__spinner'))
+    expect(spinnerRule, 'the spinner must have a reduced-motion branch').toBeTruthy()
+    expect(declared(spinnerRule!, 'animation')).toEqual(['none'])
   })
 
   it('keeps the header refresh icon and the create entry on one height', () => {

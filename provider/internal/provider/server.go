@@ -43,7 +43,7 @@ const (
 	// provider that self-reports an older one makes every bug report ambiguous.
 	// `TestProviderVersionMatchesPackageJSON` reads package.json to keep the two
 	// from drifting again.
-	providerVersion = "0.4.3"
+	providerVersion = "0.4.4"
 )
 
 // declaredOperations is the closed set reported to the host at initialize and
@@ -53,6 +53,7 @@ var declaredOperations = []string{
 	operationPowersInspect,
 	operationPowersInstall,
 	operationPowersUninstall,
+	operationPowersUpgrade,
 	operationPowersCustomList,
 	operationPowersUpload,
 	operationPowersDelete,
@@ -373,6 +374,12 @@ func decodeOperationRequest(operationID string, raw json.RawMessage) (OperationR
 			return OperationRequest{}, err
 		}
 		return OperationRequest{OperationID: operationID, Target: &target}, nil
+	case operationPowersUpgrade:
+		upgrade, err := decodeUpgradeInput(raw)
+		if err != nil {
+			return OperationRequest{}, err
+		}
+		return OperationRequest{OperationID: operationID, Upgrade: &upgrade}, nil
 	case operationPowersCustomList:
 		list, err := decodeCustomListInput(raw)
 		if err != nil {

@@ -14,6 +14,7 @@ import {
   type MarketSource,
   type MutateSource,
   type StoreSources,
+  type UpgradeSource,
 } from './store'
 
 const marketWire = { scope: 'market' }
@@ -35,6 +36,7 @@ const okCustomList: CustomListSource = async () => ({
 })
 const okCustomUpload: CustomUploadSource = async () => ({ status: 'exited', exitCode: 0, stage: 'submit' })
 const okCustomDelete: CustomDeleteSource = async () => ({ status: 'deleted' })
+const okUpgrade: UpgradeSource = async () => ({ status: 'exited', exitCode: 0, items: [] })
 
 function sources(overrides: Partial<StoreSources> = {}): StoreSources {
   return {
@@ -45,6 +47,7 @@ function sources(overrides: Partial<StoreSources> = {}): StoreSources {
     readCustom: okCustomList,
     upload: okCustomUpload,
     removeCustom: okCustomDelete,
+    upgrade: okUpgrade,
     ...overrides,
   }
 }

@@ -40,9 +40,11 @@ npm run keygen
 npm run build:plugin
 ```
 
-当前产物：`artifacts/agent-hub-0.4.3.bibit-plugin.tgz`。`.bibit-keys/` 中的私钥禁止提交，开发签名不能代替目标 Release 的信任链。开发预览地址追加 `?lang=zh-CN` 可查看中文界面；页面语言跟随 Bibit 系统语言，插件本身不提供语言设置。Local Preview 的 Store 中间件会扫描本机 home（`dev/custom.ts`），因此自定义资源在开发环境也可见。
+当前产物：`artifacts/agent-hub-0.4.4.bibit-plugin.tgz`。`.bibit-keys/` 中的私钥禁止提交，开发签名不能代替目标 Release 的信任链。开发预览地址追加 `?lang=zh-CN` 可查看中文界面；页面语言跟随 Bibit 系统语言，插件本身不提供语言设置。Local Preview 的 Store 中间件会扫描本机 home（`dev/custom.ts`），因此自定义资源在开发环境也可见。
 
 页头的「创建资源」入口经宿主 `host:actions` 的 `conversation.compose` 打开新会话并预置一段点名 `using-apm` 的草稿（不发送）。它需要同时满足 Manifest 声明、系统 grant 和宿主登记该动作三项；缺任何一项时入口禁用或提示不支持，详情见开发指南的宿主动作一节与 verification 记录。
+
+「我的能力」页 Agent 控件左边的「全部更新」入口调用 `apm upgrade` 收敛本机已安装能力（Provider operation `powers.upgrade.v1`）。它需要 `agent-power-manager (>= 0.0.4)`（`--yes` 自该版本起提供；Provider 的 stdin 不是终端，缺它会 fail closed）。升级期间禁用市场与设置页且不显示进度——原因不是 apm 锁，而是 Provider 单进程串行处理 invoke，详见开发指南 §10.5.1 与 `docs/verification/2026-10-13-bulk-upgrade.md`。
 
 ## CLI Provider 构建与自检
 

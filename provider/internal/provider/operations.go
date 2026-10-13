@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 	"time"
@@ -13,6 +14,7 @@ const (
 	operationPowersInspect   = "powers.inspect.v1"
 	operationPowersInstall   = "powers.install.v1"
 	operationPowersUninstall = "powers.uninstall.v1"
+	operationPowersUpgrade   = "powers.upgrade.v1"
 
 	// writeCleanupReserve is the portion of a write request's deadline held back
 	// so the provider can clean up the child process and return the result. When
@@ -25,6 +27,11 @@ var (
 	powerTypes         = map[string]bool{"skill": true, "plugin": true, "mcp": true, "expert": true}
 	canonicalVersionRE = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
 )
+
+// allAgents is apm's sentinel for "every Agent it detects as installed". It is
+// accepted for upgrade alone, which is the one operation that reconciles a whole
+// machine; the per-Power operations still require one concrete Agent.
+const allAgents = "all"
 
 // isCanonicalPowerName mirrors apm's public `IsCanonicalPowerName`: 1-64 bytes
 // of lowercase kebab case where hyphens only separate non-empty alphanumeric
@@ -118,6 +125,27 @@ func decodeUploadInput(raw json.RawMessage) (UploadInput, error) {
 		return UploadInput{}, errors.New("operation input: message must be a non-empty single line")
 	}
 	return UploadInput{PowerTarget: target, Message: message}, nil
+}
+
+// decodeUpgradeInput strictly decodes the `powers.upgrade.v1` envelope {agent}.
+// `all` is accepted here because upgrade reconciles a whole machine; the fixed
+// Agent IDs are accepted so a user can limit the run to one Agent.
+func decodeUpgradeInput(raw json.RawMessage) (UpgradeInput, error) {
+	obj, err := decodeObject(raw)
+	if err != nil {
+		return UpgradeInput{}, err
+	}
+	if err := rejectKeys(obj, "agent"); err != nil {
+		return UpgradeInput{}, err
+	}
+	agent, ok := parseString(obj["agent"])
+	if !ok || agent == "" {
+		return UpgradeInput{}, errors.New("operation input: agent must be a non-empty string")
+	}
+	if agent != allAgents && !installedAgents[agent] {
+		return UpgradeInput{}, errors.New("operation input: agent must be all or a fixed installed agent")
+	}
+	return UpgradeInput{Agent: agent}, nil
 }
 
 // decodeCustomListInput strictly decodes the `powers.custom.list.v1` envelope
@@ -270,6 +298,100 @@ func mutationArgv(req OperationRequest) ([]string, error) {
 	default:
 		return nil, newProviderError("incompatible")
 	}
+}
+
+// upgradeArgv builds the upgrade command. Both flags are required, not stylistic:
+//
+//   - `--yes` because apm refuses to change anything without an answer to its
+//     confirmation, and it decides interactivity with isatty on stdin. This
+//     subprocess's stdin is not a terminal, so without `--yes` apm fails closed
+//     before it even takes the lock. The confirmation the user sees is the
+//     plugin's own dialog; it cannot be apm's prompt, which has no terminal to
+//     ask on. `--dry-run` is deliberately not used: it would only produce a plan.
+//   - `--json` because the per-item outcome is what the page summarizes, and the
+//     human rendering omits every `up-to-date` row.
+func upgradeArgv(req OperationRequest) ([]string, error) {
+	if req.Upgrade == nil {
+		return nil, newProviderError("incompatible")
+	}
+	return []string{"upgrade", "--agent=" + req.Upgrade.Agent, "--yes", "--json"}, nil
+}
+
+// UpgradePowers runs `apm upgrade` for one Agent (or all of them) and reports
+// the per-Power outcomes.
+//
+// Unlike MutatePower this captures both streams. apm renders the complete result
+// to stdout and *then* exits non-zero when some entries failed, so the output is
+// authoritative even on a failing run and must not be discarded. stderr is kept
+// only as a fallback: when stdout is not the expected JSON at all — an occupied
+// lock, or an apm predating these flags — the sanitized stderr sentence is the
+// only thing that explains the failure to the user.
+func UpgradePowers(ctx context.Context, cfg Config, req OperationRequest) (UpgradeResult, error) {
+	argv, err := upgradeArgv(req)
+	if err != nil {
+		return UpgradeResult{}, err
+	}
+	env, err := APMEnvironment(cfg)
+	if err != nil {
+		return UpgradeResult{}, err
+	}
+	childCtx, cancel, err := writeChildContext(ctx)
+	if err != nil {
+		return UpgradeResult{}, err
+	}
+	defer cancel()
+	out, exitCode, err := runMutationWithOutput(childCtx, cfg.APMPath, env, argv...)
+	if err != nil {
+		return UpgradeResult{}, err
+	}
+	items, parseErr := parseUpgradeItems(out.stdout)
+	if parseErr != nil {
+		// No usable items: hand the user the sanitized reason instead of an empty
+		// success-shaped list. The exit code is still reported as apm gave it.
+		return UpgradeResult{
+			Status:   "exited",
+			ExitCode: exitCode,
+			Items:    []UpgradeItem{},
+			Reason:   failureReason(out, ""),
+		}, nil
+	}
+	return UpgradeResult{Status: "exited", ExitCode: exitCode, Items: items}, nil
+}
+
+// parseUpgradeItems decodes the JSON array `apm upgrade --json` writes. Only the
+// fields the page needs are read; an unknown `outcome` is preserved verbatim
+// rather than rejected, so a future apm that adds one does not turn every
+// upgrade into a parse failure.
+func parseUpgradeItems(stdout string) ([]UpgradeItem, error) {
+	trimmed := strings.TrimSpace(stdout)
+	if trimmed == "" {
+		return nil, errors.New("upgrade: empty stdout")
+	}
+	var raw []struct {
+		Agent          string `json:"agent"`
+		Type           string `json:"type"`
+		Name           string `json:"name"`
+		CurrentVersion string `json:"current_version"`
+		TargetVersion  string `json:"target_version"`
+		Outcome        string `json:"outcome"`
+		Skip           string `json:"skip"`
+	}
+	if err := json.Unmarshal([]byte(trimmed), &raw); err != nil {
+		return nil, fmt.Errorf("upgrade: parse stdout: %w", err)
+	}
+	items := make([]UpgradeItem, 0, len(raw))
+	for _, entry := range raw {
+		items = append(items, UpgradeItem{
+			Agent:          entry.Agent,
+			Type:           entry.Type,
+			Name:           entry.Name,
+			CurrentVersion: entry.CurrentVersion,
+			TargetVersion:  entry.TargetVersion,
+			Outcome:        entry.Outcome,
+			Skip:           entry.Skip,
+		})
+	}
+	return items, nil
 }
 
 // writeChildContext reserves a small cleanup budget from the write deadline so

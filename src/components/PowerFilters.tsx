@@ -18,10 +18,13 @@ export interface PowerFiltersProps {
   type: PowerType
   availableTags: readonly string[]
   selectedTags: readonly string[]
+  /** A bulk upgrade is running: the tabs and the Agent control are frozen. */
+  upgrading?: boolean
   onTabChange(tab: PowerTab): void
   onAgentChange(agent: string): void
   onTypeChange(type: PowerType): void
   onTagsChange(tags: string[]): void
+  onUpgrade?(): void
 }
 
 export function PowerFilters({
@@ -31,10 +34,12 @@ export function PowerFilters({
   type,
   availableTags,
   selectedTags,
+  upgrading = false,
   onTabChange,
   onAgentChange,
   onTypeChange,
   onTagsChange,
+  onUpgrade,
 }: PowerFiltersProps) {
   const t = useAgentHubI18n()
   const tagsRef = useRef<HTMLDivElement>(null)
@@ -50,6 +55,7 @@ export function PowerFilters({
             type="button"
             className="power-filters__scope"
             aria-pressed={tab === 'installed'}
+            disabled={upgrading}
             onClick={() => tab !== 'installed' && onTabChange('installed')}
           >
             {t('My Capabilities')}
@@ -58,6 +64,7 @@ export function PowerFilters({
             type="button"
             className="power-filters__scope"
             aria-pressed={tab === 'market'}
+            disabled={upgrading}
             onClick={() => tab !== 'market' && onTabChange('market')}
           >
             {t('Capability Market')}
@@ -66,12 +73,32 @@ export function PowerFilters({
             type="button"
             className="power-filters__scope"
             aria-pressed={tab === 'settings'}
+            disabled={upgrading}
             onClick={() => tab !== 'settings' && onTabChange('settings')}
           >
             {t('Settings')}
           </button>
         </div>
-        <AgentSwitcher agents={agents} agent={agent} onAgentChange={onAgentChange} />
+        {/* The upgrade entry sits immediately left of the Agent control, and the two
+            travel together as the tab row's right-hand group: `margin-left: auto` on
+            this wrapper is the whole of "far right". It cannot stay on the Agent
+            switcher, or the two auto margins would split the free space and the pair
+            would drift apart. */}
+        <div className="power-filters__actions">
+          {onUpgrade && (
+            <button
+              type="button"
+              className="power-filters__upgrade"
+              disabled={upgrading}
+              aria-busy={upgrading}
+              onClick={onUpgrade}
+            >
+              {upgrading && <span className="agent-hub__spinner" aria-hidden="true" />}
+              {t('Update all')}
+            </button>
+          )}
+          <AgentSwitcher agents={agents} agent={agent} onAgentChange={onAgentChange} />
+        </div>
       </div>
       {/* Type and tag filters describe the catalog only; the Settings tab has
           neither, so its panel would be a row of controls that do nothing. */}

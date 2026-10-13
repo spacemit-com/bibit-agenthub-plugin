@@ -1,3 +1,42 @@
+bibit-agenthub-plugin (0.4.4) resolute-porting; urgency=medium
+
+  * Add "Update all" to the installed list: one entry, immediately left of the
+    Agent control, that reconciles every installed Power through `apm upgrade`.
+  * New provider operation `powers.upgrade.v1` (grant, registry and the dev mock
+    included), running `apm upgrade --agent=<scope> --yes --json`. `--yes` is
+    required rather than stylistic: apm decides whether it may ask by testing
+    stdin with isatty, this subprocess's stdin is a pipe, and without the flag apm
+    fails closed before it even takes its lock. The confirmation is therefore the
+    plugin's own dialog. `debian/control` now requires
+    `agent-power-manager (>= 0.0.4)`, the release that introduced --yes.
+  * A non-zero exit is kept as a result, not turned into an error: apm writes the
+    complete per-item result to stdout and only then fails the batch, so the exit
+    code and the items are both needed. When stdout is not the expected JSON at
+    all -- an occupied lock, or an apm predating the flags -- the sanitized stderr
+    sentence is reported instead of an empty, success-shaped list.
+  * The tabs, the filters, the cards and the create entry are frozen while the
+    upgrade runs, and the list is re-read when it ends, timeout included. The
+    reason is the provider, not a lock: it is one managed process handling invokes
+    serially, so a read issued mid-upgrade queues behind it and then trips its own
+    30s timeout, surfacing as a false error. The page's window-focus refresh was
+    already suppressed by the store's active marker and stays that way.
+  * No progress reporting, by request: Provider Protocol v1 carries no progress
+    events, so the run shows an indeterminate spinner. The dialog cannot be
+    dismissed while it runs, because the upgrade is not cancellable and a closed
+    dialog would imply it stopped.
+  * The request budget for the new operation is 300000ms, the Host's maximum, and
+    the registry's requestTimeoutMs is raised to match: the Host takes the smaller
+    of the two, so changing one alone changes nothing. A full upgrade can still
+    exceed it; a run cut mid-transaction is recovered by apm's journal replay on
+    its next start, and the verification record states the tradeoff.
+  * Contracts: the ring of tests around the feature covers the scope vocabulary,
+    the closed result shape, unknown outcomes, the busy gate, and the frozen
+    surface. Removing `--yes`, the per-card busy branch or the tab guard each fails
+    a test.
+
+ -- liangjunzhao <junzhao.liang@spacemit.com>  Mon, 13 Oct 2026 18:00:00 +0800
+
+
 bibit-agenthub-plugin (0.4.3) resolute-porting; urgency=medium
 
   * Simplify the preset draft the "create resource" entry stages into the new

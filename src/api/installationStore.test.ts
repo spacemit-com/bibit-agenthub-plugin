@@ -384,3 +384,148 @@ describe('execute', () => {
     expect(store.getSnapshot().active).toBeUndefined()
   })
 })
+
+describe('upgrade', () => {
+  const upgradeOk = (items: unknown[] = []) => ({
+    status: 'exited',
+    exitCode: 0,
+    items,
+    reason: '',
+  })
+
+  it('runs the operation for the chosen scope and refreshes the affected Agents', async () => {
+    const { service, calls } = makeService((op) => {
+      if (op === 'powers.upgrade.v1') return upgradeOk()
+      return listResponse([record('demo', 'v2.0.0')])
+    })
+    const store = getInstallationStore(service)
+
+    const outcome = await store.upgrade('bibit', signal())
+
+    expect(outcome).toEqual({ status: 'ok', result: upgradeOk() })
+    expect(calls[0].operationId).toBe('powers.upgrade.v1')
+    expect(calls[0].params).toEqual({ agent: 'bibit' })
+    // The installed list must be re-read, or the page would show pre-upgrade versions.
+    const listCalls = calls.filter((call) => call.operationId === 'powers.list.v1')
+    expect(listCalls).toHaveLength(1)
+    expect(listCalls[0].params).toEqual({ scope: 'installed', agent: 'bibit' })
+  })
+
+  it('re-reads every installed Agent after an all-scope run', async () => {
+    const { service, calls } = makeService((op) =>
+      op === 'powers.upgrade.v1' ? upgradeOk() : listResponse([])
+    )
+    const store = getInstallationStore(service)
+
+    await store.upgrade('all', signal())
+
+    const agents = calls
+      .filter((call) => call.operationId === 'powers.list.v1')
+      .map((call) => (call.params as { agent: string }).agent)
+      .sort()
+    expect(agents).toEqual(['bibit', 'claude-code', 'codex', 'hermes-agent'])
+  })
+
+  it('publishes an active marker for the whole run and clears it after', async () => {
+    const pending = deferred<unknown>()
+    const { service } = makeService((op) => (op === 'powers.upgrade.v1' ? pending.promise : listResponse([])))
+    const store = getInstallationStore(service)
+
+    const running = store.upgrade('bibit', signal())
+    // One microtask is enough for the run to reach the awaited request.
+    await Promise.resolve()
+    const active = store.getSnapshot().active
+    expect(active?.kind).toBe('upgrade')
+
+    pending.resolve(upgradeOk())
+    await running
+    expect(store.getSnapshot().active).toBeUndefined()
+  })
+
+  it('refuses to start while a Power mutation is in flight', async () => {
+    // The provider is one serial process, so two writes at once are not possible;
+    // the store must reject the second rather than queue it.
+    const pending = deferred<unknown>()
+    const { service, calls } = makeService((op) => {
+      if (op === 'powers.inspect.v1') return { listJson: '[]' }
+      if (op === 'powers.install.v1') return pending.promise
+      return listResponse([])
+    })
+    const store = getInstallationStore(service)
+
+    const install = store.execute(
+      { kind: 'install', input: { ...target, version: 'v1.0.0' } },
+      signal()
+    )
+    await Promise.resolve()
+
+    await expect(store.upgrade('bibit', signal())).resolves.toEqual({ status: 'busy' })
+    expect(calls.some((call) => call.operationId === 'powers.upgrade.v1')).toBe(false)
+
+    pending.resolve({ status: 'exited', exitCode: 0 })
+    await install
+  })
+
+  it('refuses a second upgrade while one is running', async () => {
+    const pending = deferred<unknown>()
+    const { service, calls } = makeService((op) => (op === 'powers.upgrade.v1' ? pending.promise : listResponse([])))
+    const store = getInstallationStore(service)
+
+    const first = store.upgrade('bibit', signal())
+    await Promise.resolve()
+
+    await expect(store.upgrade('codex', signal())).resolves.toEqual({ status: 'busy' })
+    expect(calls.filter((call) => call.operationId === 'powers.upgrade.v1')).toHaveLength(1)
+
+    pending.resolve(upgradeOk())
+    await first
+  })
+
+  it('reports a timeout and still re-reads the installed list', async () => {
+    // A timeout does not mean nothing was upgraded: apm may have changed entries
+    // before the Host cut the request, so the list must be re-read either way.
+    const { service, calls } = makeService((op) => {
+      if (op === 'powers.upgrade.v1') {
+        throw Object.assign(new Error('timed out'), { version: 1, code: 'timeout', retryable: true })
+      }
+      return listResponse([record('demo', 'v2.0.0')])
+    })
+    const store = getInstallationStore(service)
+
+    await expect(store.upgrade('bibit', signal())).resolves.toEqual({ status: 'timeout' })
+    expect(calls.filter((call) => call.operationId === 'powers.list.v1')).toHaveLength(1)
+    expect(store.getSnapshot().active).toBeUndefined()
+  })
+
+  it('reports any other platform failure by code', async () => {
+    const { service } = makeService((op) => {
+      if (op === 'powers.upgrade.v1') {
+        throw Object.assign(new Error('no store'), { version: 1, code: 'unavailable', retryable: false })
+      }
+      return listResponse([])
+    })
+    const store = getInstallationStore(service)
+
+    await expect(store.upgrade('bibit', signal())).resolves.toEqual({
+      status: 'failed',
+      code: 'unavailable',
+    })
+  })
+
+  it('releases the lock even when the refresh throws', async () => {
+    // Otherwise one failed refresh would wedge every later write for the session:
+    // `internals.locked` is the guard that keeps two writes apart, and it is
+    // cleared in a `finally` for exactly this reason.
+    const { service } = makeService((op) => {
+      if (op === 'powers.upgrade.v1') return upgradeOk()
+      throw new Error('list failed')
+    })
+    const store = getInstallationStore(service)
+
+    await store.upgrade('bibit', signal())
+
+    expect(store.getSnapshot().active).toBeUndefined()
+    // The same store accepts the next run rather than answering `busy` forever.
+    await expect(store.upgrade('bibit', signal())).resolves.toMatchObject({ status: 'ok' })
+  })
+})

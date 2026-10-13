@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { defineConfig, type Plugin } from 'vite'
 import { handleStoreRequest, StoreError } from './dev/store'
-import { inspectSource, mutateSource, readInstalled, readMarket } from './dev/sources'
+import { inspectSource, mutateSource, readInstalled, readMarket, upgradeSource } from './dev/sources'
 import { deleteSource, readCustom, uploadSource } from './dev/custom'
 
 const MAX_BODY_BYTES = 1024 * 1024
@@ -81,6 +81,7 @@ function devStorePlugin(): Plugin {
               readCustom: (agent) => Promise.resolve(readCustom(agent)),
               upload: uploadSource,
               removeCustom: async (target) => deleteSource(target),
+              upgrade: upgradeSource,
             },
             controller.signal
           )

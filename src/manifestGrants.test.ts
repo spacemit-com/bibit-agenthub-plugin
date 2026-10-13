@@ -40,6 +40,7 @@ describe('capability declarations and their grant', () => {
         'powers.inspect.v1',
         'powers.install.v1',
         'powers.uninstall.v1',
+        'powers.upgrade.v1',
         'powers.custom.list.v1',
         'powers.upload.v1',
         'powers.delete.v1',

@@ -82,6 +82,46 @@ type UploadResult struct {
 	Stdout   string `json:"stdout,omitempty"`
 }
 
+// UpgradeInput selects the Agents whose installed Powers are upgraded. `all`
+// is apm's own sentinel and means every Agent it detects as installed; the
+// provider accepts it alongside the four fixed Agent IDs and nothing else.
+type UpgradeInput struct {
+	Agent string `json:"agent"`
+}
+
+// UpgradeItem is one line of `apm upgrade --json`, re-emitted in camelCase to
+// match the rest of the wire. Outcome and Skip are passed through verbatim
+// rather than re-typed: they are apm's stable contract
+// (installed/upgraded/downgraded/planned/up-to-date/skipped/failed/unexecuted,
+// and not-in-catalog/newer-local), so a value this provider does not recognise
+// is still the truth about what apm did. The frontend treats an unknown outcome
+// as "changed, unclassified" instead of failing the whole response.
+type UpgradeItem struct {
+	Agent          string `json:"agent"`
+	Type           string `json:"type"`
+	Name           string `json:"name"`
+	CurrentVersion string `json:"currentVersion"`
+	TargetVersion  string `json:"targetVersion"`
+	Outcome        string `json:"outcome"`
+	Skip           string `json:"skip,omitempty"`
+}
+
+// UpgradeResult reports one `apm upgrade` run. A non-zero ExitCode is a result:
+// apm renders the full per-item result to stdout before failing a batch
+// (upgrade.go renders, then returns a runtimeFailure), so the items remain
+// authoritative and are returned alongside the code.
+//
+// Reason is set only when stdout could not be read as the expected JSON — an
+// occupied lock, or an apm too old to know these flags, produce no valid JSON at
+// all. It carries the same sanitized stderr summary the upload path uses (ANSI
+// stripped, single line, credential-safe), never raw command output.
+type UpgradeResult struct {
+	Status   string        `json:"status"`
+	ExitCode int           `json:"exitCode"`
+	Items    []UpgradeItem `json:"items"`
+	Reason   string        `json:"reason,omitempty"`
+}
+
 // OperationRequest is the validated, operation-specific request the server hands
 // to an InvokeFunc. Exactly one data pointer is set for a given OperationID.
 type OperationRequest struct {
@@ -91,6 +131,7 @@ type OperationRequest struct {
 	Install     *InstallInput
 	Upload      *UploadInput
 	CustomList  *CustomListInput
+	Upgrade     *UpgradeInput
 	// SettingsKey carries the settings.keys.add.v1 credential; SettingsKeyID
 	// carries the {id} of the delete and enable operations.
 	SettingsKey   *string

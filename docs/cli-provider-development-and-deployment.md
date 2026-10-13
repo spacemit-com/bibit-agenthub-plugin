@@ -267,7 +267,7 @@ Registry 严格对齐宿主 `RawConnectionRegistry`（serde camelCase）：
       "args": ["provider"],
       "lifecycle": "managed",
       "protocolVersions": [1],
-      "requestTimeoutMs": 120000,
+      "requestTimeoutMs": 300000,
       "credentialParameters": {
         "settings.keys.add.v1": ["apiKey"]
       }

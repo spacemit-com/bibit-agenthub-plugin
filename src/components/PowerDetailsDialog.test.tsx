@@ -320,7 +320,7 @@ describe('PowerDetailsDialog', () => {
     render(
       <PowerDetailsDialog
         {...props}
-        active={{ intent: { kind: 'install', input: { agent: 'bibit', type: 'skill', name: 'code-review', version: 'v2.0.0' } }, phase: 'running' }}
+        active={{ kind: 'power', intent: { kind: 'install', input: { agent: 'bibit', type: 'skill', name: 'code-review', version: 'v2.0.0' } }, phase: 'running' }}
       />
     )
 
@@ -544,7 +544,7 @@ describe('PowerDetailsDialog', () => {
         selectedVersion="v1.0.0"
         onUninstall={onUninstall}
         installation={{ status: 'ready', records: [record('v1.0.0')] }}
-        active={{ intent: { kind: 'uninstall', input: { agent: 'bibit', type: 'skill', name: 'code-review' } }, phase: 'running' }}
+        active={{ kind: 'power', intent: { kind: 'uninstall', input: { agent: 'bibit', type: 'skill', name: 'code-review' } }, phase: 'running' }}
       />
     )
 

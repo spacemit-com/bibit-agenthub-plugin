@@ -166,6 +166,8 @@ func NewInvoker(cfg Config, client *http.Client) InvokeFunc {
 			return InspectPower(ctx, cfg, *req.Target)
 		case operationPowersInstall, operationPowersUninstall:
 			return MutatePower(ctx, cfg, req)
+		case operationPowersUpgrade:
+			return UpgradePowers(ctx, cfg, req)
 		case operationPowersCustomList:
 			if req.CustomList == nil {
 				return nil, newProviderError("incompatible")

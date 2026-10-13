@@ -247,10 +247,20 @@
   padding: 10px 14px;
 }
 .power-filters__scope[aria-pressed='true'] { border-bottom-color: var(--hub-scope); color: var(--hub-scope-text); }
-/* The Agent control is the tab row's right-hand tenant. `margin-left: auto` is what
-   parks it against the far edge, and `position: relative` is the containing block its
-   menu is measured against. */
-.power-filters__agent-switcher { position: relative; margin-left: auto; }
+/* The tab row's right-hand group: the bulk-upgrade entry and the Agent control.
+   `margin-left: auto` lives here rather than on the switcher, so the two cannot be
+   pushed apart by the free space being shared between two auto margins. */
+.power-filters__actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+/* `position: relative` is the containing block the Agent menu is measured against. */
+.power-filters__agent-switcher { position: relative; }
+/* The bulk-upgrade entry. It is the one control in the row that starts a long,
+   machine-wide operation, so it carries the ordinary control surface and states
+   its busy-ness in the label rather than only by dimming. */
+.agent-hub .power-filters__upgrade { display: inline-flex; align-items: center; gap: 7px; }
+/* The scope tabs when a bulk upgrade runs: three tabs that cannot be switched to,
+   because the provider is one serial process and any request issued now would
+   queue behind the upgrade and then time out waiting. */
+.agent-hub .power-filters__scope:disabled { cursor: not-allowed; opacity: .42; }
 .power-filters__agent-trigger { display: inline-flex; align-items: center; gap: 6px; font-weight: 750; }
 .power-filters__agent-menu {
   position: absolute;
@@ -624,6 +634,29 @@
 .agent-hub-dialog__tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
 .agent-hub-dialog__status { margin-top: 18px; }
 .agent-hub-dialog__notice { padding: 12px; border-radius: 8px; background: var(--hub-status-bg); color: var(--hub-status-text); }
+/* ===== Bulk upgrade: the in-flight spinner and its progress line =====
+   An indeterminate spinner is the honest indicator here: Provider Protocol v1
+   carries no progress events, so there is no fraction to show. The ring is drawn
+   from existing tokens (no new colours) and only its rotation is animated, which
+   is what `prefers-reduced-motion` below turns off — the ring stays as a static
+   "working" mark, so the state is still visible without motion. */
+.agent-hub__spinner {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--hub-scope);
+  border-top-color: transparent;
+  border-radius: 999px;
+  animation: agent-hub-spin 900ms linear infinite;
+}
+@keyframes agent-hub-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-hub__spinner { animation: none; border-top-color: var(--hub-scope); opacity: .55; }
+}
+.agent-hub-upgrade__progress { display: flex; align-items: center; gap: 9px; margin: 18px 0 0; color: var(--hub-muted); }
 .agent-hub-dialog__footer { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 24px; border-top: 1px solid var(--hub-border); }
 .agent-hub .agent-hub-dialog__install { border-color: var(--hub-install-line); background: var(--hub-install-bg); color: var(--hub-install-text); }
 .agent-hub .agent-hub-dialog__install:hover:not(:disabled) { border-color: var(--hub-install-line-hover); background: var(--hub-install-hover-bg); color: var(--hub-install-hover-text); }

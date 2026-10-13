@@ -1,6 +1,6 @@
 import type { FeatureServiceApiV1 } from '@bibit/feature-sdk'
 import type { TranslatableText } from '../agentHubI18n'
-import { POWERS_LIST_OPERATION_ID, parsePowersWireResult } from './contracts'
+import { POWERS_LIST_OPERATION_ID, parsePowersWireResult, INSTALLED_AGENTS } from './contracts'
 import { parseApmInstalledList, type APMPowerRecord } from './apm'
 import {
   inspectPower,
@@ -10,13 +10,26 @@ import {
   type PowerTarget,
 } from './powerOperations'
 import { operationMessage, isRemovalConfirmed, type Execution } from './operationMessages'
+import { ALL_AGENTS, upgradePowers, type UpgradeResult, type UpgradeScope } from './upgrade'
 
 export type InstallationState =
   | { status: 'unknown' | 'checking' }
   | { status: 'ready'; records: APMPowerRecord[] }
   | { status: 'error'; message: TranslatableText }
 
-export type ActiveMutation = { intent: MutationIntent; phase: 'preflight' | 'running' | 'reconciling' }
+/**
+ * What is running, if anything. One field carries both cases on purpose: the
+ * page's single guard — "a write is in flight, so issue no request and let
+ * nothing start a second one" — must not have to remember two flags, and the
+ * provider it talks to is serial anyway (one managed process, one invoke at a
+ * time), so two concurrent writes are never actually possible.
+ *
+ * `power` is a mutation of one Power and drives the per-card busy state;
+ * `upgrade` reconciles a whole scope and makes every card busy.
+ */
+export type ActiveMutation =
+  | { kind: 'power'; intent: MutationIntent; phase: 'preflight' | 'running' | 'reconciling' }
+  | { kind: 'upgrade'; scope: UpgradeScope; phase: 'running' | 'reconciling' }
 
 export type InstallationSnapshot = {
   revision: number
@@ -32,12 +45,25 @@ export type InstallationSnapshot = {
   confirmedRemovals: ReadonlySet<string>
 }
 
+/**
+ * How one bulk upgrade ended. A timeout is not a failure: apm may have upgraded
+ * some entries before the Host cut the request, so the caller refreshes either
+ * way and reports that the true state had to be re-read.
+ */
+export type UpgradeOutcome =
+  | { status: 'ok'; result: UpgradeResult }
+  | { status: 'timeout' }
+  | { status: 'cancelled' }
+  | { status: 'busy' }
+  | { status: 'failed'; code: string }
+
 export interface InstallationStore {
   subscribe(listener: () => void): () => void
   getSnapshot(): InstallationSnapshot
   inspect(target: PowerTarget, signal: AbortSignal): Promise<APMPowerRecord[]>
   refreshAgent(agent: string, signal: AbortSignal): Promise<APMPowerRecord[]>
   execute(intent: MutationIntent, signal: AbortSignal): Promise<void>
+  upgrade(scope: UpgradeScope, signal: AbortSignal): Promise<UpgradeOutcome>
   invalidateAgent(agent: string): void
 }
 
@@ -264,7 +290,7 @@ function createInstallationStore(service: FeatureServiceApiV1<'store'>): Install
     execution: Execution,
     signal: AbortSignal
   ): Promise<void> {
-    internals.active = { intent, phase: 'reconciling' }
+    internals.active = { kind: 'power', intent, phase: 'reconciling' }
     invalidateAgent(agent)
     publish()
     let actual: APMPowerRecord[] | undefined
@@ -309,7 +335,7 @@ function createInstallationStore(service: FeatureServiceApiV1<'store'>): Install
       let shortCircuit: TranslatableText | undefined
 
       if (intent.kind === 'install') {
-        internals.active = { intent, phase: 'preflight' }
+        internals.active = { kind: 'power', intent, phase: 'preflight' }
         publish()
         let actual: APMPowerRecord[]
         try {
@@ -324,7 +350,7 @@ function createInstallationStore(service: FeatureServiceApiV1<'store'>): Install
       }
 
       if (shortCircuit === undefined) {
-        internals.active = { intent, phase: 'running' }
+        internals.active = { kind: 'power', intent, phase: 'running' }
         publish()
         try {
           execution = await mutatePower(internals.service, intent, signal)
@@ -342,6 +368,63 @@ function createInstallationStore(service: FeatureServiceApiV1<'store'>): Install
       await reconcile(intent, key, agent, execution, signal)
     } finally {
       internals.locked = false
+    }
+  }
+
+  /**
+   * Reconciles one scope with `apm upgrade`.
+   *
+   * The three things this has to get right:
+   *
+   * 1. It shares `internals.locked` with `execute`, so a bulk upgrade and a
+   *    single install can never overlap. The page also gates its own entries, but
+   *    that is UI; this is the invariant.
+   * 2. `internals.active` is set for the whole run. The page reads it to make
+   *    every card busy and to suppress its window-focus refresh — that second one
+   *    matters most, because the provider is a single serial process: a list
+   *    request issued mid-upgrade does not fail, it *queues* behind the upgrade
+   *    and then trips its own 30s read timeout while waiting.
+   * 3. The installed lists are re-read when it ends, including on timeout. apm
+   *    may have changed some entries before the Host cut the request, so "we do
+   *    not know" must not be rendered as "nothing happened".
+   */
+  async function upgrade(scope: UpgradeScope, signal: AbortSignal): Promise<UpgradeOutcome> {
+    if (internals.locked) return { status: 'busy' }
+    internals.locked = true
+    // Every Agent, not only the chosen one: `all` touches all of them, and for a
+    // single Agent there is no cheap way to know which entries apm actually
+    // changed, so re-reading one Agent is the conservative choice.
+    const agents = scope === ALL_AGENTS ? [...INSTALLED_AGENTS] : [scope]
+    try {
+      internals.active = { kind: 'upgrade', scope, phase: 'running' }
+      publish()
+
+      let outcome: UpgradeOutcome
+      try {
+        outcome = { status: 'ok', result: await upgradePowers(internals.service, scope, signal) }
+      } catch (err) {
+        const code = errorCode(err)
+        outcome = code === 'timeout' ? { status: 'timeout' } : { status: 'failed', code }
+      }
+
+      // Re-read regardless of how it ended. A timeout or a transport failure
+      // still leaves the machine in an unknown state, and the only honest thing
+      // to show is what is actually installed now.
+      if (!signal.aborted) {
+        internals.active = { kind: 'upgrade', scope, phase: 'reconciling' }
+        publish()
+        await Promise.all(
+          agents.map(async (agent) => {
+            invalidateAgent(agent)
+            await refreshAgent(agent, signal).catch(() => {})
+          })
+        )
+      }
+      return outcome
+    } finally {
+      internals.active = undefined
+      internals.locked = false
+      publish()
     }
   }
 
@@ -367,6 +450,7 @@ function createInstallationStore(service: FeatureServiceApiV1<'store'>): Install
     inspect,
     refreshAgent,
     execute,
+    upgrade,
     invalidateAgent,
   }
 }

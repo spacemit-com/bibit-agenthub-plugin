@@ -291,3 +291,50 @@ describe('PowerFilters', () => {
     expect(onTagsChange).toHaveBeenLastCalledWith(['alpha', 'gamma'])
   })
 })
+
+describe('PowerFilters bulk upgrade entry', () => {
+  it('renders the entry immediately left of the Agent control when wired', () => {
+    const props = renderFilters({ onUpgrade: vi.fn() })
+
+    const actions = document.querySelector('.power-filters__actions')
+    const upgrade = screen.getByRole('button', { name: 'Update all' })
+    const switcher = screen.getByRole('button', { name: 'Agent: bibit' })
+
+    // Both live in the right-hand group, and the entry comes first.
+    expect(actions?.contains(upgrade)).toBe(true)
+    expect(actions?.contains(switcher)).toBe(true)
+    expect(
+      upgrade.compareDocumentPosition(switcher) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+
+    fireEvent.click(upgrade)
+    expect(props.onUpgrade).toHaveBeenCalledTimes(1)
+  })
+
+  it('omits the entry when the page offers no upgrade handler', () => {
+    renderFilters()
+    expect(screen.queryByRole('button', { name: 'Update all' })).toBeNull()
+    // The Agent control still sits in the right-hand group on its own.
+    expect(document.querySelector('.power-filters__actions')).toBeTruthy()
+  })
+
+  it('freezes the tabs and the entry while an upgrade runs', () => {
+    renderFilters({ onUpgrade: vi.fn(), upgrading: true })
+
+    for (const name of ['My Capabilities', 'Capability Market', 'Settings']) {
+      expect((screen.getByRole('button', { name }) as HTMLButtonElement).disabled).toBe(true)
+    }
+    const upgrade = screen.getByRole('button', { name: 'Update all' }) as HTMLButtonElement
+    expect(upgrade.disabled).toBe(true)
+    // Busy is announced, and the spinner is decorative rather than a second label.
+    expect(upgrade.getAttribute('aria-busy')).toBe('true')
+    expect(upgrade.querySelector('.agent-hub__spinner')?.getAttribute('aria-hidden')).toBe('true')
+  })
+
+  it('does not report busy when idle', () => {
+    renderFilters({ onUpgrade: vi.fn() })
+    expect(
+      screen.getByRole('button', { name: 'Update all' }).getAttribute('aria-busy')
+    ).toBe('false')
+  })
+})

@@ -1,5 +1,55 @@
 # Changelog
 
+## 2026-10-13 — 「全部更新」批量升级入口（0.4.4）
+
+分类：功能 / 并发
+
+用户需求：
+
+> 在我的能力页面 Agent 选择控件左边添加全部更新/Upgrade 按钮，弹窗可选更新范围（all/bibit/codex 等）二次确认；更新期间禁用市场和设置页，不需要进度显示；控件调用 apm upgrade，点击后显示加载中动画。接受可能超时的风险。
+
+### 一、做了什么
+
+- 「我的能力」页 tab 行右侧、**Agent 控件左边**新增「全部更新」按钮（`.power-filters__actions` 把按钮与 Agent 控件收成一个右手组，`margin-left: auto` 从 Agent 控件移到该组，否则两个 auto margin 会分摊空间让两者漂开）。
+- 点击弹窗选范围（`all` / `bibit` / `codex` / `claude-code` / `hermes-agent`，默认跟随当前 Agent）并二次确认；确认后显示不定量 spinner。
+- 升级期间三个标签、类型/tag 筛选、卡片交互、创建入口全部冻结；结束后（含超时）强制重读已安装清单并给出汇总。
+- Provider 新增 `powers.upgrade.v1`，执行 `apm upgrade --agent=<scope> --yes --json`。
+
+### 二、关键决策与理由
+
+- **`--yes` 不可省**：apm 0.0.4 起 `upgrade` 默认确认，且用 `isatty(stdin)` 判断能否提问；Provider 的子进程 stdin 是管道，缺 `--yes` 会在**取锁之前**直接 fail closed。所以确认只能由插件弹窗自己做（`debian/control` 因此要求 `agent-power-manager (>= 0.0.4)`）。
+- **非零退出是结果而非错误**：apm 先把完整逐条结果写 stdout、再以非零退出标记批处理有失败（`upgrade.go` 的 render-then-return-runtimeFailure）。因此 `exitCode` 与 `items` 必须一起返回；只有 stdout 完全无法解析时才回退到净化后的 stderr 摘要。
+- **冻结标签页的真实原因是 Provider 串行，而不是 apm 全局锁**。这一条我在方案评审时先说错了、核实后更正：市场数据走 APC HTTP、已安装读取走本机 manifest，**都不抢 apm 锁**；真正的问题是这个 Provider 是 managed 单进程、v1 **串行**处理 invoke，长升级会把后续请求（含 `powers.list.v1`）堵在队列里，等升级结束后再撞上它们自己的 30 秒读超时，表现为**假错误**。所以升级期间必须不发任何 store 请求。
+- **不做进度显示**（用户明确要求，且 v1 协议没有进度事件），改用不定量 spinner，并配 `prefers-reduced-motion` 分支：旋转停止但圆环保留，状态在无动画时依然可见。
+- **运行期间不可关闭弹窗**：升级不可取消（v1 无取消原语），关掉弹窗会让人以为已经停止。
+- **超时 300000ms**：Host 取「请求 `timeoutMs`」与「registry `requestTimeoutMs`」中的**较小者**（`external_services.rs` 的 `request.timeout_ms.min(connection.request_timeout_ms)`），两处必须同为 300000，改一处不会有任何效果。
+- **`items` 里的 `outcome`/`skip` 原样透传**，不重新定义枚举：apm 新增取值时前端记为「有变更但未分类」，因为少报一次变更加比分类不精确更糟。
+
+### 三、已知取舍
+
+- **全量升级可能超时**（用户已知并接受）。超时后子进程被杀，若正好落在一条事务中间会留下 journal；apm 在 install/uninstall/upgrade 开头都会 `Recover`，下次使用自愈，必要时 `apm fix`。插件在超时后会强制重读清单，不会把「不知道」渲染成「什么都没发生」。
+- **离开页面会中断升级**：unmount 会 abort 请求并杀掉 apm 子进程（Provider 的进程组语义）。与上一条同源，靠 journal 自愈。
+- **同机其它 apm 写操作会拿到 `ErrLocked`**（apm 全局锁是非阻塞 `TryLock`）：这是 apm 既有语义，本期不改。
+- **无取消、无进度**：v1 协议的固有限制，要两者都需升 Provider Protocol v2 + job 机制。
+
+### 四、测试与反向验证
+
+新增/修改：Provider `operations_test.go`（argv 精确等值、范围校验、JSON 解析、批处理失败保留 items、不可解析时的净化 reason、未知 outcome 透传、超时与预算不足、请求不一致）、`server_test.go` 与 `selftest.go` 的 operation 清单；前端 `src/api/upgrade.test.ts`（闭集结果解析、未知取值、汇总计数、超时与取消）、`installationStore.test.ts`（busy 拒绝、active 标记、`all` 重读四个 Agent、超时后仍刷新、异常也释放锁）、`AgentHubPage.test.tsx`（12 条批量升级用例，含「确认前不发请求」「升级期间零新增列表请求」）、`PowerFilters.test.tsx`、`agentHubLayout.test.ts`（auto margin 归属、spinner token 与 reduced-motion）、`manifestGrants.test.ts`。
+
+反向验证（均按预期失败）：去掉 argv 里的 `--yes`、去掉 `isBusyFor` 的 upgrade 分支、去掉 `changeTab` 的守卫。
+
+### 五、验证限制（重要）
+
+**本轮没有做浏览器端到端复核。** 沙箱文件策略下 Firefox 的 snap 无法创建运行目录（`cannot create XDG_RUNTIME_DIR folder "/run/user/1000/snap.firefox"`，且 `~/snap/firefox/current` 只读），本机也没有其它浏览器可用。因此：
+
+- 界面部分（按钮位置、弹窗、spinner、标签冻结、汇总文案）由组件级用例断言，**未经过真实浏览器渲染确认**；
+- dev 预览的 `powers.upgrade.v1` mock 会真实执行 `apm upgrade`，我为此准备了 `/tmp/stub-apm/apm` 桩程序（不改动本机任何能力），但最终未能用浏览器跑通；
+- 建议在板端/开发机补一次真机验收，重点是弹窗实际观感与升级期间冻结是否如预期。
+
+### 六、版本与门禁
+
+0.4.4（`package.json` / `package-lock.json` / `bibit.feature.json` / `providerVersion`），`debian/changelog`，`debian/agenthub-feature-grants.json` 新 operation，`debian/agenthub-provider.json` `requestTimeoutMs` 300000，`debian/control` 依赖下界。
+
 ## 2026-10-12 — 简化「创建资源」入口的预设提示词（0.4.3）
 
 分类：文案 / 交互

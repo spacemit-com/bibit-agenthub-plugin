@@ -4,6 +4,7 @@ import { get as httpsGet } from 'node:https'
 import type { IncomingMessage } from 'node:http'
 import type { PowersWireResult } from '../src/api/contracts'
 import type { InspectResult, MutationIntent, MutationResult, PowerTarget } from '../src/api/powerOperations'
+import type { UpgradeResultShape } from './store'
 import { StoreError } from './store'
 
 /**
@@ -18,6 +19,14 @@ const DEFAULT_APC_BASE_URL = 'https://developer.bianbu.xyz/api-server/apc/api/v1
 const MAX_BYTES = 4 * 1024 * 1024
 const READ_TIMEOUT_MS = 30_000
 const WRITE_TIMEOUT_MS = 120_000
+/**
+ * The bulk upgrade reconciles every installed Power, so it gets the Host's
+ * maximum budget. This must match `POWERS_UPGRADE_TIMEOUT_MS` and the registry's
+ * `requestTimeoutMs`: the Host takes the smallest of the three.
+ */
+const UPGRADE_TIMEOUT_MS = 300_000
+/** Mirrors the provider's `maxStderrBytes`. */
+const MAX_STDERR_BYTES = 8 * 1024
 
 // Read at call time so tests can override the endpoints without racing module load.
 function apcBaseUrl(): string {
@@ -61,7 +70,10 @@ function apcUnavailable(): StoreError {
   return new StoreError('unavailable', true, APC_UNAVAILABLE)
 }
 
-function runApmProcess(argv: string[], signal: AbortSignal): Promise<{ stdout: string; exitCode: number }> {
+function runApmProcess(
+  argv: string[],
+  signal: AbortSignal
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   return new Promise((resolve, reject) => {
     if (signal.aborted) {
       reject(apmUnavailable())
@@ -73,13 +85,17 @@ function runApmProcess(argv: string[], signal: AbortSignal): Promise<{ stdout: s
     // operations can report it as a normal result.
     const child = spawn(apmPath(), argv, {
       shell: false,
-      stdio: ['ignore', 'pipe', 'ignore'],
+      // stderr is piped rather than discarded because `apm upgrade` explains a
+      // refusal (an occupied lock, an unknown flag) only there. It is bounded below
+      // so a chatty child cannot block on a full pipe.
+      stdio: ['ignore', 'pipe', 'pipe'],
       detached: true,
     })
 
     let settled = false
     let failed = false
     let stdout = ''
+    let stderr = ''
     const decoder = new TextDecoder('utf-8', { fatal: true })
 
     const killGroup = () => {
@@ -119,6 +135,13 @@ function runApmProcess(argv: string[], signal: AbortSignal): Promise<{ stdout: s
       }
     })
 
+    // Bounded like the provider's stderr sink: keep a prefix, drop the rest, but
+    // keep draining so the child never blocks writing to a full pipe.
+    child.stderr?.on('data', (chunk: Buffer) => {
+      if (stderr.length >= MAX_STDERR_BYTES) return
+      stderr += chunk.toString('utf8').slice(0, MAX_STDERR_BYTES - stderr.length)
+    })
+
     child.on('error', () => finish(() => reject(apmUnavailable())))
 
     child.on('close', (code) => {
@@ -133,7 +156,7 @@ function runApmProcess(argv: string[], signal: AbortSignal): Promise<{ stdout: s
           reject(apmUnavailable())
           return
         }
-        resolve({ stdout, exitCode: code ?? -1 })
+        resolve({ stdout, stderr, exitCode: code ?? -1 })
       })
     })
   })
@@ -180,6 +203,46 @@ export async function mutateSource(intent: MutationIntent, signal: AbortSignal):
         : ['uninstall', intent.input.name, '--agent=' + intent.input.agent, '--type=' + intent.input.type]
     const { exitCode } = await runApmProcess(argv, deadline.signal)
     return { status: 'exited', exitCode }
+  } finally {
+    deadline.cleanup()
+  }
+}
+
+/**
+ * Runs `apm upgrade` for the dev preview, mirroring what the Go provider does:
+ * stdout is the JSON result and is returned as-is, while a non-zero exit is still
+ * a result (apm renders the batch before failing it).
+ *
+ * One deliberate difference from the provider: when stdout is not the expected
+ * JSON the provider substitutes a sanitized stderr sentence, and the preview does
+ * the same with the stderr it captured, so the "no result" path is reachable here
+ * without an occupied lock.
+ */
+export async function upgradeSource(
+  agent: string,
+  signal: AbortSignal
+): Promise<UpgradeResultShape> {
+  const deadline = withDeadline(signal, UPGRADE_TIMEOUT_MS)
+  try {
+    const { stdout, stderr, exitCode } = await runApmProcess(
+      ['upgrade', '--agent=' + agent, '--yes', '--json'],
+      deadline.signal
+    )
+    let items: unknown[]
+    try {
+      const parsed: unknown = JSON.parse(stdout)
+      if (!Array.isArray(parsed)) throw new Error('not an array')
+      items = parsed
+    } catch {
+      return {
+        status: 'exited',
+        exitCode,
+        items: [],
+        // Single line, like the provider's sanitized reason.
+        reason: stderr.split('\n').map((line) => line.trim()).filter(Boolean)[0] ?? '',
+      }
+    }
+    return { status: 'exited', exitCode, items }
   } finally {
     deadline.cleanup()
   }

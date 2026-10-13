@@ -34,9 +34,11 @@ import {
   type InstallationSnapshot,
 } from './api/installationStore'
 import { type MutationIntent } from './api/powerOperations'
+import { summarizeUpgrade, type UpgradeScope } from './api/upgrade'
 import { PowerCard } from './components/PowerCard'
 import { PowerDetailsDialog, type CustomActionState } from './components/PowerDetailsDialog'
 import { PowerFilters, type PowerTab } from './components/PowerFilters'
+import { UpgradeDialog, type UpgradePhase } from './components/UpgradeDialog'
 import { AgentHubSettingsPanel } from './components/AgentHubSettingsPanel'
 import { PowerPagination } from './components/PowerPagination'
 import './agentHub.css'
@@ -257,9 +259,18 @@ export function AgentHubPage(_: FeaturePageProps) {
   const [customAction, setCustomAction] = useState<{ key: string; state: CustomActionState } | null>(null)
   const [customNotices, setCustomNotices] = useState<ReadonlyMap<string, TranslatableText>>(new Map())
 
+  /**
+   * The bulk-upgrade dialog. `null` means closed; any phase means it is on screen
+   * and describes where the run is. Keeping the phase here rather than inside the
+   * dialog means the run survives the dialog being re-rendered, and the page can
+   * derive `upgrading` from it for the tab lock.
+   */
+  const [upgradePhase, setUpgradePhase] = useState<UpgradePhase | null>(null)
+
   const executeControllerRef = useRef<AbortController | null>(null)
   const inspectControllerRef = useRef<AbortController | null>(null)
   const customControllerRef = useRef<AbortController | null>(null)
+  const upgradeControllerRef = useRef<AbortController | null>(null)
   // The page owns its scroll container (the host clips the contribution's box), so a
   // query change must put the new list back at the top instead of keeping the offset.
   const pageScrollRef = useRef<HTMLElement>(null)
@@ -327,6 +338,11 @@ export function AgentHubPage(_: FeaturePageProps) {
       executeControllerRef.current?.abort()
       inspectControllerRef.current?.abort()
       customControllerRef.current?.abort()
+      // Leaving the page cancels the upgrade request, and with it the apm child
+      // (the provider kills the process group on context cancellation). A run cut
+      // mid-transaction is recovered by apm's own journal replay on its next
+      // start, so this is safe but not free -- see the verification record.
+      upgradeControllerRef.current?.abort()
     }
   }, [])
 
@@ -429,6 +445,9 @@ export function AgentHubPage(_: FeaturePageProps) {
     if (pageScrollRef.current) pageScrollRef.current.scrollTop = 0
   }
   const changeTab = (next: PowerTab) => {
+    // Defence in depth behind the disabled tabs: switching would issue a list
+    // request that queues behind the serial provider and times out.
+    if (upgrading) return
     resetPageScroll()
     setTab(next)
     // The Settings tab is not a catalog scope: it keeps whatever the last list
@@ -506,10 +525,79 @@ export function AgentHubPage(_: FeaturePageProps) {
       executeControllerRef.current?.abort()
       const controller = new AbortController()
       executeControllerRef.current = controller
-      void installationStore.execute(intent, controller.signal)
+      // The store refuses a concurrent write by throwing; that is a gate, not a
+      // failure to report, so it must not surface as an unhandled rejection.
+      void installationStore.execute(intent, controller.signal).catch(() => {})
     },
     [installationStore]
   )
+
+  /**
+   * Runs the bulk upgrade for one scope and turns the store's outcome into dialog
+   * copy.
+   *
+   * The dialog stays open for the whole run on purpose: the upgrade is not
+   * cancellable (Provider Protocol v1 has no cancellation), so closing it would
+   * imply the run stopped. The store refuses a second run with `busy`, which can
+   * only happen if the page's own gate was bypassed, so it is reported rather
+   * than expected.
+   */
+  const runUpgrade = useCallback(
+    (scope: UpgradeScope) => {
+      if (!installationStore) return
+      upgradeControllerRef.current?.abort()
+      const controller = new AbortController()
+      upgradeControllerRef.current = controller
+      setUpgradePhase({ status: 'running', step: 'updating' })
+      void (async () => {
+        const outcome = await installationStore.upgrade(scope, controller.signal)
+        if (controller.signal.aborted) return
+        if (outcome.status === 'ok') {
+          setUpgradePhase({
+            status: 'done',
+            summary: summarizeUpgrade(outcome.result.items),
+            reason: outcome.result.reason,
+          })
+          return
+        }
+        if (outcome.status === 'timeout') {
+          setUpgradePhase({
+            status: 'error',
+            text: t('The result needs confirmation; refresh to read the actual state.'),
+          })
+          return
+        }
+        if (outcome.status === 'busy') {
+          // Another write was already running; nothing was started.
+          setUpgradePhase(null)
+          return
+        }
+        setUpgradePhase({
+          status: 'error',
+          text: t('The update is unavailable; the installed state could not be confirmed.'),
+        })      })()
+    },
+    // `t` is stable per language and `installationStore` per host service.
+    [installationStore, t]
+  )
+
+  /**
+   * Whether a bulk upgrade owns the page. Read from the store rather than from
+   * the dialog's phase: the lock is what actually forbids other work, and it is
+   * released in the store's `finally`, so the two can never disagree.
+   */
+  const upgrading = installationSnapshot.active?.kind === 'upgrade'
+
+  // The dialog's own "reconciling" step is driven by the store's phase, so the
+  // message follows the real work instead of a timer.
+  useEffect(() => {
+    if (!upgrading) return
+    setUpgradePhase((current) =>
+      current?.status === 'running' && installationSnapshot.active?.phase === 'reconciling'
+        ? { status: 'running', step: 'reconciling' }
+        : current
+    )
+  }, [upgrading, installationSnapshot.active?.phase])
 
   const installSelected = () => {
     if (!dialog) return
@@ -535,6 +623,10 @@ export function AgentHubPage(_: FeaturePageProps) {
   const isBusyFor = (targetAgent: string, series: PowerSeries) => {
     const active = installationSnapshot.active
     if (!active) return false
+    // A bulk upgrade owns the whole machine: every card is busy, because apm is
+    // reconciling every installed Power and the provider must not be asked to do
+    // anything else meanwhile. A per-Power mutation marks only its own card.
+    if (active.kind === 'upgrade') return true
     return (
       active.intent.input.agent === targetAgent &&
       active.intent.input.type === series.type &&
@@ -762,11 +854,24 @@ export function AgentHubPage(_: FeaturePageProps) {
         type={type}
         availableTags={availableTags}
         selectedTags={tags}
+        upgrading={upgrading}
         onTabChange={changeTab}
         onAgentChange={changeAgent}
         onTypeChange={changeType}
         onTagsChange={changeTags}
+        // The entry is offered on the installed list only: it is the page that
+        // shows what is installed, and a bulk upgrade is about those resources.
+        onUpgrade={tab === 'installed' ? () => setUpgradePhase({ status: 'confirm' }) : undefined}
       />
+      {upgradePhase && (
+        <UpgradeDialog
+          open
+          agent={agent}
+          phase={upgradePhase}
+          onConfirm={runUpgrade}
+          onClose={() => setUpgradePhase(null)}
+        />
+      )}
       {tab === 'settings' ? (
         <AgentHubSettingsPanel service={store} />
       ) : (

@@ -116,6 +116,19 @@ func selfTestOperations() error {
 				return nil, newProviderError("incompatible")
 			}
 			return MutationResult{Status: "exited", ExitCode: 0}, nil
+		case operationPowersUpgrade:
+			if req.Upgrade == nil || req.Upgrade.Agent != "bibit" {
+				return nil, newProviderError("incompatible")
+			}
+			// One upgraded entry and one already current: the shape the page summarizes.
+			return UpgradeResult{
+				Status:   "exited",
+				ExitCode: 0,
+				Items: []UpgradeItem{
+					{Agent: "bibit", Type: "skill", Name: "demo", CurrentVersion: "v1.0.0", TargetVersion: "v2.0.0", Outcome: "upgraded"},
+					{Agent: "bibit", Type: "mcp", Name: "stable", CurrentVersion: "v1.0.0", TargetVersion: "v1.0.0", Outcome: "up-to-date"},
+				},
+			}, nil
 		default:
 			return nil, newProviderError("incompatible")
 		}
@@ -123,17 +136,18 @@ func selfTestOperations() error {
 	input := "{\"jsonrpc\":\"2.0\",\"id\":\"self-init\",\"method\":\"bibit.initialize\",\"params\":{\"protocolName\":\"bibit-provider\",\"serviceId\":\"store\",\"supportedProtocolVersions\":[1]}}\n" +
 		"{\"jsonrpc\":\"2.0\",\"id\":\"self-inspect\",\"method\":\"bibit.invoke\",\"params\":{\"serviceId\":\"store\",\"operationId\":\"powers.inspect.v1\",\"params\":{\"agent\":\"bibit\",\"type\":\"skill\",\"name\":\"demo\"},\"timeoutMs\":30000}}\n" +
 		"{\"jsonrpc\":\"2.0\",\"id\":\"self-install\",\"method\":\"bibit.invoke\",\"params\":{\"serviceId\":\"store\",\"operationId\":\"powers.install.v1\",\"params\":{\"agent\":\"bibit\",\"type\":\"skill\",\"name\":\"demo\",\"version\":\"v1.0.0\"},\"timeoutMs\":120000}}\n" +
-		"{\"jsonrpc\":\"2.0\",\"id\":\"self-uninstall\",\"method\":\"bibit.invoke\",\"params\":{\"serviceId\":\"store\",\"operationId\":\"powers.uninstall.v1\",\"params\":{\"agent\":\"bibit\",\"type\":\"skill\",\"name\":\"demo\"},\"timeoutMs\":120000}}\n"
+		"{\"jsonrpc\":\"2.0\",\"id\":\"self-uninstall\",\"method\":\"bibit.invoke\",\"params\":{\"serviceId\":\"store\",\"operationId\":\"powers.uninstall.v1\",\"params\":{\"agent\":\"bibit\",\"type\":\"skill\",\"name\":\"demo\"},\"timeoutMs\":120000}}\n" +
+		"{\"jsonrpc\":\"2.0\",\"id\":\"self-upgrade\",\"method\":\"bibit.invoke\",\"params\":{\"serviceId\":\"store\",\"operationId\":\"powers.upgrade.v1\",\"params\":{\"agent\":\"bibit\"},\"timeoutMs\":300000}}\n"
 	var out bytes.Buffer
 	if err := Serve(context.Background(), strings.NewReader(input), &out, fixture); err != nil {
 		return err
 	}
 	lines := splitResponseLines(out.String())
-	if len(lines) != 4 {
-		return fmt.Errorf("expected 4 responses, got %d", len(lines))
+	if len(lines) != 5 {
+		return fmt.Errorf("expected 5 responses, got %d", len(lines))
 	}
 
-	// initialize response must declare all four operations.
+	// initialize response must declare every operation.
 	initResp, err := parseSelfTestResponse(lines[0])
 	if err != nil {
 		return err
@@ -195,6 +209,35 @@ func selfTestOperations() error {
 			if _, ok := result[forbidden]; ok {
 				return fmt.Errorf("mutation result leaked field %q", forbidden)
 			}
+		}
+	}
+
+	// The upgrade result carries per-item outcomes and must not leak the raw
+	// command output either: `reason` is only populated when stdout was unusable.
+	upgradeResp, err := parseSelfTestResponse(lines[4])
+	if err != nil {
+		return err
+	}
+	if upgradeResp.Error != nil {
+		return fmt.Errorf("upgrade failed: %+v", upgradeResp.Error)
+	}
+	var upgradeResult UpgradeResult
+	if err := json.Unmarshal(upgradeResp.Result, &upgradeResult); err != nil {
+		return err
+	}
+	if upgradeResult.Status != "exited" || len(upgradeResult.Items) != 2 {
+		return fmt.Errorf("unexpected upgrade result: %s", upgradeResp.Result)
+	}
+	if upgradeResult.Items[0].Outcome != "upgraded" || upgradeResult.Items[1].Outcome != "up-to-date" {
+		return fmt.Errorf("unexpected upgrade outcomes: %s", upgradeResp.Result)
+	}
+	var upgradeRaw map[string]json.RawMessage
+	if err := json.Unmarshal(upgradeResp.Result, &upgradeRaw); err != nil {
+		return err
+	}
+	for _, forbidden := range []string{"stdout", "stderr", "output", "message"} {
+		if _, ok := upgradeRaw[forbidden]; ok {
+			return fmt.Errorf("upgrade result leaked field %q", forbidden)
 		}
 	}
 	return nil

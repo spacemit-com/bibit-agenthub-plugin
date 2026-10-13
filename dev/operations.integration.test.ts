@@ -34,6 +34,9 @@ const unusedCustomSources = {
   readCustom: async () => ({ scope: 'custom', status: 'data', itemsJson: '{"items":[],"skipped":[]}' }) as const,
   upload: async () => ({ status: 'exited', exitCode: 0, stage: 'submit' }) as const,
   removeCustom: async () => ({ status: 'deleted' }) as const,
+  // Not `as const`: that would make `items` readonly, and the source type takes a
+  // mutable slice, matching what the real upgrade source returns.
+  upgrade: async () => ({ status: 'exited' as const, exitCode: 0, items: [] }),
 }
 
 const key = JSON.stringify(['bibit', 'skill', 'demo'])

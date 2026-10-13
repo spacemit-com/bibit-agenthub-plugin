@@ -104,6 +104,21 @@ const zh: Readonly<Record<string, string>> = {
   'Downgrade': '降级',
   'Uninstall': '卸载',
 
+  // ---- bulk upgrade (the "Update all" entry beside the Agent control) ----
+  'Update all': '全部更新',
+  'Update every installed Power for {agent}?':
+    '确定更新 {agent} 的全部已安装能力？',
+  'Choose which Agents to update': '选择要更新的 Agent',
+  'Updating…': '正在更新…',
+  'All Agents': '全部 Agent',
+  'Updated {count} Power(s).': '已更新 {count} 个能力。',
+  'Nothing needed updating.': '所有能力都已是最新版本。',
+  '{count} Power(s) could not be updated.': '有 {count} 个能力更新失败。',
+  'The result needs confirmation; refresh to read the actual state.':
+    '更新结果需要确认，请刷新以读取实际状态。',
+  'The update is unavailable; the installed state could not be confirmed.':
+    '更新不可用，无法确认已安装状态。',
+
   // ---- pagination ----
   'Power pages': 'Power 分页',
   'Previous page': '上一页',

@@ -210,3 +210,193 @@ func TestMutatePowerInconsistentRequest(t *testing.T) {
 	})
 	assertProviderError(t, err, "incompatible")
 }
+
+// --- powers.upgrade.v1 -----------------------------------------------------
+
+func TestUpgradeArgvCarriesYesAndJSON(t *testing.T) {
+	home := t.TempDir()
+	// Both flags are load-bearing, so the argv is asserted exactly: without
+	// `--yes` apm fails closed on a non-terminal stdin, and without `--json`
+	// there are no per-item outcomes to summarize.
+	fixture := writeFixture(t, "apm", "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$HOME/apm-argv.txt\"\nprintf '[]'\n")
+
+	result, err := UpgradePowers(context.Background(), apmConfig(fixture, home), OperationRequest{
+		OperationID: operationPowersUpgrade,
+		Upgrade:     &UpgradeInput{Agent: "bibit"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "exited" || result.ExitCode != 0 {
+		t.Fatalf("unexpected result: %+v", result)
+	}
+	assertArgv(t, home, "upgrade", "--agent=bibit", "--yes", "--json")
+}
+
+func TestUpgradeAcceptsAllAndFixedAgents(t *testing.T) {
+	for _, agent := range []string{"all", "bibit", "codex", "claude-code", "hermes-agent"} {
+		t.Run(agent, func(t *testing.T) {
+			req, err := decodeOperationRequest(operationPowersUpgrade, json.RawMessage(`{"agent":"`+agent+`"}`))
+			if err != nil {
+				t.Fatalf("agent %q must be accepted: %v", agent, err)
+			}
+			if req.Upgrade == nil || req.Upgrade.Agent != agent {
+				t.Fatalf("decoded request = %+v", req)
+			}
+		})
+	}
+}
+
+func TestUpgradeRejectsUnknownAgentAndExtraKeys(t *testing.T) {
+	for name, params := range map[string]string{
+		"unknown agent": `{"agent":"nope"}`,
+		"empty agent":   `{"agent":""}`,
+		"extra key":     `{"agent":"bibit","type":"skill"}`,
+		"missing agent": `{}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := decodeOperationRequest(operationPowersUpgrade, json.RawMessage(params)); err == nil {
+				t.Fatalf("expected %s to be rejected", params)
+			}
+		})
+	}
+}
+
+func TestUpgradeParsesItemsFromJSON(t *testing.T) {
+	home := t.TempDir()
+	payload := `[{"agent":"bibit","type":"skill","name":"demo","current_version":"v1.0.0","target_version":"v2.0.0","outcome":"upgraded","skip":""},` +
+		`{"agent":"bibit","type":"mcp","name":"gone","current_version":"v1.0.0","target_version":"","outcome":"skipped","skip":"not-in-catalog"}]`
+	fixture := writeFixture(t, "apm", "#!/bin/sh\ncat <<'JSON'\n"+payload+"\nJSON\n")
+
+	result, err := UpgradePowers(context.Background(), apmConfig(fixture, home), OperationRequest{
+		OperationID: operationPowersUpgrade,
+		Upgrade:     &UpgradeInput{Agent: "all"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Items) != 2 {
+		t.Fatalf("items = %+v", result.Items)
+	}
+	// apm's snake_case becomes the wire's camelCase.
+	if result.Items[0].CurrentVersion != "v1.0.0" || result.Items[0].TargetVersion != "v2.0.0" {
+		t.Fatalf("versions not carried through: %+v", result.Items[0])
+	}
+	if result.Items[0].Outcome != "upgraded" {
+		t.Fatalf("outcome = %q", result.Items[0].Outcome)
+	}
+	if result.Items[1].Skip != "not-in-catalog" || result.Items[1].Outcome != "skipped" {
+		t.Fatalf("skip not carried through: %+v", result.Items[1])
+	}
+	if result.Reason != "" {
+		t.Fatalf("a parsed result must carry no reason, got %q", result.Reason)
+	}
+}
+
+func TestUpgradeKeepsItemsOnBatchFailure(t *testing.T) {
+	// apm renders the complete result to stdout and *then* exits non-zero when
+	// some entries failed. Discarding the output on a non-zero exit would throw
+	// away the only account of what actually happened.
+	home := t.TempDir()
+	payload := `[{"agent":"bibit","type":"skill","name":"demo","current_version":"v1.0.0","target_version":"v2.0.0","outcome":"failed"}]`
+	fixture := writeFixture(t, "apm", "#!/bin/sh\ncat <<'JSON'\n"+payload+"\nJSON\nexit 1\n")
+
+	result, err := UpgradePowers(context.Background(), apmConfig(fixture, home), OperationRequest{
+		OperationID: operationPowersUpgrade,
+		Upgrade:     &UpgradeInput{Agent: "bibit"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ExitCode != 1 {
+		t.Fatalf("exit code = %d, want 1", result.ExitCode)
+	}
+	if len(result.Items) != 1 || result.Items[0].Outcome != "failed" {
+		t.Fatalf("items must survive a failing batch: %+v", result.Items)
+	}
+}
+
+func TestUpgradeReportsSanitizedReasonWhenStdoutIsUnusable(t *testing.T) {
+	// An occupied lock, or an apm predating these flags, produces no JSON at all.
+	// The user then needs the reason, and it must be the sanitized single-line
+	// form: no raw multi-line stderr, no ANSI escapes.
+	home := t.TempDir()
+	fixture := writeFixture(t, "apm",
+		"#!/bin/sh\nprintf '\\033[31mAPM lock is already held\\033[0m\\nsecond line\\n' >&2\nexit 1\n")
+
+	result, err := UpgradePowers(context.Background(), apmConfig(fixture, home), OperationRequest{
+		OperationID: operationPowersUpgrade,
+		Upgrade:     &UpgradeInput{Agent: "bibit"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ExitCode != 1 {
+		t.Fatalf("exit code = %d, want 1", result.ExitCode)
+	}
+	if len(result.Items) != 0 {
+		t.Fatalf("no items expected, got %+v", result.Items)
+	}
+	if !strings.Contains(result.Reason, "APM lock is already held") {
+		t.Fatalf("reason must explain the failure: %q", result.Reason)
+	}
+	if strings.Contains(result.Reason, "\x1b") || strings.Contains(result.Reason, "[31m") {
+		t.Fatalf("reason leaked an ANSI escape: %q", result.Reason)
+	}
+	if strings.Contains(result.Reason, "\n") {
+		t.Fatalf("reason must be a single line: %q", result.Reason)
+	}
+}
+
+func TestUpgradeUnknownOutcomeIsPreserved(t *testing.T) {
+	// A future apm may add an outcome. Pass it through rather than failing the
+	// whole response: the frontend classifies what it does not know.
+	home := t.TempDir()
+	payload := `[{"agent":"bibit","type":"skill","name":"demo","current_version":"v1.0.0","target_version":"v2.0.0","outcome":"reinstalled"}]`
+	fixture := writeFixture(t, "apm", "#!/bin/sh\ncat <<'JSON'\n"+payload+"\nJSON\n")
+
+	result, err := UpgradePowers(context.Background(), apmConfig(fixture, home), OperationRequest{
+		OperationID: operationPowersUpgrade,
+		Upgrade:     &UpgradeInput{Agent: "bibit"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Items) != 1 || result.Items[0].Outcome != "reinstalled" {
+		t.Fatalf("unknown outcome must survive: %+v", result.Items)
+	}
+}
+
+func TestUpgradeTimeoutIsPlatformError(t *testing.T) {
+	home := t.TempDir()
+	fixture := writeFixture(t, "apm", "#!/bin/sh\nsleep 30\n")
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_, err := UpgradePowers(ctx, apmConfig(fixture, home), OperationRequest{
+		OperationID: operationPowersUpgrade,
+		Upgrade:     &UpgradeInput{Agent: "all"},
+	})
+	assertProviderError(t, err, "timeout")
+}
+
+func TestUpgradeShortDeadlineDoesNotSpawn(t *testing.T) {
+	home := t.TempDir()
+	fixture := writeFixture(t, "apm", "#!/bin/sh\nprintf ran > \"$HOME/apm-ran.txt\"\n")
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	_, err := UpgradePowers(ctx, apmConfig(fixture, home), OperationRequest{
+		OperationID: operationPowersUpgrade,
+		Upgrade:     &UpgradeInput{Agent: "all"},
+	})
+	assertProviderError(t, err, "timeout")
+	if _, statErr := os.Stat(filepath.Join(home, "apm-ran.txt")); statErr == nil {
+		t.Fatal("fixture ran despite insufficient budget")
+	}
+}
+
+func TestUpgradeInconsistentRequest(t *testing.T) {
+	_, err := UpgradePowers(context.Background(), apmConfig("/usr/bin/apm", t.TempDir()), OperationRequest{
+		OperationID: operationPowersUpgrade,
+	})
+	assertProviderError(t, err, "incompatible")
+}

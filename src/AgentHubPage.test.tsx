@@ -2178,3 +2178,277 @@ describe('create-resource entry (host:actions)', () => {
     await waitFor(() => expect((createButton() as HTMLButtonElement).disabled).toBe(false))
   })
 })
+
+describe('bulk upgrade (Update all)', () => {
+  const upgradeResponse = (items: unknown[] = [], exitCode = 0) => ({
+    status: 'exited',
+    exitCode,
+    items,
+    reason: '',
+  })
+  const upgraded = (name: string, outcome = 'upgraded') => ({
+    agent: 'bibit',
+    type: 'skill',
+    name,
+    currentVersion: 'v1.0.0',
+    targetVersion: 'v2.0.0',
+    outcome,
+    skip: '',
+  })
+
+  const upgradeButton = () => screen.getByRole('button', { name: 'Update all' })
+
+  it('offers the entry on the installed list beside the Agent control', async () => {
+    const { hostApi } = makeStoreHost()
+    renderPage(hostApi)
+    await screen.findByRole('heading', { name: 'code-review' })
+
+    const actions = document.querySelector('.power-filters__actions')
+    const button = upgradeButton()
+    const switcher = screen.getByRole('button', { name: 'Agent: bibit' })
+    expect(actions?.contains(button)).toBe(true)
+    // Immediately left of the Agent control: the pair is the right-hand group.
+    expect(button.compareDocumentPosition(switcher) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('keeps the entry off the market and settings tabs', async () => {
+    const user = userEvent.setup()
+    const { hostApi } = makeStoreHost((input) =>
+      wireParamsOf(input).scope === 'market' ? marketData() : installedData(codeReviewList)
+    )
+    renderPage(hostApi)
+    await screen.findByRole('heading', { name: 'code-review' })
+
+    await user.click(screen.getByRole('button', { name: 'Capability Market' }))
+    await screen.findByRole('heading', { name: 'market-translate' })
+    expect(screen.queryByRole('button', { name: 'Update all' })).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Settings' }))
+    expect(screen.queryByRole('button', { name: 'Update all' })).toBeNull()
+  })
+
+  it('opens a dialog and sends nothing until it is confirmed', async () => {
+    const user = userEvent.setup()
+    const { hostApi, calls } = makeStoreHost((input) =>
+      input.operationId === 'powers.upgrade.v1' ? upgradeResponse() : installedData(codeReviewList)
+    )
+    renderPage(hostApi)
+    await screen.findByRole('heading', { name: 'code-review' })
+
+    await user.click(upgradeButton())
+
+    expect(await screen.findByRole('dialog')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Update' })).toBeTruthy()
+    // Opening the confirmation is not consent: no upgrade may have been sent.
+    expect(calls.some((call) => call.operationId === 'powers.upgrade.v1')).toBe(false)
+  })
+
+  it('sends exactly one upgrade for the chosen scope', async () => {
+    const user = userEvent.setup()
+    const { hostApi, calls } = makeStoreHost((input) =>
+      input.operationId === 'powers.upgrade.v1' ? upgradeResponse([upgraded('code-review')]) : installedData(codeReviewList)
+    )
+    renderPage(hostApi)
+    await screen.findByRole('heading', { name: 'code-review' })
+
+    await user.click(upgradeButton())
+    await user.selectOptions(screen.getByLabelText('Choose which Agents to update'), 'codex')
+    await user.click(screen.getByRole('button', { name: 'Update' }))
+
+    await waitFor(() =>
+      expect(calls.filter((call) => call.operationId === 'powers.upgrade.v1')).toHaveLength(1)
+    )
+    const upgrade = calls.find((call) => call.operationId === 'powers.upgrade.v1')
+    expect(upgrade?.params).toEqual({ agent: 'codex' })
+    expect(upgrade?.timeoutMs).toBe(300_000)
+  })
+
+  it('offers the whole machine as a scope, with all available', async () => {
+    const user = userEvent.setup()
+    const { hostApi } = makeStoreHost()
+    renderPage(hostApi)
+    await screen.findByRole('heading', { name: 'code-review' })
+
+    await user.click(upgradeButton())
+
+    const select = screen.getByLabelText('Choose which Agents to update') as HTMLSelectElement
+    expect([...select.options].map((option) => option.value)).toEqual([
+      'all',
+      'bibit',
+      'codex',
+      'claude-code',
+      'hermes-agent',
+    ])
+    expect(screen.getByRole('option', { name: 'All Agents' })).toBeTruthy()
+  })
+
+  it('freezes the tabs, the cards and the list while the upgrade runs', async () => {
+    const user = userEvent.setup()
+    let resolveUpgrade: ((value: unknown) => void) | undefined
+    const { hostApi, calls } = makeStoreHost((input) => {
+      if (input.operationId === 'powers.upgrade.v1') {
+        return new Promise((resolve) => {
+          resolveUpgrade = resolve
+        })
+      }
+      return installedData(codeReviewList)
+    })
+    renderPage(hostApi)
+    await screen.findByRole('heading', { name: 'code-review' })
+    const listCallsBefore = calls.filter((call) => call.operationId === 'powers.list.v1').length
+
+    await user.click(upgradeButton())
+    await user.click(screen.getByRole('button', { name: 'Update' }))
+    await waitFor(() => expect(resolveUpgrade).toBeDefined())
+
+    // The provider is one serial process, so a list request issued now would queue
+    // behind the upgrade and then trip its own read timeout: none may be sent.
+    expect((screen.getByRole('button', { name: 'Capability Market' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: 'Settings' }) as HTMLButtonElement).disabled).toBe(true)
+
+    // Clicking a frozen tab must not switch (the disabled attribute plus the guard).
+    await user.click(screen.getByRole('button', { name: 'Capability Market' }))
+    expect(screen.getByRole('heading', { name: 'code-review' })).toBeTruthy()
+
+    // The card's detail entry is busy too, so nothing can start a second write.
+    expect((screen.getByRole('button', { name: 'code-review' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(calls.filter((call) => call.operationId === 'powers.list.v1').length).toBe(listCallsBefore)
+
+    // The dialog cannot be dismissed while the run is in flight. Scoped to the
+    // upgrade dialog: the details dialog has a control with the same name.
+    const upgradeDialog = screen.getByRole('dialog', { name: 'Update all' })
+    expect((within(upgradeDialog).getByRole('button', { name: 'Close' }) as HTMLButtonElement).disabled).toBe(true)
+
+    resolveUpgrade?.(upgradeResponse([upgraded('code-review')]))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeTruthy())
+    await waitFor(() =>
+      expect(screen.getByText('Updated 1 Power(s).')).toBeTruthy()
+    )
+  })
+
+  it('refreshes the list once the upgrade finishes', async () => {
+    const user = userEvent.setup()
+    const { hostApi, calls } = makeStoreHost((input) =>
+      input.operationId === 'powers.upgrade.v1'
+        ? upgradeResponse([upgraded('code-review')])
+        : installedData(codeReviewList)
+    )
+    renderPage(hostApi)
+    await screen.findByRole('heading', { name: 'code-review' })
+    const before = calls.filter((call) => call.operationId === 'powers.list.v1').length
+
+    await user.click(upgradeButton())
+    await user.click(screen.getByRole('button', { name: 'Update' }))
+    await screen.findByText('Updated 1 Power(s).')
+
+    await waitFor(() =>
+      expect(calls.filter((call) => call.operationId === 'powers.list.v1').length).toBeGreaterThan(
+        before
+      )
+    )
+    // The tabs come back once the lock is released.
+    await waitFor(() =>
+      expect((screen.getByRole('button', { name: 'Capability Market' }) as HTMLButtonElement).disabled).toBe(false)
+    )
+  })
+
+  it('reports a run where nothing needed updating', async () => {
+    const user = userEvent.setup()
+    const { hostApi } = makeStoreHost((input) =>
+      input.operationId === 'powers.upgrade.v1'
+        ? upgradeResponse([upgraded('code-review', 'up-to-date')])
+        : installedData(codeReviewList)
+    )
+    renderPage(hostApi)
+    await screen.findByRole('heading', { name: 'code-review' })
+
+    await user.click(upgradeButton())
+    await user.click(screen.getByRole('button', { name: 'Update' }))
+
+    expect(await screen.findByText('Nothing needed updating.')).toBeTruthy()
+  })
+
+  it('reports failed entries by count', async () => {
+    const user = userEvent.setup()
+    const { hostApi } = makeStoreHost((input) =>
+      input.operationId === 'powers.upgrade.v1'
+        ? upgradeResponse([upgraded('a', 'failed'), upgraded('b', 'failed')], 1)
+        : installedData(codeReviewList)
+    )
+    renderPage(hostApi)
+    await screen.findByRole('heading', { name: 'code-review' })
+
+    await user.click(upgradeButton())
+    await user.click(screen.getByRole('button', { name: 'Update' }))
+
+    expect(await screen.findByText('2 Power(s) could not be updated.')).toBeTruthy()
+  })
+
+  it('asks the user to refresh when the run times out', async () => {
+    const user = userEvent.setup()
+    const { hostApi, calls } = makeStoreHost((input) => {
+      if (input.operationId === 'powers.upgrade.v1') {
+        throw Object.assign(new Error('timed out'), { version: 1, code: 'timeout', retryable: true })
+      }
+      return installedData(codeReviewList)
+    })
+    renderPage(hostApi)
+    await screen.findByRole('heading', { name: 'code-review' })
+    const before = calls.filter((call) => call.operationId === 'powers.list.v1').length
+
+    await user.click(upgradeButton())
+    await user.click(screen.getByRole('button', { name: 'Update' }))
+
+    expect(
+      await screen.findByText('The result needs confirmation; refresh to read the actual state.')
+    ).toBeTruthy()
+    // A timeout does not mean nothing changed, so the list is re-read anyway.
+    await waitFor(() =>
+      expect(calls.filter((call) => call.operationId === 'powers.list.v1').length).toBeGreaterThan(
+        before
+      )
+    )
+  })
+
+  it('does not start a second upgrade while one is running', async () => {
+    const user = userEvent.setup()
+    let resolveUpgrade: ((value: unknown) => void) | undefined
+    const { hostApi, calls } = makeStoreHost((input) => {
+      if (input.operationId === 'powers.upgrade.v1') {
+        return new Promise((resolve) => {
+          resolveUpgrade = resolve
+        })
+      }
+      return installedData(codeReviewList)
+    })
+    renderPage(hostApi)
+    await screen.findByRole('heading', { name: 'code-review' })
+
+    await user.click(upgradeButton())
+    await user.click(screen.getByRole('button', { name: 'Update' }))
+    await waitFor(() => expect(resolveUpgrade).toBeDefined())
+
+    // The entry is disabled, so a second attempt sends nothing.
+    expect((upgradeButton() as HTMLButtonElement).disabled).toBe(true)
+    expect(calls.filter((call) => call.operationId === 'powers.upgrade.v1')).toHaveLength(1)
+
+    resolveUpgrade?.(upgradeResponse([upgraded('code-review')]))
+    await screen.findByText('Updated 1 Power(s).')
+  })
+
+  it('surfaces the provider reason when apm produced no result', async () => {
+    const user = userEvent.setup()
+    const { hostApi } = makeStoreHost((input) =>
+      input.operationId === 'powers.upgrade.v1'
+        ? { status: 'exited', exitCode: 1, items: [], reason: 'APM lock is already held' }
+        : installedData(codeReviewList)
+    )
+    renderPage(hostApi)
+    await screen.findByRole('heading', { name: 'code-review' })
+
+    await user.click(upgradeButton())
+    await user.click(screen.getByRole('button', { name: 'Update' }))
+
+    expect(await screen.findByText('APM lock is already held')).toBeTruthy()
+  })
+})
