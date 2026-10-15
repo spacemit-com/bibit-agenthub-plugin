@@ -1,0 +1,13 @@
+Bibit Agent Hub
+Copyright 2026 SpacemiT (Beijing) Intelligent Technology Co., Ltd.
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+It bundles the following third-party software:
+
+  React, React DOM, Scheduler
+  Copyright (c) Meta Platforms, Inc. and affiliates.
+  Licensed under the MIT License.
+
+The full license texts are recorded in debian/copyright and shipped with the
+Debian packages under /usr/share/doc/*/copyright.

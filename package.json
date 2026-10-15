@@ -2,6 +2,7 @@
   "name": "@bibit-internal/agent-hub-plugin",
   "version": "0.4.4",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "scripts": {
     "check:node": "node scripts/check-node.mjs",
