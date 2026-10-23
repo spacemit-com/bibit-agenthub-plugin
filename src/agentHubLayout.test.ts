@@ -196,7 +196,8 @@ describe('Agent Hub layout contract', () => {
     // transparency, which is why this asserts the alpha directly.
     const token = rules('.agent-hub').flatMap((block) => declared(block, '--hub-focus'))
     expect(token).toHaveLength(1)
-    expect(token[0]).toMatch(/^light-dark\(\s*#[0-9a-f]{6}\s*,\s*#[0-9a-f]{6}\s*\)$/)
+    // Use the host's opaque foreground, keeping equally visible standalone fallbacks.
+    expect(token[0]).toMatch(/^var\(--foreground,\s*light-dark\(\s*#[0-9a-f]{6}\s*,\s*#[0-9a-f]{6}\s*\)\)$/)
     expect(token[0]).not.toMatch(/rgba?\(|\//)
 
     // And the ring rule must cover the clickable card, which is a control too.
@@ -355,7 +356,6 @@ describe('Agent Hub layout contract', () => {
       '.agent-hub',
       '.power-card__description',
       '.power-card__tags',
-      '.power-filters__tags',
       '.agent-hub-dialog__body',
     ]) {
       expect(hiddenSelectors).toContain(scroller)
@@ -440,20 +440,17 @@ describe('Agent Hub layout contract', () => {
     expect(actions.flatMap((block) => declared(block, 'flex'))).toContain('0 0 auto')
   })
 
-  it('marks an installed market card with the success family, not the custom one', () => {
+  it('uses the host primary colors for the installed tag', () => {
     // The Installed badge overrides the custom badge's colours; it has to read from
     // tokens so the light/dark contract above keeps covering it, and it must not
     // inherit the rose that identifies a hand-installed resource.
-    const installed = rules('.power-card__badge--installed')
+    const installed = rules('.power-card__tag.power-card__badge--installed')
     expect(installed).toHaveLength(1)
     expect(installed.flatMap((block) => declared(block, 'background'))).toEqual([
-      'var(--hub-install-bg)',
+      'var(--hub-primary)',
     ])
     expect(installed.flatMap((block) => declared(block, 'color'))).toEqual([
-      'var(--hub-install-text)',
-    ])
-    expect(installed.flatMap((block) => declared(block, 'border-color'))).toEqual([
-      'var(--hub-install-line)',
+      'var(--hub-on-primary)',
     ])
     for (const block of installed) {
       expect(block.body).not.toContain('--hub-custom')
@@ -465,9 +462,6 @@ describe('Agent Hub layout contract', () => {
     expect(custom.flatMap((block) => declared(block, 'border-style'))).toContain('dashed')
     const badge = rules('.power-card__badge')
     expect(badge.flatMap((block) => declared(block, 'text-transform'))).toContain('uppercase')
-    // The version slot keeps the dashed rose border only on a custom card.
-    const customVersion = rules(".power-card[data-source='custom'] .power-card__version")
-    expect(customVersion.flatMap((block) => declared(block, 'border-style'))).toContain('dashed')
   })
 
   it('gives the custom accent a hue of its own, away from every Power type', () => {
@@ -591,27 +585,19 @@ describe('Agent Hub layout contract', () => {
     expect(breakpointGridRules).toEqual([])
   })
 
-  it('keeps the version slot one height on every card', () => {
-    // No card chooses a version any more -- the slot is a label on all of them -- but it
-    // still has to be one fixed height, or a long version grows a header and pushes that
-    // card's title and description onto a different line than its neighbours.
-    const token = rules('.agent-hub').flatMap((block) => declared(block, '--hub-version-height'))
-    expect(token).toHaveLength(1)
-    const version = rules('.power-card__version')
-    expect(version.flatMap((block) => declared(block, 'min-height'))).toEqual([
-      'var(--hub-version-height)',
-    ])
-    expect(version.flatMap((block) => declared(block, 'display'))).toContain('inline-flex')
-    expect(version.flatMap((block) => declared(block, 'align-items'))).toContain('center')
-    // An extreme version must stay inside the slot instead of drawing over the description.
-    expect(version.flatMap((block) => declared(block, 'overflow'))).toContain('hidden')
-    // The old control/static distinction is gone, so its modifier must not come back.
-    expect(rules('.power-card__version--static')).toEqual([])
-    expect(version.flatMap((block) => declared(block, 'border-style'))).toEqual([])
+  it('reserves the same footer height with and without an install button', () => {
+    const footer = rules('.power-card__footer')
+    const install = rules('.agent-hub .power-card__install').filter((block) => block.conditions.length === 0)
+    expect(footer.flatMap((block) => declared(block, 'min-height'))).toEqual(['32px'])
+    expect(install.flatMap((block) => declared(block, 'height'))).toEqual(['32px'])
+    expect(install.flatMap((block) => declared(block, 'visibility'))).toEqual(['hidden'])
+    for (const selector of ['.agent-hub .power-card:hover .power-card__install', '.agent-hub .power-card:focus-within .power-card__install']) {
+      expect(rules(selector).flatMap((block) => declared(block, 'visibility'))).toContain('visible')
+    }
   })
 
   it('packs several badges against the right edge in DOM order', () => {
-    // `New` sits left of `Installed`. Two badges that each carried `margin-left: auto`
+    // Header badges pack together. Two badges that each carried `margin-left: auto`
     // would split the free space between them and push them apart, so the type label
     // takes the free space instead and the badges pack in order.
     const type = rules('.power-card__type')

@@ -70,6 +70,9 @@ export interface InstallationStore {
 const ALREADY_INSTALLED_MESSAGE: TranslatableText = {
   text: 'This version is already installed; uninstall it first.',
 }
+const CAPABILITY_ALREADY_INSTALLED_MESSAGE: TranslatableText = {
+  text: 'This capability is already installed; manage it in details.',
+}
 const REFRESH_FAILED_MESSAGE: TranslatableText = {
   text: 'Refresh failed; the installed state could not be confirmed.',
 }
@@ -344,7 +347,12 @@ function createInstallationStore(service: FeatureServiceApiV1<'store'>): Install
           await reconcile(intent, key, agent, { status: 'error', code: errorCode(err) }, signal)
           return
         }
-        if (isInstalledAtVersion(actual, intent.input)) {
+        const alreadyPresent = intent.onlyIfAbsent && actual.some(
+          (record) => record.agent === target.agent && record.type === target.type && record.name === target.name
+        )
+        if (alreadyPresent) {
+          shortCircuit = CAPABILITY_ALREADY_INSTALLED_MESSAGE
+        } else if (isInstalledAtVersion(actual, intent.input)) {
           shortCircuit = ALREADY_INSTALLED_MESSAGE
         }
       }

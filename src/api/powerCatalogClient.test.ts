@@ -253,6 +253,40 @@ describe('listPowers', () => {
     expect(calls[1].params).toEqual({ scope: 'market', knownSnapshot: snapshot })
   })
 
+  it('searches the full market and its cached catalog without sending search to the Provider', async () => {
+    const items = Array.from({ length: 25 }, (_, index) => ({
+      name: `a-${index.toString().padStart(2, '0')}`, version: 'v1.0.0', description: 'Unrelated', tags: [],
+    }))
+    const catalog = JSON.stringify({ skills: { items: [
+      ...items,
+      { name: 'z-report', name_zh: '分析报告', name_en: 'Data Report', version: 'v2.0.0', description: 'Summary', description_zh: '汇总数据', tags: ['data'] },
+      { name: 'z-report', version: 'v1.0.0', description: 'Legacy analysis', tags: ['data'] },
+    ] } })
+    const snapshot = await sha256(catalog)
+    const { service, calls } = makeService((index) => index === 0
+      ? { scope: 'market', status: 'data', snapshot, catalogJson: catalog }
+      : { scope: 'market', status: 'not_modified', snapshot }
+    )
+
+    const first = await listPowers(service, marketInput, signal(), { search: '  DATA REPORT  ' })
+    expect(first.status).toBe('ready')
+    if (first.status !== 'ready') return
+    expect(first.items.map((item) => item.name)).toEqual(['z-report'])
+    expect(first.items[0].versions.map((version) => version.version)).toEqual(['v2.0.0', 'v1.0.0'])
+    expect(first.total).toBe(1)
+    expect(calls[0].params).toEqual({ scope: 'market' })
+
+    const cached = await listPowers(service, marketInput, signal(), { search: '汇总数据' })
+    expect(cached).toEqual(first)
+    expect(calls[1].params).toEqual({ scope: 'market', knownSnapshot: snapshot })
+
+    const restored = await listPowers(service, marketInput, signal(), { search: '' })
+    expect(restored.status).toBe('ready')
+    if (restored.status !== 'ready') return
+    expect(restored.total).toBe(26)
+    expect(restored.items).toHaveLength(20)
+  })
+
   it('applies tag intersection to the market catalog', async () => {
     // The market path funnels through the same `buildPowersResult`, so the AND
     // rule has to hold there too: two tags must not behave like either one.
@@ -361,6 +395,22 @@ describe('listPowers custom merge', () => {
     expect(result.items.find((series) => series.name === 'hand-written')?.source).toBe('custom')
     expect(result.items.find((series) => series.name === 'hub-skill')?.source).toBeUndefined()
     expect(result.warnings).toEqual([])
+  })
+
+  it('searches the installed and custom merged list without changing either request contract', async () => {
+    const { service, calls } = installedWith(
+      JSON.stringify([hubRecord]),
+      JSON.stringify({ items: [{ ...customItem, name_zh: '本地文档', description_zh: '整理文件' }], skipped: [] })
+    )
+    const result = await listPowers(service, installedInput, signal(), { search: '本地文档' })
+    expect(result.status).toBe('ready')
+    if (result.status !== 'ready') return
+    expect(result.items.map((item) => item.name)).toEqual(['hand-written'])
+    expect(result.items[0].source).toBe('custom')
+    expect(calls.map((call) => call.params)).toEqual([
+      { scope: 'installed', agent: 'bibit' },
+      { agent: 'bibit' },
+    ])
   })
 
   it('prefers the APM manifest when a hand-installed directory has the same name', async () => {

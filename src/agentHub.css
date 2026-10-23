@@ -1,57 +1,32 @@
-/* ===== Agent Hub page: shared marketplace tokens ===== */
+/* ===== Agent Hub page: host theme tokens ===== */
 .agent-hub {
-  /* Every colour is a `light-dark()` pair, so the page follows the host's theme.
-     The host toggles `class="dark"` on <html> and switches `color-scheme` with it;
-     `color-scheme` is inherited, `light-dark()` reads it, and the host's style
-     isolation only prefixes selectors -- so a pair resolves from the host's own
-     signal without the plugin restating the switch. A `.dark .agent-hub { ... }`
-     block cannot be used instead: the isolation rewrites it to
-     `:where(<plugin-root>) .dark .agent-hub`, where `.dark` would have to be a
-     *descendant* of the plugin root, and on <html> it is an ancestor.
-     Light values are the design as shipped; dark values are derived from them
-     (same hue, lightness raised until the result clears 4.5:1 on the dark
-     surface). A host that never sets `color-scheme` gets the light value, which
-     is what `normal` resolves to. */
-  --hub-bg: light-dark(#f5f6f8, #121212);
-  --hub-surface: light-dark(#ffffff, #171717);
-  --hub-text: light-dark(#172033, #fafafa);
-  /* Muted is the card description, the dialog description and hint text. It is read on
-     the card's gradient, whose far stop is the type tint (`--type-soft`), so the value
-     has to clear 4.5:1 on that tint and not only on white: #5f6b7e measures 4.77:1 on
-     the worst of the four tints, where the previous #687386 fell to 4.23:1. */
-  --hub-muted: light-dark(#5f6b7e, #a1a1a1);
-  --hub-border: light-dark(#dfe4ec, #2e2e2e);
-  --hub-control-bg: light-dark(#ffffff, #202020);
-  --hub-control-line: light-dark(#c9d0dc, #383838);
-  --hub-control-hover: light-dark(#eef2f7, #2b2b2b);
-  /* The small uppercase field labels ("TYPE", "TAGS", "AGENT", "VERSION"). At 11px/800
-     they are body text for contrast purposes, so they need 4.5:1; the previous
-     #8a93a4 measured 3.09:1 and #697486 measures 4.73:1. */
-  --hub-label: light-dark(#697486, #898989);
-  --hub-caption: light-dark(#65718a, #929292);
-  --hub-thumb: light-dark(#bcc5d3, #555555);
-  /* The keyboard focus ring. This was the same hue at 28% alpha, which composited to
-     1.51:1 on a white card and 2.76:1 on a dark one -- under the 3:1 that WCAG 1.4.11
-     asks of a non-text indicator, so the ring was effectively invisible in both themes.
-     Opaque, it measures 5.69:1 on white and 8.65:1 on the dark card. The hue is
-     unchanged: only the alpha that broke it is gone. */
-  --hub-focus: light-dark(#6550d8, #bda7ff);
+  /* Inherit the application's surfaces, text and accent instead of shipping a second
+     theme. light-dark() fallbacks also let the standalone Dev Host follow its inherited
+     color-scheme. A `.dark` ancestor selector cannot survive host style isolation. */
+  --hub-bg: var(--background, light-dark(#fafafa, #1e1e1e));
+  --hub-surface: var(--card, light-dark(#ffffff, #242424));
+  --hub-text: var(--foreground, light-dark(#171717, #fafafa));
+  --hub-muted: var(--muted-foreground, light-dark(#5f5f5f, #a3a3a3));
+  --hub-border: var(--border, light-dark(#e5e5e5, #383838));
+  --hub-control-bg: var(--background, light-dark(#ffffff, #242424));
+  --hub-control-line: var(--input, light-dark(#d4d4d4, #404040));
+  --hub-control-hover: var(--accent, light-dark(#f5f5f5, #303030));
+  --hub-label: var(--muted-foreground, light-dark(#666666, #a3a3a3));
+  --hub-caption: var(--muted-foreground, light-dark(#666666, #a3a3a3));
+  --hub-thumb: var(--muted-foreground, light-dark(#a3a3a3, #737373));
+  /* Use opaque foreground for keyboard focus so the ring remains visible on both
+     host surfaces; a translucent accent can disappear against a light card. */
+  --hub-focus: var(--foreground, light-dark(#737373, #a3a3a3));
   --hub-backdrop: light-dark(rgb(17 24 39 / 42%), rgb(0 0 0 / 62%));
-  --hub-shadow: light-dark(rgb(28 39 64 / 5%), rgb(0 0 0 / 45%));
-  --hub-shadow-pop: light-dark(rgb(23 32 51 / 16%), rgb(0 0 0 / 60%));
-  --hub-shadow-card: light-dark(rgb(27 38 61 / 7%), rgb(0 0 0 / 40%));
-  --hub-shadow-card-hover: light-dark(rgb(27 38 61 / 12%), rgb(0 0 0 / 55%));
-  --hub-shadow-dialog: light-dark(rgb(23 32 51 / 24%), rgb(0 0 0 / 70%));
-  --hub-version-chip: light-dark(rgb(255 255 255 / 78%), rgb(32 32 32 / 88%));
-  --hub-scope: light-dark(#6550d8, #bda7ff);
-  --hub-scope-text: light-dark(#4f3cb3, #c8b7ff);
-  --hub-option-line: light-dark(#8f7ee6, #7869a4);
-  --hub-option-bg: light-dark(#f3f0ff, #272434);
-  --hub-primary: light-dark(#4264a7, #3e5c96);
-  /* White on the brand blue clears 4.5:1 in both themes, so it is one value. */
-  --hub-on-primary: #ffffff;
-  --hub-status-bg: light-dark(#eef3fb, #1e242e);
-  --hub-status-text: light-dark(#53627c, #b8c5d8);
+  --hub-version-chip: var(--muted, light-dark(#f5f5f5, #303030));
+  --hub-scope: var(--primary, light-dark(#b2e40d, #b2e40d));
+  --hub-scope-text: var(--foreground, light-dark(#171717, #fafafa));
+  --hub-option-line: var(--border, light-dark(#d4d4d4, #404040));
+  --hub-option-bg: var(--accent, light-dark(#f5f5f5, #303030));
+  --hub-primary: var(--primary, light-dark(#b2e40d, #b2e40d));
+  --hub-on-primary: var(--primary-foreground, light-dark(#000000, #000000));
+  --hub-status-bg: var(--muted, light-dark(#f5f5f5, #303030));
+  --hub-status-text: var(--muted-foreground, light-dark(#5f5f5f, #a3a3a3));
   --hub-error-bg: light-dark(#fff1f0, #391917);
   --hub-error-text: light-dark(#9d2d26, #f6c2bd);
   --hub-install-line: light-dark(#22c55e, #25984d);
@@ -115,11 +90,6 @@
   /* The page column is still capped at the width the five-column layout was designed for;
      at 1460px five cards fit (5 x 267.33 + 4 x 20 = 1417), so fullscreen keeps five. */
   --hub-content-max: 1460px;
-  /* Every card shows its version as a label now, so this is no longer about matching a
-     native control: it guarantees the version slot cannot grow the header and shift the
-     title and description onto a different line than the neighbouring cards. Kept at the
-     31px the old `<select>` measured on WebKitGTK 2.52 so the card metrics do not move. */
-  --hub-version-height: 31px;
   /* The header's two action entries are pinned to one height instead of each
      following its own content: a native button sizes itself from the platform's
      control font (WebKitGTK 2.52 measured 39px with a fallback family, not the 41px
@@ -141,7 +111,9 @@
   padding: 36px clamp(20px, 4vw, 56px) var(--hub-page-inset-end);
   background: var(--hub-bg);
   color: var(--hub-text);
-  font: 14px/1.5 Inter, ui-sans-serif, system-ui, sans-serif;
+  font-family: inherit;
+  font-size: var(--text-sm, 14px);
+  line-height: 1.5;
 }
 
 .agent-hub *, .agent-hub *::before, .agent-hub *::after { box-sizing: border-box; }
@@ -172,8 +144,9 @@
 }
 .agent-hub h1 {
   margin: 0;
-  font-size: 32px;
-  letter-spacing: -.03em;
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: normal;
 }
 
 /* The create entry sits opposite the page title, with its unavailable note
@@ -209,6 +182,7 @@
    from the content width there rather than from the row height. The glyph is the
    visible content; `aria-label` carries the meaning for assistive tech. */
 .agent-hub .agent-hub__actions > button { min-height: var(--hub-action-height); }
+.agent-hub .agent-hub__create-button { min-width: 96px; }
 .agent-hub .agent-hub__refresh {
   display: grid;
   width: var(--hub-action-height);
@@ -226,11 +200,14 @@
 .agent-hub button:where(:not(.power-filters__scope)) {
   padding: 9px 14px;
   border: 1px solid var(--hub-control-line);
-  border-radius: 8px;
+  border-radius: 999px;
   background: var(--hub-control-bg);
   color: var(--hub-text);
+  font: inherit;
+  font-weight: 500;
   cursor: pointer;
 }
+.agent-hub button:where(:not(.power-filters__scope):not(.power-card__open):not([aria-pressed='true'])):hover:not(:disabled) { background: var(--hub-control-hover); }
 
 /* ===== Scope navigation, agent control, filters, selection states ===== */
 .power-filters { margin-bottom: 24px; }
@@ -243,7 +220,8 @@
   background: transparent;
   color: var(--hub-muted);
   cursor: pointer;
-  font-weight: 750;
+  font: inherit;
+  font-weight: 500;
   padding: 10px 14px;
 }
 .power-filters__scope[aria-pressed='true'] { border-bottom-color: var(--hub-scope); color: var(--hub-scope-text); }
@@ -261,7 +239,7 @@
    because the provider is one serial process and any request issued now would
    queue behind the upgrade and then time out waiting. */
 .agent-hub .power-filters__scope:disabled { cursor: not-allowed; opacity: .42; }
-.power-filters__agent-trigger { display: inline-flex; align-items: center; gap: 6px; font-weight: 750; }
+.power-filters__agent-trigger { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
 .power-filters__agent-menu {
   position: absolute;
   z-index: 20;
@@ -272,9 +250,8 @@
   min-width: 180px;
   padding: 7px;
   border: 1px solid var(--hub-border);
-  border-radius: 12px;
+  border-radius: 8px;
   background: var(--hub-surface);
-  box-shadow: 0 18px 40px var(--hub-shadow-pop);
 }
 .power-filters__agent-menu::before {
   content: '';
@@ -286,36 +263,26 @@
 }
 .power-filters__agent-menu button { display: flex; width: 100%; gap: 8px; border-color: transparent; }
 .power-filters__agent-menu button[aria-checked='true'] { border-color: var(--hub-option-line); background: var(--hub-option-bg); }
-.power-filters__panel {
-  display: grid;
-  gap: 12px;
-  margin-top: 14px;
-  padding: 15px 18px;
-  border: 1px solid var(--hub-border);
-  border-radius: 14px;
-  background: var(--hub-surface);
-  box-shadow: 0 8px 24px var(--hub-shadow);
-}
-.power-filters__filter-row { display: flex; align-items: flex-start; gap: 14px; }
-.power-filters__label { min-width: 42px; padding-top: 9px; color: var(--hub-label); font-size: 11px; font-weight: 800; text-transform: uppercase; }
-.power-filters__types { display: flex; flex-wrap: wrap; gap: 8px; }
-.power-filters__tags { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; overflow-x: auto; overflow-y: hidden; padding: 2px 4px 2px 2px; }
-.power-filters__types button { border-color: var(--type-line); background: var(--type-soft); color: var(--type); font-weight: 750; text-transform: capitalize; }
-.power-filters__types button[aria-pressed='true'],
-.power-filters__tags button[aria-pressed='true'] {
-  border-color: var(--type);
-  background: var(--type-soft);
-  color: var(--type);
-  box-shadow: inset 0 0 0 1px var(--type);
-}
-.power-filters__tags button { flex: 0 0 auto; padding: 7px 11px; border-radius: 999px; }
+.power-filters__panel { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+.power-filters__type-field { display: flex; align-items: center; gap: 6px; flex-shrink: 0; color: var(--hub-muted); }
+.power-filters__type-select { min-height: 32px; border: 1px solid var(--hub-control-line); border-radius: 999px; padding: 4px 10px; background: var(--hub-control-bg); color: var(--hub-text); font: inherit; text-transform: capitalize; }
+.power-filters__tag-dropdown { position: relative; min-width: 0; max-width: 40%; }
+.agent-hub .power-filters__tag-trigger { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 32px; padding: 4px 10px; }
+.power-filters__tag-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.power-filters__tag-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; min-width: 180px; max-width: min(320px, 80vw); max-height: 280px; overflow-y: auto; padding: 6px; border: 1px solid var(--hub-border); border-radius: 8px; background: var(--hub-surface); }
+.power-filters__tag-menu label { display: flex; align-items: center; gap: 8px; padding: 6px 8px; overflow-wrap: anywhere; cursor: pointer; }
+.power-filters__tag-menu label:hover { background: var(--hub-control-hover); }
+.power-filters__tag-menu input { accent-color: var(--hub-primary); }
+.agent-hub .power-filters__tag-menu button { width: 100%; margin-top: 4px; padding: 4px 8px; }
+.power-filters__search { min-width: 0; flex: 1; max-width: 256px; margin-left: auto; }
+.power-filters__search input { width: 100%; min-width: 0; min-height: 36px; padding: 6px 12px; border: 1px solid var(--hub-control-line); border-radius: 8px; background: var(--hub-control-bg); color: var(--hub-text); font: inherit; }
 
 /* ===== Visible shared focus ring =====
    One ring for every keyboard-reachable control, the clickable card included: the card
    opens the details dialog, so it is a control even though it is an <article>, and it
    carries `tabindex`/`role="button"` for exactly that reason. `outline` (not
-   `box-shadow`) because the card already owns a hover shadow and a border, and an
-   outline follows the 16px radius without joining the layout. */
+   `box-shadow`) so the indicator stays separate from the card border and does not
+   change the layout. */
 .agent-hub button:focus-visible,
 .agent-hub select:focus-visible,
 .agent-hub input:focus-visible,
@@ -352,32 +319,14 @@
   align-content: start;
   min-width: 0;
   padding: 18px;
-  border: 1px solid var(--type-line);
-  border-radius: 16px;
-  background: linear-gradient(145deg, var(--hub-surface) 34%, var(--type-soft));
-  box-shadow: 0 9px 28px var(--hub-shadow-card);
-  transition: transform 160ms ease, box-shadow 160ms ease;
-}
-.power-card:hover { transform: translateY(-3px); box-shadow: 0 15px 34px var(--hub-shadow-card-hover); }
-.power-card__header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.power-card__type { margin-right: auto; color: var(--type); font-size: 11px; font-weight: 850; letter-spacing: .09em; text-transform: uppercase; }
-.power-card__version {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  min-height: var(--hub-version-height);
-  max-width: 112px;
-  box-sizing: border-box;
-  /* An extreme version stays inside the slot instead of drawing over the description. */
-  overflow: hidden;
-  padding: 3px 8px;
-  border: 1px solid var(--type-line);
+  border: 1px solid var(--hub-border);
   border-radius: 8px;
-  background: var(--hub-version-chip);
-  color: var(--hub-text);
-  font-size: 12px;
-  font-weight: 700;
+  background: var(--hub-surface);
+  transition: border-color 160ms ease;
 }
+.power-card:hover { border-color: var(--hub-control-line); }
+.power-card__header { display: flex; min-height: 24px; align-items: center; justify-content: space-between; gap: 12px; }
+.power-card__type { margin-right: auto; color: var(--type); font-size: 11px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase; }
 /* A hand-installed resource must be recognizable at a glance: a dashed border, a
    rose accent and a "Custom" badge, which no Hub-managed card ever shows. The hue
    is deliberately far from every `data-power-type` accent -- particularly MCP's
@@ -385,7 +334,7 @@
 .power-card[data-source='custom'] {
   border-style: dashed;
   border-color: var(--hub-custom-line);
-  background: linear-gradient(145deg, var(--hub-surface) 34%, var(--hub-custom-soft));
+  background: var(--hub-surface);
 }
 .power-card__badge {
   flex: 0 0 auto;
@@ -395,29 +344,14 @@
   background: var(--hub-custom-badge-bg);
   color: var(--hub-custom-badge-text);
   font-size: 10px;
-  font-weight: 850;
-  letter-spacing: .08em;
+  font-weight: 500;
+  letter-spacing: .04em;
   text-transform: uppercase;
-}
-/* The installed badge shares the success family with the Install button: both say
-   "installed", so they should move together. */
-.power-card__badge--installed {
-  border-color: var(--hub-install-line);
-  background: var(--hub-install-bg);
-  color: var(--hub-install-text);
 }
 .power-card__badge--new {
   border-color: var(--hub-new-line);
   background: var(--hub-new-bg);
   color: var(--hub-new);
-}
-/* A hand-installed resource keeps the dashed rose version slot that marks it as
-   outside APM; the layout is shared with every other card's label. */
-.power-card[data-source='custom'] .power-card__version {
-  border-style: dashed;
-  border-color: var(--hub-custom-line);
-  background: var(--hub-custom-chip-bg);
-  color: var(--hub-custom);
 }
 /* A Power name never wraps: the box is exactly one line high on every card (so the grid
    rows line up) and useFittedFontSize shrinks the font size until the name fits. The
@@ -431,6 +365,7 @@
   white-space: nowrap;
   text-overflow: ellipsis;
   font-size: 19px;
+  font-weight: 500;
 }
 /* The title button is the card's keyboard control, so it is styled to be invisible as a
    control: it inherits the heading's type and shows only the shared focus ring. `width:
@@ -469,8 +404,16 @@
   overflow-wrap: anywhere;
   color: var(--hub-muted);
 }
-.power-card__tags { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; min-height: 0; margin-top: 14px; overflow-x: auto; overflow-y: hidden; }
-.power-card__tag { flex: 0 0 auto; padding: 5px 9px; border-radius: 999px; background: var(--type-soft); color: var(--type); font-size: 11px; font-weight: 700; }
+.power-card__footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; margin-top: 14px; }
+.power-card__tags { display: flex; flex: 1; min-width: 0; flex-wrap: nowrap; align-items: center; gap: 6px; min-height: 0; overflow-x: auto; overflow-y: hidden; }
+.power-card__tag { flex: 0 0 auto; padding: 5px 9px; border-radius: 999px; background: var(--hub-version-chip); color: var(--hub-muted); font-size: 11px; font-weight: 500; }
+.power-card__tag.power-card__badge--installed { background: var(--hub-primary); color: var(--hub-on-primary); }
+.agent-hub .power-card__install { flex-shrink: 0; height: 32px; padding: 4px 10px; border-color: var(--hub-primary); background: var(--hub-primary); color: var(--hub-on-primary); visibility: hidden; }
+.agent-hub .power-card:hover .power-card__install,
+.agent-hub .power-card:focus-within .power-card__install { visibility: visible; }
+.agent-hub .power-card__install:hover:not(:disabled) { background: var(--hub-primary); opacity: .9; }
+.agent-hub .power-card__install:disabled { cursor: not-allowed; opacity: .5; }
+@media (hover: none) { .agent-hub .power-card__install { visibility: visible; } }
 .power-card__notice { margin: 12px 0 0; color: var(--hub-muted); font-size: 12px; }
 .power-card[data-clickable='true'] { cursor: pointer; }
 
@@ -481,8 +424,8 @@
    need a phone-width adjustment. */
 @media (max-width: 480px) {
   .agent-hub { padding-inline: 14px; }
-  .power-filters__filter-row { display: grid; gap: 6px; }
-  .power-filters__label { padding-top: 0; }
+  .power-filters__type-field { gap: 4px; }
+  .power-filters__tag-dropdown { max-width: 35%; }
 }
 
 /* ===== Centered pagination (pinned to the page scroller), status messages, scrollbars ===== */
@@ -513,7 +456,7 @@
   border: 1px solid var(--hub-control-line);
   background: var(--hub-control-bg);
   color: var(--hub-text);
-  border-radius: 8px;
+  border-radius: 999px;
   cursor: pointer;
 }
 .agent-hub .power-pagination button:hover { background: var(--hub-control-hover); }
@@ -535,7 +478,6 @@
 .agent-hub,
 .power-card__description,
 .power-card__tags,
-.power-filters__tags,
 .agent-hub-dialog__body {
   position: relative;
   scrollbar-width: none;
@@ -592,10 +534,9 @@
   height: fit-content;
   padding: 0;
   border: 1px solid var(--hub-border);
-  border-radius: 16px;
+  border-radius: 8px;
   background: var(--hub-surface);
   color: var(--hub-text);
-  box-shadow: 0 24px 64px var(--hub-shadow-dialog);
 }
 .agent-hub-dialog::backdrop { background: var(--hub-backdrop); }
 /* A taller description makes the dialog the place users read the full text, so it must
@@ -609,23 +550,25 @@
 }
 .agent-hub-dialog__body { min-height: 0; overflow-y: auto; padding: 24px; }
 .agent-hub-dialog__header { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
-.agent-hub-dialog__type { color: var(--type); font-size: 11px; font-weight: 850; letter-spacing: .09em; text-transform: uppercase; }
-.agent-hub-dialog__header h2 { margin: 6px 0 0; font-size: 22px; }
+.agent-hub-dialog__type { color: var(--type); font-size: 11px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase; }
+.agent-hub-dialog__header h2 { margin: 6px 0 0; font-size: 18px; font-weight: 500; }
 .agent-hub .agent-hub-dialog__close { border: 0; background: transparent; font-size: 22px; line-height: 1; }
 .agent-hub-dialog__field { display: flex; align-items: center; gap: 14px; margin-top: 18px; }
-.agent-hub-dialog__label { min-width: 52px; color: var(--hub-label); font-size: 11px; font-weight: 800; text-transform: uppercase; }
-.agent-hub-dialog__field select { flex: 1; padding: 8px; border: 1px solid var(--hub-border); border-radius: 8px; }
+.agent-hub-dialog__label { min-width: 52px; color: var(--hub-label); font-size: 12px; font-weight: 500; text-transform: uppercase; }
+.agent-hub-dialog__field select { flex: 1; padding: 8px; border: 1px solid var(--hub-border); border-radius: 8px; background: var(--hub-control-bg); color: var(--hub-text); font: inherit; }
 .agent-hub-dialog__hint { margin: 0; color: var(--hub-error-text); font-size: 12px; }
 /* The custom-resource dialog is informational, so its hints stay neutral instead
    of using the warning red the agent/type incompatibility hint carries. */
 .agent-hub-dialog[data-source='custom'] .agent-hub-dialog__hint { color: var(--hub-custom); }
 .agent-hub-dialog__custom-form,
 .agent-hub-dialog__confirm { display: grid; gap: 8px; width: 100%; text-align: left; }
-.agent-hub-dialog__custom-form label { display: grid; gap: 6px; font-size: 12px; font-weight: 700; color: var(--hub-muted); }
+.agent-hub-dialog__custom-form label { display: grid; gap: 6px; font-size: 12px; font-weight: 500; color: var(--hub-muted); }
 .agent-hub-dialog__custom-form input {
   padding: 8px;
   border: 1px solid var(--hub-border);
   border-radius: 8px;
+  background: var(--hub-control-bg);
+  color: var(--hub-text);
   font: inherit;
 }
 .agent-hub-dialog__confirm p { margin: 0; }
@@ -658,8 +601,8 @@
 }
 .agent-hub-upgrade__progress { display: flex; align-items: center; gap: 9px; margin: 18px 0 0; color: var(--hub-muted); }
 .agent-hub-dialog__footer { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 24px; border-top: 1px solid var(--hub-border); }
-.agent-hub .agent-hub-dialog__install { border-color: var(--hub-install-line); background: var(--hub-install-bg); color: var(--hub-install-text); }
-.agent-hub .agent-hub-dialog__install:hover:not(:disabled) { border-color: var(--hub-install-line-hover); background: var(--hub-install-hover-bg); color: var(--hub-install-hover-text); }
+.agent-hub .agent-hub-dialog__install { border-color: var(--hub-primary); background: var(--hub-primary); color: var(--hub-on-primary); }
+.agent-hub .agent-hub-dialog__install:hover:not(:disabled) { border-color: var(--hub-primary); background: var(--hub-primary); color: var(--hub-on-primary); opacity: .9; }
 .agent-hub .agent-hub-dialog__uninstall { border-color: var(--hub-uninstall-line); background: var(--hub-uninstall-bg); color: var(--hub-uninstall-text); }
 .agent-hub .agent-hub-dialog__uninstall:hover:not(:disabled) { border-color: var(--hub-uninstall-line-hover); background: var(--hub-uninstall-hover-bg); color: var(--hub-uninstall-hover-text); }
 .agent-hub-dialog button:disabled { cursor: not-allowed; opacity: .5; }
@@ -675,9 +618,8 @@
   max-width: 100%;
   padding: 20px 22px;
   border: 1px solid var(--hub-border);
-  border-radius: 14px;
+  border-radius: 8px;
   background: var(--hub-surface);
-  box-shadow: 0 8px 24px var(--hub-shadow);
   color: var(--hub-text);
 }
 .agent-hub-settings-panel__credential { display: grid; gap: 8px; }
@@ -766,4 +708,9 @@
   border-color: var(--hub-primary);
   background: var(--hub-primary);
   color: var(--hub-on-primary);
+}
+.agent-hub .agent-hub-settings-panel__credential-add button:hover:not(:disabled),
+.agent-hub .agent-hub-settings-panel footer button:hover:not(:disabled) {
+  background: var(--hub-primary);
+  opacity: .9;
 }

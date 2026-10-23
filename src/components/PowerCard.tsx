@@ -8,17 +8,18 @@ import type { PowerSeries } from '../api/contracts'
 export interface PowerCardProps {
   series: PowerSeries
   onDetails?: () => void
+  onInstall?: () => void
+  installDisabled?: boolean
   busy: boolean
   notice?: TranslatableText
   /**
-   * Set by the market scope when the chosen Agent's install manifest already has
-   * this Power. Version-agnostic: the card shows the newest version the catalog
-   * lists, so a Power installed at an older version still reads as installed.
+   * Set for installed-list entries and market entries already present for the
+   * chosen Agent. Version-agnostic: an older installed version still counts.
    */
   installed?: boolean
   /**
    * The catalog lists something newer than the installed version. Only meaningful
-   * next to the installed badge, which is why the badge is gated on `installed`.
+   * for an installed Power, which is why the badge is gated on `installed`.
    */
   hasNewer?: boolean
 }
@@ -26,6 +27,8 @@ export interface PowerCardProps {
 export function PowerCard({
   series,
   onDetails,
+  onInstall,
+  installDisabled = false,
   busy,
   notice,
   installed,
@@ -36,16 +39,15 @@ export function PowerCard({
   const descriptionRef = useRef<HTMLParagraphElement>(null)
   const tagsRef = useRef<HTMLDivElement>(null)
   const titleRef = useRef<HTMLHeadingElement>(null)
-  // The card is display-only. It always shows the newest version the series has, and
-  // choosing one happens in the details dialog.
+  // Card descriptions and tags use the newest version. Version information and
+  // selection live in the details dialog.
   const current = series.versions[0]
   // The title is the series' display name (canonical name for V1 resources), so it
   // does not change with the version select; the description below is per version.
   const title = resolvePowerTitle(series, language)
   const description = resolvePowerDescription(current, language)
-  // A hand-installed resource is a single directory with no version to choose
-  // from, so its version slot is a static label (and "No version" when the
-  // resource declares none) instead of a control with one entry.
+  // A hand-installed directory uses the custom-resource actions in its details,
+  // never the catalog's installation action.
   const custom = series.source === 'custom'
   // The name stays on one line at whatever size fits, so the card rows line up.
   useFittedFontSize(titleRef, title, { max: 19, min: 13 })
@@ -65,18 +67,10 @@ export function PowerCard({
       <div className="power-card__header">
         {/* The type name is now the displayed word too: the CSS capitalises it. */}
         <span className="power-card__type">{series.type}</span>
-        {/* The custom and installed badges never co-exist: a custom resource only ever
-            comes from the local scan on the installed tab, while `installed` is only
-            set for market cards. The version slot is a label on every card now, in
-            DOM order after the badges so `New` sits left of `Installed`. */}
         {custom && <span className="power-card__badge">{t('Custom')}</span>}
         {installed && hasNewer && (
           <span className="power-card__badge power-card__badge--new">{t('New')}</span>
         )}
-        {installed && <span className="power-card__badge power-card__badge--installed">{t('Installed')}</span>}
-        <span className="power-card__version" data-testid="power-card-version">
-          {current.version || t('No version')}
-        </span>
       </div>
       <h2 ref={titleRef}>
         {/* The whole card opens the details with a mouse, but a pointer-only target has
@@ -108,13 +102,31 @@ export function PowerCard({
         {description}
         <ScrollThumb targetRef={descriptionRef} />
       </p>
-      <div className="power-card__tags" data-testid="power-card-tags" ref={tagsRef}>
-        {current.tags.map((tag) => (
-          <span key={tag} className="power-card__tag">
-            {tag}
-          </span>
-        ))}
-        <ScrollThumb targetRef={tagsRef} axis="x" />
+      <div className="power-card__footer">
+        <div className="power-card__tags" data-testid="power-card-tags" ref={tagsRef}>
+          {installed && (
+            <span className="power-card__tag power-card__badge--installed">{t('Installed')}</span>
+          )}
+          {current.tags.map((tag) => (
+            <span key={tag} className="power-card__tag">
+              {tag}
+            </span>
+          ))}
+          <ScrollThumb targetRef={tagsRef} axis="x" />
+        </div>
+        {!installed && !custom && onInstall && (
+          <button
+            type="button"
+            className="power-card__install"
+            disabled={busy || installDisabled}
+            onClick={(event) => {
+              event.stopPropagation()
+              if (!busy && !installDisabled) onInstall()
+            }}
+          >
+            {t('Add capability')}
+          </button>
+        )}
       </div>
       {notice && (
         <p className="power-card__notice" role="status">

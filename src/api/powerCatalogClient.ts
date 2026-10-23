@@ -151,7 +151,8 @@ function commitCache(
 export async function listPowers(
   service: FeatureServiceApiV1<'store'>,
   input: ListPowersInput,
-  signal: AbortSignal
+  signal: AbortSignal,
+  options: { search?: string } = {}
 ): Promise<ListPowersResult> {
   const query = parseListPowersInput(input)
 
@@ -173,7 +174,7 @@ export async function listPowers(
     // contributes what is left. Both the entries and the skipped directories are
     // split against that same set, so a managed Power never produces a warning.
     const managed = new Set(records.map((record) => powerSeriesKey(record.type, record.name)))
-    const result = buildMergedInstalledPowersResult(query, records, custom.items)
+    const result = buildMergedInstalledPowersResult(query, records, custom.items, options.search)
     const warnings = [...custom.warnings, ...customSkippedWarnings(agent, custom.skipped, managed)]
     if (result.status === 'ready' && warnings.length > 0) {
       return parseListPowersResult({
@@ -211,7 +212,7 @@ export async function listPowers(
     if (entry?.kind !== 'market' || entry.snapshot !== wireResult.snapshot) {
       platformError('incompatible', 'Provider returned not_modified without a matching cache.', false)
     }
-    return parseListPowersResult(buildPowersResult(entry.records, query, wireResult.snapshot))
+    return parseListPowersResult(buildPowersResult(entry.records, query, wireResult.snapshot, options.search))
   }
 
   await verifyCatalogText(wireResult.catalogJson, wireResult.snapshot)
@@ -229,8 +230,8 @@ export async function listPowers(
     // fresher catalog instead of reporting the supersede as a cancellation.
     const newer = slot.entry
     if (newer?.kind === 'market') {
-      return parseListPowersResult(buildPowersResult(newer.records, query, newer.snapshot))
+      return parseListPowersResult(buildPowersResult(newer.records, query, newer.snapshot, options.search))
     }
   }
-  return parseListPowersResult(buildPowersResult(records, query, wireResult.snapshot))
+  return parseListPowersResult(buildPowersResult(records, query, wireResult.snapshot, options.search))
 }

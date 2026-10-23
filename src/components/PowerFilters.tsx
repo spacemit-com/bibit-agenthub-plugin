@@ -1,5 +1,4 @@
-import { useRef } from 'react'
-import { ScrollThumb } from '../ScrollThumb'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { AgentSwitcher } from './AgentSwitcher'
 import { useAgentHubI18n } from '../agentHubI18n'
 import { powerTypesForAgent, type PowerScope, type PowerType } from '../api/contracts'
@@ -25,6 +24,7 @@ export interface PowerFiltersProps {
   onTypeChange(type: PowerType): void
   onTagsChange(tags: string[]): void
   onUpgrade?(): void
+  search?: ReactNode
 }
 
 export function PowerFilters({
@@ -40,9 +40,23 @@ export function PowerFilters({
   onTypeChange,
   onTagsChange,
   onUpgrade,
+  search,
 }: PowerFiltersProps) {
   const t = useAgentHubI18n()
+  const [tagsOpen, setTagsOpen] = useState(false)
   const tagsRef = useRef<HTMLDivElement>(null)
+  const tagsTriggerRef = useRef<HTMLButtonElement>(null)
+  const tagsMenuId = useId()
+
+  useEffect(() => { setTagsOpen(false) }, [tab, agent, type])
+  useEffect(() => {
+    if (!tagsOpen) return
+    const dismissOutside = (event: PointerEvent) => {
+      if (!tagsRef.current?.contains(event.target as Node)) setTagsOpen(false)
+    }
+    document.addEventListener('pointerdown', dismissOutside)
+    return () => document.removeEventListener('pointerdown', dismissOutside)
+  }, [tagsOpen])
 
   return (
     <div className="power-filters">
@@ -103,51 +117,92 @@ export function PowerFilters({
       {/* Type and tag filters describe the catalog only; the Settings tab has
           neither, so its panel would be a row of controls that do nothing. */}
       {tab !== 'settings' && (
-      <div className="power-filters__panel">
-        <div className="power-filters__filter-row">
-          <span className="power-filters__label">{t('Type')}</span>
-          <div className="power-filters__types" role="group" aria-label={t('Type')}>
-            {powerTypesForAgent(agent).map((value) => (
-              <button
-                key={value}
-                type="button"
-                data-power-type={value}
-                aria-pressed={value === type}
-                onClick={() => value !== type && onTypeChange(value)}
-              >
-                {value}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="power-filters__filter-row">
-          <span className="power-filters__label">{t('Tags')}</span>
+        <div className="power-filters__panel">
+          <label className="power-filters__type-field">
+            <span>{t('Type')}</span>
+            <select
+              className="power-filters__type-select"
+              aria-label={t('Type')}
+              value={type}
+              onChange={(event) => {
+                const next = event.target.value as PowerType
+                if (next !== type) onTypeChange(next)
+              }}
+            >
+              {powerTypesForAgent(agent).map((value) => (
+                <option key={value} value={value}>{value}</option>
+              ))}
+            </select>
+          </label>
           <div
-            className="power-filters__tags"
-            data-power-type={type}
-            role="group"
-            aria-label={t('Tags')}
+            className="power-filters__tag-dropdown"
             ref={tagsRef}
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setTagsOpen(false)
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                event.preventDefault()
+                setTagsOpen(false)
+                tagsTriggerRef.current?.focus()
+                return
+              }
+              if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+              event.preventDefault()
+              if (!tagsOpen) {
+                setTagsOpen(true)
+                requestAnimationFrame(() => tagsRef.current?.querySelector<HTMLInputElement>('input')?.focus())
+                return
+              }
+              const options = Array.from(event.currentTarget.querySelectorAll<HTMLInputElement>('input'))
+              if (!options.length) return
+              const index = options.indexOf(document.activeElement as HTMLInputElement)
+              const direction = event.key === 'ArrowDown' ? 1 : -1
+              const next = index < 0
+                ? direction === 1 ? 0 : options.length - 1
+                : (index + direction + options.length) % options.length
+              options[next].focus()
+            }}
           >
-            {availableTags.map((tag) => (
-              <button
-                key={tag}
-                type="button"
-                aria-pressed={selectedTags.includes(tag)}
-                onClick={() => {
-                  const next = selectedTags.includes(tag)
-                    ? selectedTags.filter((value) => value !== tag)
-                    : [...selectedTags, tag]
-                  onTagsChange([...next].sort())
-                }}
-              >
-                {tag}
-              </button>
-            ))}
-            <ScrollThumb targetRef={tagsRef} axis="x" />
+            <button
+              ref={tagsTriggerRef}
+              type="button"
+              className="power-filters__tag-trigger"
+              aria-label={t('Tags')}
+              aria-haspopup="dialog"
+              aria-expanded={tagsOpen}
+              aria-controls={tagsMenuId}
+              onClick={() => setTagsOpen((open) => !open)}
+            >
+              <span>{t('Tags')}</span>
+              <span className="power-filters__tag-value">{selectedTags.length ? selectedTags.join(', ') : t('Any')}</span>
+              <span aria-hidden="true">⌄</span>
+            </button>
+            {tagsOpen && (
+              <div id={tagsMenuId} className="power-filters__tag-menu" role="dialog" aria-label={t('Tags')}>
+                {availableTags.map((tag) => (
+                  <label key={tag}>
+                    <input
+                      type="checkbox"
+                      checked={selectedTags.includes(tag)}
+                      onChange={() => {
+                        const next = selectedTags.includes(tag)
+                          ? selectedTags.filter((value) => value !== tag)
+                          : [...selectedTags, tag]
+                        onTagsChange([...new Set(next)].sort())
+                      }}
+                    />
+                    <span>{tag}</span>
+                  </label>
+                ))}
+                <button type="button" disabled={!selectedTags.length} onClick={() => onTagsChange([])}>
+                  {t('Clear tags')}
+                </button>
+              </div>
+            )}
           </div>
+          {search && <div className="power-filters__search">{search}</div>}
         </div>
-      </div>
       )}
     </div>
   )

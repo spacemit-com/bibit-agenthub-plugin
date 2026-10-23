@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -71,7 +70,7 @@ function renderLocalized(language: string) {
 }
 
 describe('PowerCard', () => {
-  it('shows the newest version as a label instead of a control', () => {
+  it('keeps version information out of cards in both languages', () => {
     const card = (language: string) => (
       <AgentHubI18nProvider language={language}>
         <PowerCard series={series} busy={false} />
@@ -79,13 +78,12 @@ describe('PowerCard', () => {
     )
     const view = render(card('en'))
 
-    // Version choice lives in the details dialog, so the card only reports the newest.
-    expect(screen.getByTestId('power-card-version').textContent).toBe('v2.0.0')
+    expect(screen.queryByText('v2.0.0')).toBeNull()
+    expect(screen.queryByTestId('power-card-version')).toBeNull()
     expect(screen.queryByLabelText('Version')).toBeNull()
-    expect(document.querySelector('.power-card__version')?.tagName).toBe('SPAN')
 
     view.rerender(card('zh-CN'))
-    expect(screen.getByTestId('power-card-version').textContent).toBe('v2.0.0')
+    expect(screen.queryByText('v2.0.0')).toBeNull()
     expect(screen.queryByLabelText('版本')).toBeNull()
   })
 
@@ -174,7 +172,7 @@ describe('PowerCard', () => {
     const card = result.container.querySelector('.power-card')
     expect(card?.getAttribute('data-power-type')).toBe('skill')
     expect(screen.queryByText('Version')).toBeNull()
-    expect(screen.getByTestId('power-card-version').textContent).toBe('v2.0.0')
+    expect(screen.queryByTestId('power-card-version')).toBeNull()
   })
 
   it('renders the newest version description and tags', () => {
@@ -193,11 +191,10 @@ describe('PowerCard', () => {
     expect(onDetails).toHaveBeenCalled()
   })
 
-  it('has no interactive version control to swallow the click', () => {
+  it('opens details when a footer tag is clicked', () => {
     const { onDetails } = renderCard()
 
-    // The version slot is plain text now, so clicking it is a normal card click.
-    fireEvent.click(screen.getByTestId('power-card-version'))
+    fireEvent.click(within(screen.getByTestId('power-card-tags')).getByText('quality'))
 
     expect(onDetails).toHaveBeenCalled()
   })
@@ -260,7 +257,7 @@ describe('PowerCard', () => {
     expect(screen.getByText('Installation complete.')).toBeTruthy()
   })
 
-  it('marks a hand-installed resource and labels its version', () => {
+  it('marks a hand-installed resource without displaying its version', () => {
     const custom: PowerSeries = {
       type: 'skill',
       name: 'hand-written',
@@ -272,12 +269,11 @@ describe('PowerCard', () => {
     const card = view.container.querySelector('.power-card')
     expect(card?.getAttribute('data-source')).toBe('custom')
     expect(screen.getByText('Custom')).toBeTruthy()
-    // No card has a version control any more; the custom one keeps the dashed slot.
     expect(screen.queryByLabelText('Version')).toBeNull()
-    expect(screen.getByTestId('power-card-version').textContent).toBe('v1.2.3')
+    expect(screen.queryByText('v1.2.3')).toBeNull()
   })
 
-  it('shows a placeholder when a hand-installed resource declares no version', () => {
+  it('does not add a version placeholder for a hand-installed resource', () => {
     const custom: PowerSeries = {
       type: 'plugin',
       name: 'local-bundle',
@@ -286,7 +282,8 @@ describe('PowerCard', () => {
     }
     render(<PowerCard series={custom} busy={false} />)
 
-    expect(screen.getByTestId('power-card-version').textContent).toBe('No version')
+    expect(screen.queryByText('No version')).toBeNull()
+    expect(screen.queryByTestId('power-card-version')).toBeNull()
   })
 
   it('renders no custom marker for a Hub-managed series', () => {
@@ -297,22 +294,23 @@ describe('PowerCard', () => {
     expect(screen.queryByText('Custom')).toBeNull()
   })
 
-  it('marks a Power the target Agent already has installed', () => {
+  it('places Installed before the existing tags in the footer', () => {
     const { result } = renderCard({ installed: true })
 
     expect(screen.getByText('Installed')).toBeTruthy()
     // The modifier is what carries the success colours instead of the custom ones.
     expect(result.container.querySelector('.power-card__badge--installed')).toBeTruthy()
-    // The badge is added alongside the version the catalog lists, not instead of it.
-    expect(screen.getByTestId('power-card-version').textContent).toBe('v2.0.0')
+    const tags = screen.getByTestId('power-card-tags')
+    expect(tags.closest('.power-card__footer')).toBeTruthy()
+    expect(Array.from(tags.querySelectorAll('.power-card__tag')).map((tag) => tag.textContent))
+      .toEqual(['Installed', 'code-review', 'quality'])
   })
 
-  it('puts the New badge to the left of Installed', () => {
+  it('preserves the New notice in the header and Installed as the first footer tag', () => {
     const { result } = renderCard({ installed: true, hasNewer: true })
 
-    const badges = Array.from(result.container.querySelectorAll('.power-card__badge'))
-    expect(badges.map((badge) => badge.textContent)).toEqual(['New', 'Installed'])
-    expect(result.container.querySelector('.power-card__badge--new')).toBeTruthy()
+    expect(result.container.querySelector('.power-card__header .power-card__badge--new')?.textContent).toBe('New')
+    expect(screen.getByTestId('power-card-tags').firstElementChild?.textContent).toBe('Installed')
   })
 
   it('shows no New badge without an install to be newer than', () => {
@@ -330,24 +328,61 @@ describe('PowerCard', () => {
     expect(result.container.querySelector('.power-card__badge--installed')).toBeNull()
   })
 
-  it('never shows the custom and installed markers together', () => {
-    // A custom resource only comes from the local scan on the installed tab, and the
-    // installed flag is only set for market cards, so the page cannot produce both.
+  it('preserves the custom marker while labeling a local resource as installed', () => {
     const custom: PowerSeries = {
       type: 'skill',
       name: 'hand-written',
       source: 'custom',
       versions: [{ version: 'v1.2.3', description: 'Hand made.', tags: [] }],
     }
-    render(<PowerCard series={custom} busy={false} />)
+    render(<PowerCard series={custom} busy={false} installed />)
 
     expect(screen.getByText('Custom')).toBeTruthy()
-    expect(screen.queryByText('Installed')).toBeNull()
-
-    cleanup()
-
-    render(<PowerCard series={series} busy={false} installed />)
     expect(screen.getByText('Installed')).toBeTruthy()
-    expect(screen.queryByText('Custom')).toBeNull()
+    expect(screen.getByTestId('power-card-tags').firstElementChild?.textContent).toBe('Installed')
+  })
+
+  it('only offers adding a catalog capability when an install handler is provided', () => {
+    renderCard()
+    expect(screen.queryByRole('button', { name: 'Add capability' })).toBeNull()
+  })
+
+  it('runs the card install action without opening details', async () => {
+    const user = userEvent.setup()
+    const onInstall = vi.fn()
+    const { onDetails } = renderCard({ onInstall })
+
+    await user.click(screen.getByRole('button', { name: 'Add capability' }))
+
+    expect(onInstall).toHaveBeenCalledTimes(1)
+    expect(onDetails).not.toHaveBeenCalled()
+  })
+
+  it.each([{ busy: true }, { installDisabled: true }])('disables adding when %o', async (state) => {
+    const user = userEvent.setup()
+    const onInstall = vi.fn()
+    const { onDetails } = renderCard({ onInstall, ...state })
+    const add = screen.getByRole('button', { name: 'Add capability' }) as HTMLButtonElement
+
+    expect(add.disabled).toBe(true)
+    await user.click(add)
+
+    expect(onInstall).not.toHaveBeenCalled()
+    expect(onDetails).not.toHaveBeenCalled()
+  })
+
+  it('never offers adding an installed capability or a custom resource', () => {
+    const onInstall = vi.fn()
+    const { result } = renderCard({ installed: true, onInstall })
+    expect(screen.queryByRole('button', { name: 'Add capability' })).toBeNull()
+
+    result.rerender(<PowerCard series={{ ...series, source: 'custom' }} busy={false} onInstall={onInstall} />)
+    expect(screen.queryByRole('button', { name: 'Add capability' })).toBeNull()
+
+    result.rerender(<PowerCard series={series} busy={false} onInstall={onInstall} />)
+    expect(screen.getByRole('button', { name: 'Add capability' })).toBeTruthy()
+
+    result.rerender(<PowerCard series={series} busy={false} onInstall={onInstall} installed />)
+    expect(screen.queryByRole('button', { name: 'Add capability' })).toBeNull()
   })
 })

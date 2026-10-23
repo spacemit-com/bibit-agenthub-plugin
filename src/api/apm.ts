@@ -219,7 +219,8 @@ function firstDisplayName(
 export function buildPowersResult(
   records: readonly PowerRecord[],
   query: PowersResultQuery,
-  snapshot: string
+  snapshot: string,
+  search = ''
 ): ListPowersResult {
   const tagsFacet = sortedUnique(
     records.filter((record) => record.type === query.type).flatMap((record) => record.tags)
@@ -267,14 +268,29 @@ export function buildPowersResult(
   })
   series.sort(compareSeries)
 
-  const total = series.length
+  // Search the aggregated series before pagination. A description match on an
+  // older release still keeps every version available in the details dialog.
+  // This is a local display filter and never becomes a Provider request field.
+  const term = search.trim().toLowerCase()
+  const matching = term.length === 0 ? series : series.filter((item) => [
+    item.name,
+    item.name_zh ?? '',
+    item.name_en ?? '',
+    item.type,
+    ...item.versions.flatMap((version) => [
+      version.description,
+      version.description_zh ?? '',
+      ...version.tags,
+    ]),
+  ].some((value) => value.toLowerCase().includes(term)))
+  const total = matching.length
 
   if (query.page > 1 && query.snapshot !== snapshot) {
     return { status: 'reset_required', reason: 'snapshot_changed' }
   }
 
   const start = (query.page - 1) * POWER_PAGE_SIZE
-  const items = series.slice(start, start + POWER_PAGE_SIZE)
+  const items = matching.slice(start, start + POWER_PAGE_SIZE)
   const nextPage = start + POWER_PAGE_SIZE < total ? query.page + 1 : undefined
 
   return {
@@ -340,7 +356,8 @@ export function buildInstalledPowersResult(
 export function buildMergedInstalledPowersResult(
   query: ListPowersInput,
   records: readonly APMPowerRecord[],
-  customRecords: readonly CustomResourceRecord[]
+  customRecords: readonly CustomResourceRecord[],
+  search = ''
 ): ListPowersResult {
   const agent = query.agent
   if (agent === undefined) {
@@ -385,5 +402,5 @@ export function buildMergedInstalledPowersResult(
     })
   }
 
-  return buildPowersResult(normalized, query, snapshotForRecords(normalized))
+  return buildPowersResult(normalized, query, snapshotForRecords(normalized), search)
 }

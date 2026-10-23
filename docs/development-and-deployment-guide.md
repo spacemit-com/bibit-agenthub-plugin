@@ -25,9 +25,15 @@
 
 当前插件只提供一个贡献点：`pages.home`，显示在 Bibit 主导航的 Agent Hub 页面。它不包含语言设置项：页面中英文文案跟随 Bibit 系统语言（宿主传入 `language`），菜单、导航与描述键通过 `pluginLocales` 交给宿主解析。详细规则见 7.1。
 
-当前 Demo 已实现 APC Power 展示与安装原型：通过 `powers.list.v1` 提供“我的 Power / Power 市场”两种数据范围、Agent / 类型 / tags 分层筛选、系列级卡片、卡片固定显示最新版本与每页 20 张卡片的分页，并配套 Local Preview；通过 `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` 提供详情查看与「安装 / 更新 / 降级 / 卸载」闭环（按选中版本与已安装版本的关系决定动作）。`powers.custom.list.v1` 在“我的 Power”里额外并入手动安装到各 Agent 目录下的自定义资源（卡片带 `Custom` 标记，版本槽是静态标签，不满足最低格式的目录以 warning 提示），`powers.upload.v1` / `powers.delete.v1` 提供卡片弹窗内的 APC 上传与本地删除；上传所需的 APC API Key 在页面内的「设置」标签页维护。页面一级标签为「我的 Power / Power 市场 / 设置」。设置标签是一个 **APC API Key 列表管理器**：输入框旁只有「保存 Key」一个动作，保存后 Key 以 `头****尾` 的遮蔽形式出现在列表里，每行各有独立的「启用」和「删除」（删除单击即执行，不做二次确认）；列表中任何时刻最多只有一个 Key 处于启用状态，它就是 `apm submit` 实际使用的凭据，列表为空时新建的第一个 Key 默认启用。删除当前启用的 Key 不会自动启用其它 Key，需要用户自己点。删除与卸载都需要弹窗内的二次确认；确认成功后弹窗关闭、回到列表，失败时弹窗保留并显示原因，安装成功后弹窗保持打开。Power 下载、提交审核、搜索等能力尚未实现，这些属于 Agent Hub 模块团队后续定制范围。
+本仓库实现正式 Agent Hub 前端插件，页面一级标签为「我的能力 / 能力市场 / 设置」。通过 `powers.list.v1` 提供已安装清单与 APC 市场目录；类型单选下拉、标签多选下拉与搜索框同排，标签按交集筛选，搜索在系列聚合后、分页前匹配名称、描述与标签，每页最多 20 张卡片。卡片显示最新版本的描述与标签，但不显示版本号；点击卡片打开详情，版本选择保留在详情弹窗中。
 
-页头另有**「创建资源」入口**：点击后经 `host:actions` 的 `conversation.compose` 打开一个新会话，默认 Agent 不变，输入框里预填一段点名 `using-apm` 的草稿，**不发送**。用户补充需求后自己发送，由 bibit 内置的 `using-apm` skill 完成资源创建。该入口的降级规则见 §17「创建资源」入口变灰，或点击后提示不支持」一节。
+已安装能力的底部标签首项为 `Installed`（已安装），使用宿主 primary 色；市场有更高版本时仍在卡片头部显示 `New`。仅在确认目标 Agent 未安装时，市场卡片才在 hover 或键盘聚焦时显示「添加能力」；「我的能力」、自定义资源与安装状态未知的卡片均不显示该操作。详情通过 `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` 提供「安装 / 更新 / 降级 / 卸载」，按选中版本与已安装版本的关系决定动作；首次安装直接执行，更新、降级与卸载需要二次确认。
+
+`powers.custom.list.v1` 在「我的能力」里并入手动安装到各 Agent 目录下的自定义资源（卡片保留 `Custom` 标记，不满足最低格式的目录以 warning 提示），`powers.upload.v1` / `powers.delete.v1` 提供详情弹窗内的 APC 上传与本地删除。删除与卸载成功后关闭弹窗，失败时保留弹窗并显示原因；从详情安装成功后弹窗保持打开。设置页仍为 **APC API Key 列表管理器**：保存后 Key 以 `头****尾` 遮蔽显示，每行独立启用或删除，删除 Key 单击即执行；任一时刻最多启用一个 Key，列表为空时首个新建 Key 默认启用，删除当前启用的 Key 不会自动启用其它 Key。
+
+上述 UI 来自本仓库 `src/` 的生产源码，发布时需构建、签名并更新独立的 `bibit-agenthub-plugin` 包或 bundle。仅同步 Bibit 宿主的 `demo-ui-v3` 分支不会替换已安装的插件；本地开发预览不作为宿主页面交付。Power 下载与提交审核等能力仍属后续定制范围。
+
+页头另有**「创建资源」入口**（按钮最小宽度 96px）：点击后经 `host:actions` 的 `conversation.compose` 打开一个新会话，默认 Agent 不变，输入框里预填一段点名 `using-apm` 的草稿，**不发送**。用户补充需求后自己发送，由 bibit 内置的 `using-apm` skill 完成资源创建。该入口的降级规则见 §17「创建资源」入口变灰，或点击后提示不支持」一节。
 
 该入口左侧还有一个**纯图标手动刷新入口**（`↻`，`aria-label`/`title` 为 `Refresh`/`刷新`）：只重取当前标签页的列表数据，保持当前筛选与页码，不跳页也不重置滚动；**「设置」标签页不渲染它**（该标签页读的是 `settings.get.v2`，刷新目录对它没有意义）。列表读取进行中时按钮 `disabled`——刷新会 abort 在途请求再重发，这与「窗口获焦不得打断在途读取」是同一条约束（§7.2）。
 
@@ -432,12 +438,12 @@ Local Preview 使用 `?lang=zh-CN` 打开中文界面，`dev/main.tsx` 右上角
 - 视口单位只是兜底：`AgentHubPage` 用 `useLayoutEffect`（绘制前）量出真实可用高度 `window.innerHeight - rect.top` 写成内联 `height`，并在窗口 resize 时重算，这样不依赖“页面区域正好等于窗口”这个假设；
 - 一页最多 20 张卡片（`POWER_PAGE_SIZE` 由契约锁定为 20），所以列表长度必须由页面滚动兜住，分页控件用 `position: sticky; bottom: 0` 常驻窗口底部；
 - **卡片宽度由 BiBit 默认窗口推导，窗口只改变列数**：`.agent-hub` 用令牌声明宿主几何 `--hub-default-window: 1200px`（`bibit/src-tauri/tauri.linux.conf.json`）、`--hub-host-sidebar: 15rem`（`SIDEBAR_WIDTH`，即 240px）、`--hub-host-frame: 2px`（未最大化时窗口外框的 1px 边框 × 2）、`--hub-page-padding: 48px`（该窗口下 `clamp(20px, 4vw, 56px)` 的取值）与列间距 `--hub-card-gap: 20px`，并由此推导卡片宽度 `--hub-card-width: calc((1200px − 15rem − 2px − 2 × 48px − 3 × 20px) / 3)` = **267.33px**：默认窗口的页面盒 = 1200 − 240 − 2 = 958px，减去两侧 48px 内边距后内容列 862px，3 张卡片 + 2 个间距只要 842px，余下 20px 就是「默认窗口一律 3 列」的余量（实测两侧各空 10px）；内容列上限 `--hub-content-max: 1460px` 不动，`1460 ≥ 5 × 267.33 + 4 × 20 = 1417`，所以全屏仍然 5 列。**这两处数字是绑定的**：改成 276px（旧的「全屏 5 列尺寸」）时默认窗口只剩 2 列、两侧各空 144px，正是用户第二轮反馈的现象；`src/agentHubLayout.test.ts` 会把 `calc()` 展开后断言默认窗口必须正好 3 列。`.agent-hub__grid` 用 `repeat(auto-fill, minmax(min(var(--hub-card-width), 100%), var(--hub-card-width)))` + `justify-content: center`：窗口变窄只减少列数，卡片宽度不变；`auto-fill` 保留空轨道，所以网格块整体居中而每一行（含不满的最后一行）都从该块左缘开始排列；**不再有按断点改列数的 `@media` 规则**。`min()` 只在窗口窄于一张卡片（内容列 < 267px，即窗口约 <300px，远低于目标最小窗口 1024×740）时生效，那时卡片降到可用宽度而不是被 `overflow-x: hidden` 裁掉（实测 300px 窗口仍是 267.33px，299px 起才开始降）。回归前卡片宽度会随窗口漂移（本机实测 1600→232.8px、1440→200.8px、1276→170px、1024→159.5px、400→368px），这也是 custom 卡片错位的成因之一；
-- 卡片右上角的版本槽是一个**静态标签**，显示该系列当前的最新版本（自定义资源显示其声明版本，没有则 `No version`）。版本选择只在详情弹窗里做，卡片本身不可选。`.power-card__version` 用 `display: inline-flex` + `align-items: center` + `justify-content: flex-end` + `min-height: var(--hub-version-height)` + `max-width: 112px` + `overflow: hidden` 占满一个固定盒子：所有卡片共用同一个类，所以头部高度天然一致，`min-height` 与 `overflow: hidden` 只是兜住极长版本不把标题与描述挤到别行（`text-overflow` 对 inline-flex 盒无效，只做裁切；真实数据最长约 99px）。`--hub-version-height` 仍保留 31px（原来是为对齐原生 `<select>` 实测的高度），目的是让卡片度量不因这次改动而变化；自定义资源的外观改由 `.power-card[data-source='custom'] .power-card__version` 承担（虚线 + 玫红）；
-- 卡片头部的排布：`.power-card__type` 吃下剩余空间（`margin-right: auto`），徽标与版本槽因此从右往左紧排。**不能**给每个徽标各加 `margin-left: auto`——两个徽标会平分空白、把 `New` 与 `Installed` 推开；
+- 卡片不显示版本号，版本信息与选择保留在详情弹窗。底部 `.power-card__footer` 将标签与添加操作放在同一行，不设分割线；所有卡片共用 `min-height: 32px`，与添加按钮高度一致，已安装和未安装卡片均保持等高。添加按钮默认隐藏，在 hover 或 `focus-within` 时显示；无 hover 的触屏设备直接显示可用操作；
+- 卡片头部保留类型、`Custom` 与 `New` 标记，已安装状态移到 `.power-card__tags` 的首项。`Installed` 使用 `--hub-primary` 背景与 `--hub-on-primary` 前景，对应宿主的 primary 与 primary-foreground（当前为绿底黑字）；
 - 卡片高度不能跟着描述长度走：APC 目录里的描述从 1 行到 14 行都有，`.power-card__description` 是固定 5 行（`7.5em`，行高 21px）的无边框滚动区，`overflow-x: hidden` 且长词换行，完整描述在详情弹窗里看；
 - 卡片标题（Power 名字）**不换行**：`.power-card h2` 固定 `height/line-height: 26px`（所有卡片的标题行等高，卡片网格才能对齐）、`white-space: nowrap` + `text-overflow: ellipsis`，字号由 `src/useFittedFontSize.ts` 在 19px（上限）与 13px（下限）之间按“文本自然宽度 / 盒子宽度”线性反解——一行文本的宽度与字号成正比，所以量一次就够；`ResizeObserver` + `window.resize` 负责列数变化时重算，`clientWidth` 为 0（jsdom 或尚未排版）时保持样式表里的 19px。卡片宽度固定为 267.33px 后，标题盒内宽恒为 229px，开发板实测真实目录里最长的 `foo-before-summary`（19px 下 193px）与 `markdown-maker`（165px）在任何窗口都完整显示且保持满号 19px；构造出的超长名字才会落到 13px 下限并被省略号截断；
-- 滚动条统一成“静止时不显示、滚动时显示位置”，但**不能靠 CSS 改平台滚动条**（下面 7.2.3 是开发板上实测结论），而是由插件隐藏原生滚动条（`scrollbar-width: none`，这是插件能设的属性）并在滚动区内画一个 `<ScrollThumb>`：按 `client/scroll` 比例算长度与位置、8px 圆角（颜色取 `--hub-thumb`，明暗各一档）、`pointer-events: none`，滚动时显示、停止 1s 后淡出；页面大滚动条、卡片描述区、卡片标签行、筛选标签行、详情弹窗内容区都是这一套，`ScrollThumb` 的 `targetRef` 必须指向它所在的那个滚动容器；
-- 换了查询（翻页、范围、Agent、类型、tags）后要把页面滚动位置归零；
+- 滚动条统一成“静止时不显示、滚动时显示位置”，但**不能靠 CSS 改平台滚动条**（下面 7.2.3 是开发板上实测结论），而是由插件隐藏原生滚动条（`scrollbar-width: none`，这是插件能设的属性）并在滚动区内画一个 `<ScrollThumb>`：按 `client/scroll` 比例算长度与位置、8px 圆角（颜色取 `--hub-thumb`，明暗各一档）、`pointer-events: none`，滚动时显示、停止 1s 后淡出；页面大滚动条、卡片描述区、卡片标签行、详情弹窗内容区使用这一套，`ScrollThumb` 的 `targetRef` 必须指向它所在的那个滚动容器；筛选标签改为可滚动的复选框下拉菜单；
+- 类型与标签下拉位于搜索框左侧，标签保留多选交集语义。搜索在分页前匹配系列，输入变化后回到第 1 页；换了查询（翻页、范围、Agent、类型、tags、搜索）后把页面滚动位置归零；
 - `src/agentHubLayout.test.ts` 以文本级契约守住以上几条（jsdom 没有排版引擎，这是唯一的自动化防线），`src/AgentHubPage.test.tsx` 守住量高与回顶两条行为。
 
 #### 7.2.1 跟随宿主明暗主题（`light-dark()`，不是 `.dark` 后代选择器）
@@ -453,10 +459,10 @@ Local Preview 使用 `?lang=zh-CN` 打开中文界面，`dev/main.tsx` 右上角
 
 因此约定是：
 
-- **所有颜色都写成 `light-dark(浅色, 深色)` 成对声明**，集中在 `.agent-hub` 的 token 段（`--hub-bg`、`--hub-surface`、`--hub-text`、`--hub-muted`、`--hub-border`、四个语义色系、四个 type 色系等）。浅色一支就是明色主题下原样的设计值；深色一支按「保持色相、提高明度直到对深色表面达到 4.5:1」推导；
+- 颜色集中在 `.agent-hub` 的 token 段，页面、卡片、边框与主操作优先读取宿主的 `--background`、`--card`、`--border`、`--primary`、`--primary-foreground` 等公开 token；未提供时使用 `light-dark(浅色, 深色)` 回退。类型、自定义资源等插件语义色同样用 `light-dark()` 成对声明；
 - **不得在任何规则体里写裸颜色字面量**。写一个 `#fff` 就等于把那个元素钉死在明色主题；`src/agentHubLayout.test.ts` 会把每个 `light-dark(...)` 剥掉后检查剩余字面量为空，并断言所有颜色型 token 都是成对声明；
-- 唯一允许的单值 token 是 `--hub-on-primary`（品牌蓝上的白字，两种主题下分别是 5.81:1 / 6.61:1，成对声明只是噪声），测试里显式豁免；
-- 语义色也走 token：`--hub-status-*`、`--hub-error-*`、`--hub-install-*`、`--hub-uninstall-*`、`--hub-scope*`、`--hub-option-*`、`--hub-shadow*`、`--hub-backdrop`、`--hub-version-chip`。渐变、阴影与 `::backdrop` 里的 `light-dark()` 都已实测生效（`::backdrop` 既能直接写，也能读自定义属性）；
+- `--hub-primary` 跟随宿主 primary（Tailwind 的 `color-primary` 来源），`--hub-on-primary` 跟随 primary-foreground；当前回退值为绿底黑字，已安装标签与主操作共用这组 token；
+- 语义色也走 token：`--hub-status-*`、`--hub-error-*`、`--hub-install-*`、`--hub-uninstall-*`、`--hub-scope*`、`--hub-option-*`、`--hub-backdrop`、`--hub-version-chip`。卡片使用宿主 surface，不再带渐变与阴影；`::backdrop` 同样读取 token；
 - 宿主若不设置 `color-scheme`，`light-dark()` 按 `normal` 解析，取**浅色**一支——也就是本插件 0.3.14 之前的行为，因此对老宿主是安全的降级，不是坏掉。
 
 验证方式：`docs/verification/probe-dark-mode.py` 用离屏 WebKitGTK 把同一份页面在 `light` 与 `color-scheme: dark` 两种状态下各渲染一次，读回 `getComputedStyle` 与 `::backdrop` 的颜色，断言表面色确实翻转、正文对比度 ≥ 4.5:1、且自定义资源的色相与 MCP 至少差 40°（见 §7.2.2）。
@@ -493,8 +499,9 @@ Agent 的选择只有一处：标签栏（`.power-filters__scopes`）最右侧�
 - **三个标签页都在**：控件常驻标签行，`设置` 页也显示。设置页本身不发 `powers.list.v1`，所以在那里切换不产生请求、也没有可见变化；它决定的是下次进入目录时读取哪个 Agent（以及安装目标）。
 - **清空筛选只在真正相关时发生**：只有 `installed` 的列表按 Agent 读取，因此在 `installed` 下切换 Agent 会重置页码/标签/snapshot；`market` 的目录与 Agent 无关（请求体不带 `agent`），在市场上切换**不重发请求、也不清掉用户已选的标签**，只改变安装目标。
 - **`expert` 类型只在 bibit 下出现**：`expert` 类型的 Power 只能装进 bibit，所以选中其它 Agent 时类型筛选行根本不渲染 `expert`。这条规则集中在 `src/api/contracts.ts` 的 `powerTypesForAgent`（`supportsExpertType` 是它的原语），两处 wire 目标校验与详情弹窗的「能否安装」读的是同一处，不再各写一遍。类别的取值就是显示的那几个字母（筛选行 `capitalize`、卡片/徽标 `uppercase`），不再有 `agent` → `Expert` 这层显示映射。切换 Agent 时如果当前类型正好是被隐藏的那个，类型会回退到该 Agent 支持的第一个类型（`skill`），并按一次显式类型切换重置标签/页码/snapshot——否则列表会停在一个用户既看不见、也切不走的类型上。
-- **市场卡片可以有两个徽标**：`Installed` 表示该 Agent 装了它，`New` 表示目录里的最新版本比装的那版更新（两个同时出现时 `New` 在 `Installed` 左侧）。`New` 只在已安装时出现，因为「比你手上的新」离开已安装版本就没有意义；
-- **市场卡片显示 `Installed` 徽标**：市场列表与 Agent 无关（wire 请求不带 `agent`），所以徽标读的是**目标 Agent 的安装清单**（快照里的 `fullLists`，按 Agent 存）——页面进入市场/切 Agent/窗口聚焦时预载一次。徽标是**版本无关**的：装了任意版本就算已安装（卡片固定显示目录里的最新版本，具体装的哪一版看详情弹窗的 `已安装 {version}`）。installed 页不加这个徽标（那里的卡片按定义都已安装）。清单读取失败时市场仍可用，只是没有徽标。
+- **已安装与可更新分别标记**：`Installed` 位于卡片底部标签首项，表示该 Agent 已安装该能力；`New` 保留在卡片头部，表示目录里的最新版本比已安装版本更新，因此只对已安装能力有意义；
+- **两种范围都显示 `Installed` 标签**：「我的能力」卡片按定义已安装。市场目录与 Agent 无关（wire 请求不带 `agent`），因此市场安装状态读取**目标 Agent 的安装清单**（快照里的 `fullLists`，按 Agent 存），页面进入市场、切 Agent、窗口聚焦时预载。该状态与版本无关：装了任意版本即算已安装，具体版本看详情弹窗。清单读取失败时市场仍可浏览，同时不显示安装标签或「添加能力」操作；
+- **卡片添加只用于首次安装**：仅市场中确认未安装、非自定义且目标 Agent 支持的能力显示该操作，点击时阻止冒泡以免同时打开详情。执行前重新检查安装状态；若已安装任意版本则不覆盖，版本更新与降级仍从详情执行。
 - **详情弹窗只读显示 Agent**：弹窗不再提供 Agent 选项（它本身是 `showModal()` 模态，用户也够不到标签栏上的控件）。`expert` 类型遇到非 bibit 目标时仍显示「该类型仅支持 bibit Agent。」并隐藏安装按钮，但不再有「切换到 bibit」的纠正按钮——要换 Agent 请关闭弹窗、用控件切换。
 - 实现上 `dialogAgent` 这个第二份 state 已删除：列表查询、弹窗、安装/卸载、自定义资源的上传与删除全部读同一个 `agent`。
 
@@ -990,7 +997,7 @@ Provider 通过 `powers.custom.list.v1` 扫描固定目录，**不调用 apm、�
 - **frontmatter 支持块标量**：`description: >-` / `|-` 这类把值放在后续缩进行的写法会被正常读出——`>` 折叠行内换行、空行分段落，`|` 保留换行；`+` / `-` / 数字缩进指示符同样接受。板端真实 Skill（`k3-media-pipeline`、`vpu-benchmark`）都用了 `>-`，因此这是显示门槛必须覆盖的写法。
 - **卡片标题**用展示名而不是目录名：扫描器把权威文件里声明的 `name` 投影到 `name_en`（仅在资源自己没有 `name_en` 时），前端仍按 `name_zh → name_en → name` 回退。因此 v1 资源显示作者声明的名字，而不是它恰好所在的目录；中文宿主仍优先 `name_zh`，英文宿主不看中文。目录名始终只是**身份**（APM 调用名），用于去重、上传与删除的目标解析，从不作为标题。
 - 低于门槛 / frontmatter 不是映射 / 非法 UTF-8 / 超过 64 KiB → 计入 `skipped`（最多 20 条），reason 为 `invalid-authority-file`；看起来是候选但缺权威文件（如 plugin 目录只有 `skills/`）→ `missing-authority-file`，`expected` 给出该类型主权威文件名。前端把每条 `skipped` 渲染为页面 warning，**不阻断列表**；但**已被 APM 清单管理的 `(type,name)` 不渲染 warning**——那张卡片由清单供数，扫描器只是重新走了一遍同一个目录，报"最低格式不达标"是误报。
-- `version` 只接受规范 `v<x>.<y>.<z>`（缺 `v` 前缀时补齐）；其它写法或缺失一律置空串，卡片显示占位符，不猜测版本。
+- `version` 只接受规范 `v<x>.<y>.<z>`（缺 `v` 前缀时补齐）；其它写法或缺失一律置空串，详情显示占位符，不猜测版本。卡片不显示版本号。
 - 扫描失败（含 Provider 不支持该 operation）降级为一条 `custom-resources-unavailable` warning，installed 列表仍正常显示——旧版 CLI 因此天然兼容。
 - MCP 不在扫描范围：APM 不为 MCP 维护目录。codex / claude-code 的 Plugin 由各自 CLI 管理，也不扫描。
 
@@ -1102,25 +1109,26 @@ npm run dev
 
 浏览器打开 Vite 输出地址；首页地址追加 `?lang=zh-CN` 即为中文界面，右上角下拉框可随时切换语言（不刷新页面）。Feature Dev Host 读取真实 Manifest 和 Feature Module，并通过 `dev/main.tsx` 的 `serviceConnections` 把 `powers.list.v1` / `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` / `powers.upgrade.v1` / `powers.custom.list.v1` / `powers.upload.v1` / `powers.delete.v1` / `settings.get.v2` / `settings.keys.add.v1` / `settings.keys.delete.v1` / `settings.keys.enable.v1` 路由到 Vite 中间件（`vite.config.ts` → `dev/store.ts`）提供的 Store。`scope=installed` 会真实执行 PATH 中的 `apm list --installed --agent=<selected> --json`（身份记录）；详情/安装/卸载分别执行 `apm list <name> --installed ...` / `apm install <name>=<version> ...` / `apm uninstall <name> ...`（argv 与 Go Provider 一致，读 30s / 写 120s）；「全部更新」执行 `apm upgrade --agent=<scope> --yes --json`（300s；`--yes` 必需，因为 Provider 的 stdin 不是终端，apm 的确认门禁会 fail closed，确认由插件弹窗自己完成）；`scope=market` 会每次请求真实拉取 APC 公开目录（`GET /resources/version` 取快照 + `GET /resources` 跟随重定向取全量列表），再按 `type` 过滤聚合；`settings.get.v2` / `settings.keys.add.v1` / `settings.keys.delete.v1` / `settings.keys.enable.v1` 使用内存设置（Key 只保留在 dev 进程内，只回传遮蔽 `preview`）；`powers.custom.list.v1` 扫描**本机真实 home**（`dev/custom.ts` 复刻 Provider 的目录、最低格式与展示名兜底规则），`powers.upload.v1` / `powers.delete.v1` 分别调用本机 `apm validate` + `apm submit` 与真实删除。此模式不启动、不编译 Bibit，也不要求远程 Store 后端在线；未安装 `apm` 时 installed 页显示可重试的 unavailable 错误，APC 不可达时 market 页显示可重试的 unavailable 错误。
 
-market 每次点击类型/标签、翻页都重新拉取并解析 APC 全量列表（无本地 fixture、无跨请求缓存），并在进入市场/切 Agent/窗口聚焦时额外读一次目标 Agent 的安装清单（只用于卡片徽标），覆盖 skill / plugin / mcp / expert 四种 Power 类型（筛选行里 `expert` 只在 bibit 下出现）；installed 由真实 apm 输出驱动，Agent 由标签栏最右侧的独立控件切换，选项固定为 bibit / codex / claude-code / hermes-agent 四个。两种 scope 复用同一套筛选、聚合、分页、facets 与 snapshot 规则，与未来 Remote Store 一致。
+market 由真实 APC 目录驱动，前端目录客户端按服务实例缓存快照，并支持 Provider 的 `not_modified` 响应；进入市场、切 Agent、窗口聚焦时额外读取目标 Agent 的安装清单，用于安装标签与卡片添加操作的可用状态。目录覆盖 skill / plugin / mcp / expert 四种 Power 类型（类型下拉中的 `expert` 仅在 bibit 下出现）；installed 由真实 apm 输出驱动。Agent 由标签栏的独立控件切换，选项固定为 bibit / codex / claude-code / hermes-agent 四个。两种 scope 复用筛选、聚合、分页、facets 与 snapshot 规则；搜索在前端聚合后的完整系列列表中执行，再进行分页，不增加 Provider 请求字段。
 
 APC Base URL 默认测试环境 `https://developer.bianbu.xyz/api-server/apc/api/v1`，可用 `APC_BASE_URL` 环境变量覆盖。测试环境证书不受信，dev-only 传输层（`vite.config.ts`）关闭了 TLS 校验；正式 CLI Provider 必须使用受信 CA。APC 公开目录无按类型列表端点，因此 market 采用“全量列表 + 客户端按 `type` 过滤”的映射。
 
 冒烟检查（filters / version selection / pagination / warnings / Retry）：
 
-- 默认进入“我的 Power / Bibit / skill”，第 1 页显示最多 20 张系列卡，翻页显示“第 X / Y 页”；
-- “Power 市场”隐藏 Agent 层，Agent 层固定显示 bibit / codex / claude-code / hermes-agent 四个选项；
-- 切换 Agent / 类型会清空失效 tags 并回到第 1 页；
-- 选择多个 tag 时按 AND（交集）过滤：选得越多结果越窄，只保留同时带有全部所选 tag 的版本；tag 清单随上层筛选刷新；
-- 同一系列切换版本时 description 与 tags 同步变化；
-- 选择未安装任何 Power 的 Agent 时，页面显示空内容（No Powers are available.）；
+- 默认进入「我的能力 / Bibit / skill」，第 1 页显示最多 20 张系列卡，翻页显示「第 X / Y 页」；
+- 两种目录范围共用 Agent 控件，固定提供 bibit / codex / claude-code / hermes-agent 四个选项；
+- 切换类型或在「我的能力」切换 Agent 会清空失效 tags 并回到第 1 页；市场切换 Agent 保留目录查询，仅改变安装目标（类型兼容规则见 §7.2.4）；
+- 类型下拉、标签多选下拉与搜索框同排。多个 tag 按 AND（交集）过滤，候选 tag 清单不随已选 tag 缩减；搜索能找到原先位于后续分页的能力，输入变化后回到第 1 页；
+- 点击卡片打开详情，同一系列在详情中切换版本时 description 与 tags 同步变化；
+- 已安装卡片的底部标签首项显示 `Installed`，与未安装卡片底部等高；只有确认未安装的市场卡片在 hover 或键盘聚焦时显示「添加能力」，点击后直接安装且不打开详情；
+- 未安装任何能力、筛选无结果与搜索无结果时，页面显示对应空态与适用的清除筛选操作；
 - 切换语言后当前列表、筛选、分页与已打开的详情弹窗保持不变，只替换文案，且不重新请求 `powers.list.v1`；
 - 停止或未连接 Store 时页面显示局部错误与 Retry，恢复后 Retry 可恢复列表；
 - 设置标签页可以读取 Mock 密钥列表、保存后出现遮蔽行，保存/启用/删除后再次进入值一致；
 - 未知 operation 返回错误，而不是伪造成功；
 - 页头「创建资源」按钮在本模式下是**禁用**的，并显示「当前宿主未提供发起会话的能力」：Dev Host 只为 service mock / connection（以及 `file:transfer`）构造 capability，不提供 `host:actions` mock。这正好复现旧宿主的降级形态；要预览可点状态，需要注入自定义 `hostApi`（`FeatureDevHost` 支持 `hostApi` 属性），或等宿主提供 Dev Host 的 `host:actions` mock。
 
-该模式只验证插件业务状态机、公开 SDK 用法、apm CLI 数据投影与 APC 公开目录投影，不启动 Provider、不读取真实文件，也不会产生下载文件；它不构成 Tauri、FileGrant staging 或 CLI Provider 端到端证据。
+该模式验证插件业务状态机、公开 SDK 用法、apm CLI 数据投影与 APC 公开目录投影，会调用本机 apm 并访问自定义资源目录，但不启动正式 CLI Provider；它不构成 Tauri、FileGrant staging 或 CLI Provider 端到端证据。
 
 ### 11.3 连接模拟或真实 CLI Provider
 
@@ -1251,6 +1259,8 @@ dist/agent-hub-plugin.css
 截至目标 Bibit `49bcd55ece89c6ee970abab4e4cb69b393b21201`，`src-tauri/resources/plugin-trusted-keys.json` 仍为空。正式发布前必须由平台登记公司公钥并重新构建 Bibit。
 
 ## 13. 在 Bibit 中开发安装
+
+本仓库的 `src/` 是独立 Agent Hub 插件的生产 UI。同步源码后仍需构建并安装新的插件 bundle，或更新第 14 节的 `bibit-agenthub-plugin` 包，Bibit 才会加载新 UI；仅更新宿主的 `demo-ui-v3` 分支不会替换现有插件。`npm run dev` 的开发预览入口不进入生产插件 bundle。
 
 启动 Debug Bibit 时指定 Agent Hub 开发 trust store：
 
@@ -1508,12 +1518,12 @@ Store service version
 7. 把 Bibit 系统语言切成中文，确认主导航、设置子菜单标题、页面文案与操作提示变为中文，且切换瞬间列表不重新请求、详情弹窗不关闭；
 8. 切回英文，确认文案回到英文；
    - 对同一条测试 Power 分别用 V1（只有 `name`/`description`）与 V2（带 `name_zh`/`name_en`/`description_zh`）记录验收：V2 记录在中文下显示 `name_zh`/`description_zh`、英文下显示 `name_en`/`description`；V1 记录两种语言都回退到 `name`/`description`；两种情况下的安装、卸载与详情请求参数都仍是 canonical `name`。注意 apm `list --json` 与 APC 目录尚未输出展示字段，需用能返回这些字段的夹具或临时 Store 服务构造；
-9. 在**默认窗口（1200×800）**打开 Power 市场：应正好一行 **3 张卡片**、两侧余量各约 10px（而不是 2 张卡片 + 两侧各 144px 的大空隙）；卡片宽度 267.33px、卡片等高、描述在无边框框内可上下滚动、分页控件常驻可见，向下滚动能到达第 20 张卡片；把窗口从 1024 拖到 1920 再拖回，卡片宽度始终不变、只有一行里的卡片个数变化（1024→2 列、1200→3 列、1440→3 列、1600→4 列、1920→5 列），网格整体居中且不满的最后一行从左侧排列；`Custom` 卡片与管理态卡片在同一行时标题与描述对齐（版本槽同为 31px 高、都是静态标签）；翻页或切换类型后列表回到顶部，没有横向滚动条；
+9. 在**默认窗口（1200×800）**打开能力市场：应正好一行 **3 张卡片**、两侧余量各约 10px；卡片宽度 267.33px、卡片等高、描述在无边框框内可上下滚动、分页控件常驻可见，向下滚动能到达第 20 张卡片；把窗口从 1024 拖到 1920 再拖回，卡片宽度不变、只有每行卡片数变化（1024→2 列、1200→3 列、1440→3 列、1600→4 列、1920→5 列），网格整体居中且不满的最后一行从左侧排列；卡片不显示版本号，`Custom` 与管理态卡片的标题、描述及底部标签行对齐；已安装标签位于首项，颜色跟随宿主 primary；点击卡片可打开详情，只有未安装的市场卡片显示 hover 添加操作；翻页或切换筛选后列表回到顶部，没有横向滚动条；
 10. 切到页面的「设置」标签页：确认目录的 Type/Tags 筛选消失、面板只显示 APC API Key 列表，且该切换没有产生新的 `powers.list.v1` 请求；
 11. 输入一个 APC Key 并点「保存 Key」：确认列表出现 `头****尾` 的行、输入框被清空、页面任何位置都不回显该 Key，且该行因是第一条而处于「已启用」；再保存第二条，确认新行是「未启用」而第一条仍是「已启用」；
 12. 点第二条的「启用」：确认启用手到第二条、第一条变回未启用（任何时刻只有一行启用），然后上传一次自定义资源，确认 apm 拿到的是第二条 Key；
 13. 点当前启用行的「删除」（**单击即删，无二次确认**）：确认该行消失、剩下的行是「未启用」，再上传一次确认返回未配置；点剩下那行的「启用」后可再次上传；切回「我的 Power」再切回「设置」并重启 Bibit 与 Store 服务，确认列表与启用状态都持久化；
-14. tag 交集：用一份「A 带 `x`+`y`、B 只带 `x`」的夹具，先点 `x` 确认 A 与 B 都在；再点 `y`，确认 B 消失、只留 A（**选得越多结果越窄**），且 tag 按钮本身没有跟着变少；取消 `y` 后 B 回来；再选一个任何版本都不带的 tag，确认显示空列表而不是报错；
+14. tag 交集：用一份「A 带 `x`+`y`、B 只带 `x`」的夹具，在标签下拉中先选 `x`，确认 A 与 B 都在；再选 `y`，确认 B 消失、只留 A（**选得越多结果越窄**），且候选标签不减少；取消 `y` 后 B 回来。搜索一个原先位于第 2 页的能力，确认重置到第 1 页并显示匹配项；输入不存在的名称后显示搜索空态，清空后恢复列表；
 15. 在「我的 Power」打开一个**已安装**的 Power 详情：点「卸载」只展开确认（此时 Store 未收到 `powers.uninstall.v1`），点「取消」不产生请求；再点「卸载」→「确认卸载」，确认请求参数为 `{agent,type,name}`，且**卸载成功后弹窗关闭、回到列表、卡片消失**；
 16. 制造一次卸载失败（例如让 `apm uninstall` 返回非零、且目标仍在清单里）：确认弹窗**保持打开**并显示失败文案（仍安装着某个版本时显示 `The command failed; version … is still installed.`）；
 17. 安装一条 Power：确认安装**不需要**二次确认、成功后弹窗**保持打开**并显示 `Installation complete.`；
@@ -1609,9 +1619,9 @@ CLI 模式检查 Registry 是否为 `version: 2`、`transport: stdio`、固定�
 - v1 只支持 `desktop/main`；
 - 页头「创建资源」入口经 `conversation.compose` 打开新会话并预置草稿，但**实机 happy path 尚未验证**：该动作只在 bibit 主线 `0e3d7b4` 之后存在，已发布的 `bi-bit` 都还没有，因此当前板上点击只会得到「当前宿主不支持发起会话」。降级路径（能力缺失即禁用、`UNSUPPORTED` 提示、可重试 `FAILED` 只提示不自动重试）已由单测锁定；
 - 预置草稿只点名 `using-apm`，不把该技能作为临时 chip 挂到输入框：`using-apm` 是 `presets.skills` 里对所有专家固定启用的技能，且设备未装该技能时带 `skills` 会让整次调用以 `INVALID_INPUT` 失败；
-- 当前插件实现 APC Power 展示原型（筛选、系列卡、版本选择、每页 20 的分页、warning 与 Retry）、详情弹窗与单版本安装/卸载，以及自定义资源的扫描/上传/删除，和三个设置字段（实验 Agent、刷新间隔、APC API Key）；
+- 当前插件实现能力目录（类型与标签下拉、搜索、系列卡、每页 20 的分页、warning 与 Retry）、详情版本选择与安装/更新/降级/卸载，以及自定义资源扫描/上传/删除和 APC API Key 列表管理；
 - 页头刷新入口只重取当前标签页的当前查询（筛选与页码不变）；`retry` 计数一 bump 就会 abort 在途的 `powers.list.v1` 再重发，因此列表加载中该按钮 `disabled`，**不会**成为第二个「把 market 读取掐掉」的入口；
-- Power 下载、提交审核、下架、恢复以及搜索尚未实现；
+- Power 下载、提交审核、下架与恢复尚未实现；搜索已在前端完整系列列表上实现，不增加 Provider 协议字段；
 - `powers.list.v1` / `powers.inspect.v1` / `powers.install.v1` / `powers.uninstall.v1` / `powers.upgrade.v1` / `powers.custom.list.v1` / `powers.upload.v1` / `powers.delete.v1` DTO 已做闭集运行时校验；`settings.get.v2` / `settings.keys.*.v1` 由 store 服务处理（dev 为内存列表，Provider 侧为 `settings.json` 持久化，Key 只回传遮蔽 `preview`）；
 - 自定义资源只覆盖 skill / plugin / agent：MCP 没有可扫描目录，codex 与 claude-code 的 Plugin 由各自 CLI 管理，两者都不在本期范围；
 - 自定义资源的**显示**只要求主流最低格式，**上传**仍要求 Power 格式 v2（由 `apm validate` 判定）；
@@ -1621,7 +1631,7 @@ CLI 模式检查 Registry 是否为 `version: 2`、`transport: stdio`、固定�
 - 「设置」标签页的样式使用 `.agent-hub*` 命名空间内的独立 CSS，不依赖 `@bibit/feature-ui` 的 Settings Shell（插件已不声明 settings contribution）；
 
 - Agent 控件常驻标签行（含设置页）：在设置页切换没有可见效果，它决定的是下次进入目录时读取哪个 Agent、以及安装目标（§7.2.4）；
-- 市场的 `Installed` 徽标是版本无关的（装了任意版本即算已安装），且清单读取失败时**静默**降级为「没有徽标」，不提示原因；板端实机外观尚未验收；
+- 市场的 `Installed` 标签是版本无关的（装了任意版本即算已安装）；清单读取失败时不显示安装标签或添加操作，仍允许浏览与打开详情；板端实机外观尚未验收；
 - 「更新」「降级」实现为带选中版本的 `apm install <name>=<version>`，**依赖 apm 能替换已安装的另一个版本**；前端只把非零退出映射为固定失败文案，因此这一条必须板端实测。前端侧的能力门槛已放开（预检只在「同一版本已安装」时短路），但 apm 的实际行为不在本仓库控制范围内；
 - 明暗主题由宿主的 `color-scheme` 驱动，插件的每个颜色都是 `light-dark()` 成对声明（§7.2.1）；深色一支是推导出来的，**板端实机深色外观尚未验收**，本次证据是离屏 WebKitGTK 探针 `docs/verification/probe-dark-mode.py`；
 - 中英文由插件自带词典（`src/agentHubI18n.tsx`）提供，跟随宿主 `language`，目前只有 `en` 与 `zh-CN` 两种；新增语言需要同时扩展 `agentHubChinese`/`agentHubLocales` 与 `bibit.feature.json` 的 `contributions.locales`；

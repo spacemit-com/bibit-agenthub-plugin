@@ -19,12 +19,14 @@ Agent Hub 是 Bibit 的能力中心，由两部分组成：
 
 | 页面 | 内容 |
 | --- | --- |
-| 我的能力 | 已安装清单：APM 管理的资源 + 手动安装的自定义资源（`Custom` 标记） |
-| 能力市场 | 浏览 APC 全量目录；卡片标注 `Installed`，有更高版本时加 `New` |
+| 我的能力 | 已安装清单：APM 管理的资源 + 手动安装的自定义资源（`Custom` 标记），标签首项显示 `Installed` |
+| 能力市场 | 浏览 APC 全量目录；已安装资源标注 `Installed`，有更高版本时加 `New` |
 | 设置 | APC API Key 列表：遮蔽显示（`头****尾`），逐条启用 / 删除 |
 
 - **全部更新**：一次 `apm upgrade` 收敛本机全部已安装能力；
-- **详情弹窗**：选择版本后 `Install` / `Update` / `Downgrade` / `Uninstall`，写操作二次确认；
+- **筛选与搜索**：类型下拉、标签多选下拉与搜索框同排；标签按交集筛选，搜索在分页前匹配名称、描述与标签；
+- **能力卡片**：点击卡片打开详情；版本放在详情中，标签集中在底部，`Installed` 使用宿主 primary 色；仅确认未安装的市场卡片在 hover 或键盘聚焦时显示「添加能力」；
+- **详情弹窗**：选择版本后 `Install` / `Update` / `Downgrade` / `Uninstall`；首次安装直接执行，更新、降级与卸载需要二次确认；
 - **自定义资源**：扫描各 Agent 目录并展示，支持 APC 上传与本地删除；
 - **明暗主题**跟随宿主。
 
@@ -49,6 +51,8 @@ make -C provider build GOARCH=riscv64
 提交前须通过 `npm test`、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin`。`.bibit-keys/` 中的私钥禁止提交；开发签名不能代替 Release 信任链。
 
 ## 部署
+
+本仓库是正式能力中心的独立插件源码。UI 修改需从本仓库构建、签名并更新 `bibit-agenthub-plugin` 包或对应 bundle；仅同步 Bibit 宿主的 `demo-ui-v3` 分支不会更新已安装的插件。开发预览用于本地验证，不是交付给宿主的页面实现。
 
 | 包 | 架构 | 内容 |
 | --- | --- | --- |

@@ -86,7 +86,7 @@ describe('PowerFilters', () => {
     renderFilters()
 
     expect(document.querySelector('.power-filters__panel')).toBeTruthy()
-    expect(document.querySelector('.power-filters__tags')).toBeTruthy()
+    expect(document.querySelector('.power-filters__tag-dropdown')).toBeTruthy()
 
     const row = document.querySelector('.power-filters__scopes')
     const scopes = screen.getByRole('group', { name: 'Scope' })
@@ -213,41 +213,31 @@ describe('PowerFilters', () => {
     expect(screen.queryByRole('menu', { name: 'Agent' })).toBeNull()
   })
 
-  it('renders exactly the four type controls with no "all" option', async () => {
+  it('offers exactly the four supported types in a single-select dropdown', async () => {
     const user = userEvent.setup()
     const props = renderFilters()
-
-    const typeGroup = screen.getByRole('group', { name: 'Type' })
-    const typeButtons = within(typeGroup).getAllByRole('button')
-    // The type is the displayed word; the filter row's CSS capitalises it.
-    expect(typeButtons.map((button) => button.textContent)).toEqual(['skill', 'plugin', 'mcp', 'expert'])
-    expect(screen.queryByRole('button', { name: 'all' })).toBeNull()
-
-    const currentType = screen.getByRole('button', { name: 'skill' })
-    expect(currentType.getAttribute('aria-pressed')).toBe('true')
-    expect(currentType.getAttribute('data-power-type')).toBe('skill')
-
-    await user.click(screen.getByRole('button', { name: 'mcp' }))
+    const select = screen.getByRole('combobox', { name: 'Type' }) as HTMLSelectElement
+    expect(within(select).getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'skill', 'plugin', 'mcp', 'expert',
+    ])
+    expect(screen.queryByRole('option', { name: 'all' })).toBeNull()
+    expect(select.value).toBe('skill')
+    await user.selectOptions(select, 'mcp')
     expect(props.onTypeChange).toHaveBeenCalledWith('mcp')
-
-    await user.click(screen.getByRole('button', { name: 'expert' }))
+    await user.selectOptions(select, 'expert')
     expect(props.onTypeChange).toHaveBeenLastCalledWith('expert')
   })
 
   it('offers no Expert type for an Agent that cannot take one', () => {
     renderFilters({ agent: 'codex' })
-
-    const typeGroup = screen.getByRole('group', { name: 'Type' })
-    // An `agent`-type Power is bibit-only, so its chip is not offered here.
-    expect(within(typeGroup).getAllByRole('button').map((button) => button.textContent)).toEqual([
-      'skill',
-      'plugin',
-      'mcp',
+    const select = screen.getByRole('combobox', { name: 'Type' })
+    expect(within(select).getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'skill', 'plugin', 'mcp',
     ])
-    expect(screen.queryByRole('button', { name: 'expert' })).toBeNull()
+    expect(screen.queryByRole('option', { name: 'expert' })).toBeNull()
   })
 
-  it('toggles tags via buttons and reports them sorted and unique', async () => {
+  it('keeps the tag dropdown open while selecting multiple sorted unique tags', async () => {
     const user = userEvent.setup()
     const onTagsChange = vi.fn()
     const base: PowerFiltersProps = {
@@ -278,18 +268,68 @@ describe('PowerFilters', () => {
     }
     const { rerender } = render(<Harness />)
 
-    const tagGroup = screen.getByRole('group', { name: 'Tags' })
-    const tagButtons = within(tagGroup).getAllByRole('button')
-    expect(tagButtons.map((button) => button.textContent)).toEqual(['alpha', 'beta', 'gamma'])
-    expect(screen.getByRole('button', { name: 'alpha' }).getAttribute('aria-pressed')).toBe('false')
+    const trigger = screen.getByRole('button', { name: 'Tags' })
+    expect(trigger.getAttribute('aria-expanded')).toBe('false')
+    expect(trigger.textContent).toContain('Any')
+    await user.click(trigger)
+    const popup = screen.getByRole('dialog', { name: 'Tags' })
+    expect(within(popup).getAllByRole('checkbox').map((input) => input.parentElement?.textContent)).toEqual([
+      'alpha', 'beta', 'gamma',
+    ])
 
-    await user.click(screen.getByRole('button', { name: 'gamma' }))
+    await user.click(screen.getByRole('checkbox', { name: 'gamma' }))
     expect(onTagsChange).toHaveBeenLastCalledWith(['gamma'])
     rerender(<Harness />)
+    expect(screen.getByRole('dialog', { name: 'Tags' })).toBeTruthy()
 
-    await user.click(screen.getByRole('button', { name: 'alpha' }))
+    await user.click(screen.getByRole('checkbox', { name: 'alpha' }))
     expect(onTagsChange).toHaveBeenLastCalledWith(['alpha', 'gamma'])
+    rerender(<Harness />)
+    expect(trigger.textContent).toContain('alpha, gamma')
+    expect((screen.getByRole('checkbox', { name: 'alpha' }) as HTMLInputElement).checked).toBe(true)
+
+    await user.click(screen.getByRole('checkbox', { name: 'gamma' }))
+    expect(onTagsChange).toHaveBeenLastCalledWith(['alpha'])
+    rerender(<Harness />)
+    await user.click(screen.getByRole('button', { name: 'Clear tags' }))
+    expect(onTagsChange).toHaveBeenLastCalledWith([])
+
   })
+  it('opens tags with ArrowDown, moves between options, and restores focus with Escape', async () => {
+    const user = userEvent.setup()
+    renderFilters()
+    const trigger = screen.getByRole('button', { name: 'Tags' })
+    trigger.focus()
+    await user.keyboard('{ArrowDown}')
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('checkbox', { name: 'alpha' })))
+    await user.keyboard('{ArrowDown}')
+    expect(document.activeElement).toBe(screen.getByRole('checkbox', { name: 'beta' }))
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog', { name: 'Tags' })).toBeNull()
+    expect(document.activeElement).toBe(trigger)
+  })
+
+  it('dismisses tags on outside pointer and when focus leaves the dropdown', async () => {
+    const user = userEvent.setup()
+    renderFilters()
+    const trigger = screen.getByRole('button', { name: 'Tags' })
+    await user.click(trigger)
+    fireEvent.pointerDown(document.body)
+    expect(screen.queryByRole('dialog', { name: 'Tags' })).toBeNull()
+    await user.click(trigger)
+    act(() => { screen.getByRole('button', { name: 'Capability Market' }).focus() })
+    expect(screen.queryByRole('dialog', { name: 'Tags' })).toBeNull()
+  })
+
+  it('places a provided search control after the two filters in the catalog row', () => {
+    renderFilters({ search: <input type="search" aria-label="Search capabilities" /> })
+    const panel = document.querySelector('.power-filters__panel')!
+    const search = screen.getByRole('searchbox', { name: 'Search capabilities' })
+    const tags = screen.getByRole('button', { name: 'Tags' })
+    expect(panel.contains(search)).toBe(true)
+    expect(tags.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
 })
 
 describe('PowerFilters bulk upgrade entry', () => {

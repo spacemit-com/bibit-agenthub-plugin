@@ -85,6 +85,12 @@ const zh: Readonly<Record<string, string>> = {
   'Capability Market': '能力市场',
   'Type': '类型',
   'Tags': '标签',
+  'Any': '不限',
+  'Add capability': '添加能力',
+  'Search capabilities': '搜索能力',
+  'Search name, description…': '搜索名称、描述…',
+  'No capabilities match your search.': '没有匹配搜索条件的能力。',
+  'Clear search': '清除搜索',
   'Version': '版本',
   'Installed': '已安装',
   'New': '新版本',
@@ -144,6 +150,8 @@ const zh: Readonly<Record<string, string>> = {
   // ---- installation store and operation messages ----
   'This version is already installed; uninstall it first.':
     '该版本已安装，请先卸载后再安装',
+  'This capability is already installed; manage it in details.':
+    '该能力已安装，请在详情中管理。',
   'Refresh failed; the installed state could not be confirmed.':
     '刷新失败，无法确认安装状态',
   'This installation is not authorized for that operation; do not retry.':
