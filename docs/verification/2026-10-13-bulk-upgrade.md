@@ -99,7 +99,7 @@ powers.upgrade.v1
 
 ```text
 WARNING: cannot create user data directory: cannot update the 'current' symlink of
-"/home/liangff/snap/firefox/current": remove /home/liangff/snap/firefox/current: read-only file system
+"$HOME/snap/firefox/current": remove $HOME/snap/firefox/current: read-only file system
 internal error: cannot create XDG_RUNTIME_DIR folder "/run/user/1000/snap.firefox":
 mkdir /run/user/1000/snap.firefox: read-only file system
 ```
@@ -122,7 +122,7 @@ mkdir /run/user/1000/snap.firefox: read-only file system
 
 ## 11. 板端构建与打包（Node 22.22.1 / zlib-ng —— 与 CI 相同）
 
-用 `git archive HEAD` 的源码在板端（`bianbu@10.0.91.51`，riscv64）构建：
+用 `git archive HEAD` 的源码在板端（`bianbu@board-host`，riscv64）构建：
 
 | 检查 | 结果 |
 | --- | --- |

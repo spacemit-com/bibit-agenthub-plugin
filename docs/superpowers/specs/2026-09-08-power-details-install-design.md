@@ -123,7 +123,7 @@ APM 自身可能调用 Agent 工具；复用并核对显式环境和工具路径
 4. 生命周期：关闭弹窗继续、重开观察、页面卸载中断后重查、命令成功但刷新失败、命令报错但状态已改变、查询失败不当作未安装。
 5. 运行 `npm test`、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin` 和 Go tests/vet/self-test；更新独立 stdio probe 支持三个新 operation，并先验证真实协议再做 UI 联调。
 6. 按现有流程提升插件/Provider/包版本，同步产出 all 前端 deb 与 riscv64 CLI deb，记录 SHA-256，验证 grant 归前端、executable/drop-in 归 CLI，不提交私钥和构建产物。
-7. 在 `bianbu@10.0.91.51` 目标 Bibit 安装两包并重启，确认新 bundle 被信任、三个 operation 被授权、Provider 协商 v1。使用预先确认未安装且可清理的测试 Power，验证市场详情安装→installed 出现→installed 卸载→详情恢复安装，以及反向由详情卸载的同步。
+7. 在 `bianbu@board-host` 目标 Bibit 安装两包并重启，确认新 bundle 被信任、三个 operation 被授权、Provider 协商 v1。使用预先确认未安装且可清理的测试 Power，验证市场详情安装→installed 出现→installed 卸载→详情恢复安装，以及反向由详情卸载的同步。
 8. 不卸载用户原有 Power、不以改 trust/grant 范围掩盖部署问题；需要额外外部授权或契约扩张时说明。真实板端测试先记录基线，结束只清理本次测试安装项，保留 UI 与 RPC 证据。远程 Python 遵循项目 Python 3.13/.venv313 规则。
 
 完成条件包含真实 Bibit 的闭环验收，不只四件套或开发预览。行为开发全部完成后按项目模板写一条本请求 Changelog，合并所有相关提交；仅设计或阻塞期间不写完成记录。

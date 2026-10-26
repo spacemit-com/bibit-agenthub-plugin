@@ -129,7 +129,7 @@ CLI 包拥有 `/usr/libexec/bibit/bibit-agenthub` 与 `/etc/bibit/external-servi
 4. 执行 `npm test`、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin`。检查插件 bundle 不含 Go、CLI 执行或 Node 数据源依赖。
 5. 使用真实 APC，记录全量目录原始大小、转义后的完整 RPC 响应大小与 4 MiB 余量；记录 TLS、重定向、版本与 hash 校验结果。超出宿主上限即停下另行决策，不改用未上线接口。
 6. 协议验证通过后再按需要将 dev 传输接到真实 Provider 做页面联调；任何 dev 桥接仍仅转发，不重新实现聚合。
-7. 本机产出两个 deb，检查架构、文件归属和 Registry 内容。开发板 `bianbu@10.0.91.51` 安装两包并重启宿主，检查实际部署版本与 Registry 加载，验证两个 scope 的真实数据、翻页/筛选版本检查、目录更新、重进页面，以及 APM 缺失时 installed 可重试而 market 可用。APM 缺失可通过临时配置不存在的 executable 验证，恢复后重新验收，不移除用户工具。
+7. 本机产出两个 deb，检查架构、文件归属和 Registry 内容。开发板 `bianbu@board-host` 安装两包并重启宿主，检查实际部署版本与 Registry 加载，验证两个 scope 的真实数据、翻页/筛选版本检查、目录更新、重进页面，以及 APM 缺失时 installed 可重试而 market 可用。APM 缺失可通过临时配置不存在的 executable 验证，恢复后重新验收，不移除用户工具。
 8. 页面验收需保留可观察证据；仅驱动成功不能宣称 UI 验收通过。若远程使用 Python 脚本，遵循项目指定的 Python 3.13/.venv313 规则。
 
 ## 9. 文档、边界与完成标准

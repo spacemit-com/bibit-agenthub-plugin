@@ -17,7 +17,7 @@
 
 每个 commit 均通过前端门禁（`npm test`、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin`、`git diff --check`）与 Go 门禁（`go test ./...`、`go vet ./...`、`go build`、`--self-test` 退出 0）。前端测试 161 → 272 全绿。
 
-## 板端后端链路验证（bianbu@10.0.91.51，riscv64，开发签名）
+## 板端后端链路验证（bianbu@board-host，riscv64，开发签名）
 
 - `apm` 由 `../apm` 源码交叉编译为 riscv64（`CGO_ENABLED=0 GOOS=linux GOARCH=riscv64`），部署到 `/home/bianbu/apm`。
 - 伪造目标 Agent 安装状态：创建 `/home/bianbu/.bianbu-agent/`（apm 以此目录存在判定 bibit 已安装）。
@@ -45,7 +45,7 @@ bibit-agenthub-cli_0.2.3_riscv64.deb    sha256 7db10b43e5e254e4627323df84c7c958b
 - 前端包（all）：grant `store` operations 含四枚 powers + settings，capability 仍只有 `service:store`；bundle 为开发签名 `agent-hub.bibit-plugin.tgz`。
 - CLI 包（riscv64）：`/usr/libexec/bibit/bibit-agenthub`（ELF riscv64、statically linked、stripped、0755）+ Registry `requestTimeoutMs:120000`。
 
-## 板端部署（bianbu@10.0.91.51，已取得 sudo）
+## 板端部署（bianbu@board-host，已取得 sudo）
 
 - 双 deb 经 `sudo dpkg -i` 安装成功：`bibit-agenthub-plugin 0.2.3`（0.2.2→0.2.3）、`bibit-agenthub-cli 0.2.3`；`/etc/bibit/feature-capability-grants.d/agenthub.json` 与 `/etc/bibit/external-services.d/agenthub.json` 落盘。
 - `apm` 安装到 `/usr/bin/apm`（0755）；`~/.cache` 已 `chmod 700`；Provider `--self-test` 退出 0。

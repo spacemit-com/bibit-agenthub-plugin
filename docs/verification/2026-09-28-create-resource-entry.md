@@ -140,7 +140,7 @@ git diff --check
 
 回滚后已全部还原，`npm test` 回到全绿。
 
-## 板端验证（K3，`ssh K3`／`10.0.91.51`，bi-bit 0.1.18）
+## 板端验证（K3，`ssh K3`／`board-host`，bi-bit 0.1.18）
 
 板端现状（实测）：
 

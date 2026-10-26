@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 在开发板 bianbu@10.0.91.51 上部署 0.2.3（开发签名）并完成 UI 闭环前的系统接线。
+# 在开发板 bianbu@board-host 上部署 0.2.3（开发签名）并完成 UI 闭环前的系统接线。
 # 用法：将本脚本与两个 deb、apm 一起放到板端后执行（部分步骤需要 sudo）。
 # 前置：两个 deb 已在 /tmp，apm 已在 /home/bianbu/apm，bibit 已伪造安装目录。
 set -euo pipefail

@@ -119,7 +119,7 @@ dpkg-buildpackage -us -uc -b -a riscv64 -d
 | `plugins/container` | `{"name":"local-bundle"}` | `name_en=local-bundle` | `local-bundle` | `local-bundle` |
 | `agents/agent-dir` | `agent.name: default-bianbu` | `name_en=default-bianbu` | `default-bianbu` | `default-bianbu` |
 
-### 板端 10.0.91.51 真实 home 实扫（含修复的 riscv64 二进制，未安装）
+### 板端 board-host 真实 home 实扫（含修复的 riscv64 二进制，未安装）
 
 ```text
 agent  目录=lff-agent      name_zh=-          name_en=lff-agent

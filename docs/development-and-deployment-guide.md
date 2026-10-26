@@ -467,7 +467,7 @@ Local Preview 使用 `?lang=zh-CN` 打开中文界面，`dev/main.tsx` 右上角
 
 #### 7.2.3 为什么不能用 CSS 控制滚动条（WebKitGTK 2.52 实测）
 
-在开发板（`bianbu@10.0.91.51`，WebKitGTK 2.52.0 + GTK 3.24，Yaru 主题，`gtk-overlay-scrolling=True`）上用一个离屏 `WebKit2.WebView` 渲染探针页面、直接读快照像素得到：
+在开发板（`bianbu@board-host`，WebKitGTK 2.52.0 + GTK 3.24，Yaru 主题，`gtk-overlay-scrolling=True`）上用一个离屏 `WebKit2.WebView` 渲染探针页面、直接读快照像素得到：
 
 | 写法 | 结果 |
 | --- | --- |
@@ -1073,14 +1073,14 @@ APC 全量约束：只调用 `resources/version` 与 `resources`，不调用 `re
 ### 11.1 获取代码
 
 ```bash
-git clone -b main \
-  git@gitlab.dc.com:bianbu/bianbu-star/bibit-agenthub-plugin.git
+git clone -b bianbu-26.04 \
+  https://github.com/spacemit-com/bibit-agenthub-plugin.git
 cd bibit-agenthub-plugin
 git rev-parse HEAD
 npm ci
 ```
 
-交付负责人还应提供经过验收的固定 commit SHA；正式集成时记录并检出该提交，不要只依赖会变化的 `main`。远程默认分支目前仍可能显示为 `dev`，所以开发初始化必须显式克隆 `main`。使用 `npm ci` 保持 lockfile 中的确切版本，不要用 `npm update` 随机改变 SDK 或 React 版本。
+交付负责人还应提供经过验收的固定 commit SHA；正式集成时记录并检出该提交，不要只依赖会变化的分支头。使用 `npm ci` 保持 lockfile 中的确切版本，不要用 `npm update` 随机改变 SDK 或 React 版本。
 
 确认依赖：
 

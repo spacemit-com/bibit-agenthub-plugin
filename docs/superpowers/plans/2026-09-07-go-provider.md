@@ -294,9 +294,9 @@ dpkg-deb --info ../bibit-agenthub-cli_0.2.2_riscv64.deb
 - [ ] 先读远程 Python 规则（若要用 Python），以及宿主实际进程/Registry 加载文档。SSH 只读采集：
 
 ```sh
-ssh bianbu@10.0.91.51 'uname -m'
-ssh bianbu@10.0.91.51 'dpkg-query -W bi-bit bibit-agenthub-plugin bibit-agenthub-cli'
-ssh bianbu@10.0.91.51 'command -v apm'
+ssh bianbu@board-host 'uname -m'
+ssh bianbu@board-host 'dpkg-query -W bi-bit bibit-agenthub-plugin bibit-agenthub-cli'
+ssh bianbu@board-host 'command -v apm'
 ```
 
 - [ ] 检查 board 的 `/etc/bibit/external-services.d/`、当前 Bibit 进程和显式配置覆盖，确认没有已有 store 冲突；记录当前 deb 版本和可恢复包。不要删除其他服务条目或修改 home Registry。
@@ -304,9 +304,9 @@ ssh bianbu@10.0.91.51 'command -v apm'
 - [ ] 复制准确文件到板端临时目录，安装两包：
 
 ```sh
-scp ../bibit-agenthub-plugin_0.2.2_all.deb ../bibit-agenthub-cli_0.2.2_riscv64.deb bianbu@10.0.91.51:/tmp/
-ssh bianbu@10.0.91.51 'sudo apt-get install -y /tmp/bibit-agenthub-plugin_0.2.2_all.deb /tmp/bibit-agenthub-cli_0.2.2_riscv64.deb'
-ssh bianbu@10.0.91.51 '/usr/libexec/bibit/bibit-agenthub --self-test'
+scp ../bibit-agenthub-plugin_0.2.2_all.deb ../bibit-agenthub-cli_0.2.2_riscv64.deb bianbu@board-host:/tmp/
+ssh bianbu@board-host 'sudo apt-get install -y /tmp/bibit-agenthub-plugin_0.2.2_all.deb /tmp/bibit-agenthub-cli_0.2.2_riscv64.deb'
+ssh bianbu@board-host '/usr/libexec/bibit/bibit-agenthub --self-test'
 ```
 
 - [ ] 根据实际进程管理方式正常退出并重启唯一正式 Bibit GUI，不猜测 systemd unit、不批量 kill 无关进程；验证宿主加载新插件版本、store drop-in、协商 protocol=1。

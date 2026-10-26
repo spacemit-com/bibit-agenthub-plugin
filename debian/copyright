@@ -1,6 +1,6 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: bibit-agenthub-plugin
-Source: https://gitlab.dc.com/bianbu/bianbu-star/bibit-agenthub-plugin
+Source: https://github.com/spacemit-com/bibit-agenthub-plugin
 
 Files: *
 Copyright: 2026 SpacemiT (Beijing) Intelligent Technology Co., Ltd.

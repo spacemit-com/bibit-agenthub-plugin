@@ -216,7 +216,7 @@ CI（板端）是权威运行时，故本版 bundle 的 SHA-256 以板端产出�
 
 ### 验证结果（板端构建，Node 22.22.1 / zlib-ng）
 
-在板端（`bianbu@10.0.91.51`，riscv64，Node **22.22.1** / npm **9.2.0** / zlib **1.3.1.zlib-ng**，即 CI 环境）用 `git archive HEAD` 的源码构建：
+在板端（`bianbu@board-host`，riscv64，Node **22.22.1** / npm **9.2.0** / zlib **1.3.1.zlib-ng**，即 CI 环境）用 `git archive HEAD` 的源码构建：
 
 | 检查 | 结果 |
 | --- | --- |
@@ -1027,7 +1027,7 @@ Power 市场出现「Power 目录请求已取消。」。
 
 验证结果或限制：
 
-`npm test`（22 个文件、335 项测试）、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin` 全绿；CSS 契约测试会拦住“再写死 `::-webkit-scrollbar`”“把滚动条彻底藏掉”“重新引入 `-webkit-line-clamp`”等回退。开发板（`bianbu@10.0.91.51`，riscv64，WebKitGTK 2.52）实测：
+`npm test`（22 个文件、335 项测试）、`npm run typecheck`、`npm run build:dev`、`npm run build:plugin` 全绿；CSS 契约测试会拦住“再写死 `::-webkit-scrollbar`”“把滚动条彻底藏掉”“重新引入 `-webkit-line-clamp`”等回退。开发板（`bianbu@board-host`，riscv64，WebKitGTK 2.52）实测：
 
 - 滚动条：`scrollbar-color` 被忽略、`::-webkit-scrollbar` 仅在规则一开始就匹配时生效且运行时永不重绘、`scrollbar-width: none/thin` 生效（表见 7.2.1）——据此选定自绘方案；
 - 标题：用真实字体与真实卡片内容宽（182 / 223 / 238px）量真实目录名，最长 `foo-before-summary`（19px 下 193px）在最窄 182px 列里缩到 17.5px 正好放下，`markdown-maker`（165px）及其余全部名字任何断点都是满号 19px，所有用例单行、盒高 26px；构造出的 368px 超长名字落到 13px 下限并被省略号截断。
@@ -1146,7 +1146,7 @@ Provider 只声明 `powers.list.v1`、协商协议 v1；installed 每次执行 `
 
 验证结果或限制：
 
-前端 `npm test` 161/161、`typecheck`、`build:dev`、`build:plugin` 全过；Go `go test ./...` + `go vet` 过；`--self-test` exit 0；provider-probe 对真实 APC 得到 market data（snapshot `152e5780…`、5738 字节）与 not_modified。两个 deb 实际构建（amd64 + riscv64），`readelf -h` 确认 RISC-V，`dpkg-deb --contents` 核对归属（CLI 无 probe/grant/bundle）。开发板 `bianbu@10.0.91.51`（riscv64）安装两包并激活插件 0.2.2，宿主 spawn provider 并协商 `protocol=1`（`provider_ready service=store provider=0.2.2 protocol=1 operations=1`），market 可浏览/筛选；installed 因板上无 `/usr/bin/apm` 正确降级为可重试 `unavailable`（页面显示 "Power catalog is unavailable"，非空清单伪造）。
+前端 `npm test` 161/161、`typecheck`、`build:dev`、`build:plugin` 全过；Go `go test ./...` + `go vet` 过；`--self-test` exit 0；provider-probe 对真实 APC 得到 market data（snapshot `152e5780…`、5738 字节）与 not_modified。两个 deb 实际构建（amd64 + riscv64），`readelf -h` 确认 RISC-V，`dpkg-deb --contents` 核对归属（CLI 无 probe/grant/bundle）。开发板 `bianbu@board-host`（riscv64）安装两包并激活插件 0.2.2，宿主 spawn provider 并协商 `protocol=1`（`provider_ready service=store provider=0.2.2 protocol=1 operations=1`），market 可浏览/筛选；installed 因板上无 `/usr/bin/apm` 正确降级为可重试 `unavailable`（页面显示 "Power catalog is unavailable"，非空清单伪造）。
 
 限制：正式发布仍需公司签名 bundle + 平台公钥登记（目标 Bibit `plugin-trusted-keys.json` 为空）；构建套件无 `golang-go ≥1.26.5`（本地 `/usr/local/bin/go` 1.26.5 交叉构建）；板上无 apm，installed 真实数据未验收；settings 持久化、v2 jobs/文件传输不在本期。
 

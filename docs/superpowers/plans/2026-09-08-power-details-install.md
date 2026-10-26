@@ -272,14 +272,14 @@ sha256sum ../bibit-agenthub-plugin_0.2.3_all.deb ../bibit-agenthub-cli_0.2.3_ris
 
 **Files:** 修改 README.md、两份部署指南；新 `docs/verification/2026-09-08-power-management.md` 保存实际证据；全部完成后修改 docs/Changelog.md。
 
-- [ ] 只读检查开发板 `bianbu@10.0.91.51`：当前包版本、Bibit 进程、Registry override、APM 版本和工具路径。读取远程 Python 规则（仅若使用 Python），避免默认 Python。记录基线和可恢复包。
+- [ ] 只读检查开发板 `bianbu@board-host`：当前包版本、Bibit 进程、Registry override、APM 版本和工具路径。读取远程 Python 规则（仅若使用 Python），避免默认 Python。记录基线和可恢复包。
 - [ ] 在目标 Agent 选一个确认未安装、适合测试且可清理的市场 Power；记录具体 type/name/version。不能对用户已有 Power 做卸载演练。APM 可能需要 Agent 自身 CLI，须验证 Provider env_clear 后该工具可解析；不得用交互 SSH 环境成功代替。
 - [ ] 按 task 6 实际版本复制安装两个 deb，正常重启唯一正式 Bibit GUI，检查新 bundle 激活、operation grant 与 Provider v1 初始化。命令骨架：
 
 ```sh
-scp ../bibit-agenthub-plugin_0.2.3_all.deb ../bibit-agenthub-cli_0.2.3_riscv64.deb bianbu@10.0.91.51:/tmp/
-ssh bianbu@10.0.91.51 'sudo apt-get install -y /tmp/bibit-agenthub-plugin_0.2.3_all.deb /tmp/bibit-agenthub-cli_0.2.3_riscv64.deb'
-ssh bianbu@10.0.91.51 '/usr/libexec/bibit/bibit-agenthub --self-test'
+scp ../bibit-agenthub-plugin_0.2.3_all.deb ../bibit-agenthub-cli_0.2.3_riscv64.deb bianbu@board-host:/tmp/
+ssh bianbu@board-host 'sudo apt-get install -y /tmp/bibit-agenthub-plugin_0.2.3_all.deb /tmp/bibit-agenthub-cli_0.2.3_riscv64.deb'
+ssh bianbu@board-host '/usr/libexec/bibit/bibit-agenthub --self-test'
 ```
 
 - [ ] UI 闭环 A：market 选版本→详情确认描述/tags/Agent→安装→installed 出现→installed 卸载→详情恢复安装按钮。闭环 B：再次安装测试项→详情卸载→installed 消失。分别记录 UI 和原始 APM 查询证据。

@@ -73,7 +73,7 @@ item 尚未发布三字段，因此 market 范围在字段发布前仍走回退�
 - `src/AgentHubPage.test.tsx`：installed 与 market 两条链路的中文渲染、切换语言换展示名但 `powers.list.v1` 请求数不变。
 - `src/agentHubI18n.test.tsx`：`useAgentHubLanguage()` 归一化（`zh`/`zh-CN`/`en-US`/缺省/provider 外）。
 
-## 板端部署（bianbu@10.0.91.51，riscv64，开发签名）
+## 板端部署（bianbu@board-host，riscv64，开发签名）
 
 双 deb 由本机 `dpkg-buildpackage -us -uc -b -a riscv64 -d` 产出（`-d` 跳过目标机 golang-go 版本检查；Provider 先经 `make -C provider build GOARCH=riscv64` 交叉编译）：
 
