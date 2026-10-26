@@ -12,7 +12,7 @@
 
 建议所有 AgentHub 前端开发同事按以下顺序阅读：
 
-- [README.md](./README.md) — 快速运行 Demo，了解 Dev Host Mock 与真实 CLI 的区别。
+- [README_zh.md](./README_zh.md) — 项目简介、功能范围、构建与部署命令（英文版见 [README.md](./README.md)）。
 - [docs/development-and-deployment-guide.md](./docs/development-and-deployment-guide.md) — 最重要的模块开发手册，涵盖代码边界、UI、调试、构建、签名、安装和验收。
 - [../bibit/docs/feature-sdk/file-transfer-and-jobs.md](../bibit/docs/feature-sdk/file-transfer-and-jobs.md) — 上传、下载、进度、取消、页面重进恢复的标准实现方式。
 - [docs/cli-provider-development-and-deployment.md](./docs/cli-provider-development-and-deployment.md) — 负责 CLI 的同事必须阅读，包含 Registry、Provider Protocol v2、NDJSON、自检和部署结构。
