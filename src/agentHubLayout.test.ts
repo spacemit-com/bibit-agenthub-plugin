@@ -637,8 +637,6 @@ describe('Agent Hub layout contract', () => {
     expect(switcher.flatMap((block) => declared(block, 'margin-left'))).toEqual([])
     expect(switcher.flatMap((block) => declared(block, 'position'))).toEqual(['relative'])
 
-    // The trigger sits on the page edge, so the menu must open leftwards; anchored
-    // to `left: 0` it would overflow the page instead of staying inside it.
     const menu = rules('.power-filters__agent-menu')
     expect(menu.flatMap((block) => declared(block, 'position'))).toEqual(['absolute'])
     expect(menu.flatMap((block) => declared(block, 'right'))).toEqual(['0'])

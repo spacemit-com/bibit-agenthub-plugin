@@ -34,6 +34,7 @@
   --hub-card-shadow-hover: light-dark(0 4px 12px 0 rgb(0 0 0 / 0.08), 0 4px 12px 0 rgb(0 0 0 / 0.35));
   --hub-menu-shadow: light-dark(0 4px 12px 0 rgb(0 0 0 / 0.1), 0 4px 12px 0 rgb(0 0 0 / 0.4));
   --hub-dialog-shadow: light-dark(0 10px 25px -5px rgb(0 0 0 / 0.12), 0 10px 25px -5px rgb(0 0 0 / 0.5));
+  --hub-control-shadow: light-dark(0 1px 2px 0 rgb(0 0 0 / 0.05), 0 1px 2px 0 rgb(0 0 0 / 0.2));
   --hub-error-bg: light-dark(#fff1f0, #391917);
   --hub-error-text: light-dark(#9d2d26, #f6c2bd);
   --hub-install-line: light-dark(#22c55e, #25984d);
@@ -90,10 +91,7 @@
      hence the token rather than a repeated literal. */
   --hub-page-inset-end: 10px;
   --hub-card-gap: 20px;
-  --hub-card-width: calc(
-    (var(--hub-default-window) - var(--hub-host-sidebar) - var(--hub-host-frame)
-      - 2 * var(--hub-page-padding) - 3 * var(--hub-card-gap)) / 3
-  );
+  --hub-card-width: calc((var(--hub-default-window) - var(--hub-host-sidebar) - var(--hub-host-frame) - 2 * var(--hub-page-padding) - 3 * var(--hub-card-gap)) / 3);
   /* The page column is still capped at the width the five-column layout was designed for;
      at 1460px five cards fit (5 x 267.33 + 4 x 20 = 1417), so fullscreen keeps five. */
   --hub-content-max: 1460px;
@@ -102,7 +100,7 @@
      control font (WebKitGTK 2.52 measured 39px with a fallback family, not the 41px
      the 14px/1.5 padding arithmetic predicts), so the icon and the create entry
      would otherwise disagree by a couple of pixels and by more on another platform. */
-  --hub-action-height: 41px;
+  --hub-action-height: 36px;
   box-sizing: border-box;
   /* The host mounts page contributions inside `SidebarProvider` / `SidebarInset`, which
      are `min-h-svh` (min-height only): a percentage height stays indefinite there, so the
@@ -123,8 +121,16 @@
   line-height: 1.5;
 }
 
-.agent-hub *, .agent-hub *::before, .agent-hub *::after { box-sizing: border-box; }
-.agent-hub > :not(.agent-hub-dialog):not(.agent-hub__scroll-thumb) { width: min(100%, var(--hub-content-max)); margin-inline: auto; }
+.agent-hub *,
+.agent-hub *::before,
+.agent-hub *::after {
+  box-sizing: border-box;
+}
+
+.agent-hub > :not(.agent-hub-dialog):not(.agent-hub__scroll-thumb) {
+  width: min(100%, var(--hub-content-max));
+  margin-inline: auto;
+}
 
 /* One hue per Power type, with the light face as shipped and a dark face that
    keeps the hue and lifts the lightness until the accent reads on a dark card.
@@ -137,18 +143,44 @@
    inherited `--type`/`--type-soft`/`--type-line`, and renders as a plain bordered
    chip. `agentHubLayout.test.ts` asserts one rule exists per `POWER_TYPES` entry
    so the next rename cannot lose the palette again. */
-[data-power-type='skill']  { --type: light-dark(#6d55cf, #b3abff); --type-soft: light-dark(#f2efff, #25233b); --type-line: light-dark(#b8acf0, #534e7d); }
-[data-power-type='plugin'] { --type: light-dark(#16775c, #4ed2a9); --type-soft: light-dark(#eef9f5, #0a2d22); --type-line: light-dark(#a9d8ca, #20634e); }
-[data-power-type='mcp']    { --type: light-dark(#a95e16, #f5a15e); --type-soft: light-dark(#fff6eb, #37200f); --type-line: light-dark(#e9c59e, #744a28); }
-[data-power-type='expert'] { --type: light-dark(#356dbd, #89b9ff); --type-soft: light-dark(#eff6ff, #18273c); --type-line: light-dark(#abc7ed, #3a567f); }
+[data-power-type='skill'] {
+  --type: light-dark(#6d55cf, #b3abff);
+  --type-soft: light-dark(#f2efff, #25233b);
+  --type-line: light-dark(#b8acf0, #534e7d);
+}
+
+[data-power-type='plugin'] {
+  --type: light-dark(#16775c, #4ed2a9);
+  --type-soft: light-dark(#eef9f5, #0a2d22);
+  --type-line: light-dark(#a9d8ca, #20634e);
+}
+
+[data-power-type='mcp'] {
+  --type: light-dark(#a95e16, #f5a15e);
+  --type-soft: light-dark(#fff6eb, #37200f);
+  --type-line: light-dark(#e9c59e, #744a28);
+}
+
+[data-power-type='expert'] {
+  --type: light-dark(#356dbd, #89b9ff);
+  --type-soft: light-dark(#eff6ff, #18273c);
+  --type-line: light-dark(#abc7ed, #3a567f);
+}
 
 /* ===== Page header (retained) ===== */
 .agent-hub header {
   display: flex;
-  align-items: end;
+  align-items: center;
   justify-content: space-between;
   margin-bottom: 28px;
 }
+
+.agent-hub__title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .agent-hub h1 {
   margin: 0;
   font-family: var(--font-studio, inherit);
@@ -157,50 +189,92 @@
   letter-spacing: normal;
 }
 
-/* The create entry sits opposite the page title, with its unavailable note
-   underneath it. */
+/* The wrapper receives hover and keyboard focus even when its button is disabled. */
 .agent-hub__create {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 6px;
   max-width: 420px;
-}
-.agent-hub .agent-hub__create-note {
-  margin: 0;
-  color: var(--hub-muted);
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: normal;
-  text-align: right;
 }
 
 /* The header actions share one row, the refresh icon to the left of the create
-   entry. The note under them stays a block of the column, so it still spans the
-   full width and keeps its right alignment. */
+   entry. */
 .agent-hub__actions {
   display: flex;
   align-items: center;
   gap: 8px;
 }
+
+.agent-hub__create-trigger {
+  position: relative;
+  display: inline-flex;
+  height: var(--hub-action-height);
+  min-height: var(--hub-action-height);
+}
+
+.agent-hub__create-trigger[tabindex] {
+  cursor: not-allowed;
+}
+
+.agent-hub__create-tooltip {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 8px);
+  right: 0;
+  width: max-content;
+  max-width: min(320px, calc(100vw - 40px));
+  padding: 8px 12px;
+  border-radius: var(--hub-radius-xs);
+  background: var(--hub-text);
+  color: var(--hub-bg);
+  box-shadow: var(--hub-menu-shadow);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+  cursor: default;
+}
+
+/* Bridge the gap so the explanation stays open while the pointer enters it. */
+.agent-hub__create-tooltip::before {
+  content: '';
+  position: absolute;
+  inset: -8px 0 100%;
+}
+
 /* The row's two entries share one height: the create entry keeps its own padding and
    font, the refresh icon becomes a square of that same height. Pinning both to a
    token is what survives WebKit sizing native buttons from its own control font;
    `align-self: stretch` alone does not, because a grid item's aspect ratio resolves
    from the content width there rather than from the row height. The glyph is the
    visible content; `aria-label` carries the meaning for assistive tech. */
-.agent-hub .agent-hub__actions > button { min-height: var(--hub-action-height); }
+.agent-hub .agent-hub__actions > button {
+  height: var(--hub-action-height);
+  min-height: var(--hub-action-height);
+}
+
 .agent-hub .agent-hub__create-button {
   min-width: 96px;
+  height: var(--hub-action-height);
+  min-height: var(--hub-action-height);
   background: var(--hub-primary);
   color: var(--hub-on-primary);
   border-color: var(--hub-primary);
   font-weight: 500;
 }
+
 .agent-hub .agent-hub__create-button:hover:not(:disabled) {
   background: var(--hub-primary);
   opacity: .9;
 }
+
+.agent-hub .agent-hub__create-button:disabled {
+  background: var(--hub-control-hover);
+  color: var(--hub-muted);
+  border-color: var(--hub-border);
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .agent-hub .agent-hub__refresh {
   display: grid;
   width: var(--hub-action-height);
@@ -211,8 +285,15 @@
   line-height: 1;
   border-radius: var(--hub-radius-sm);
 }
-.agent-hub .agent-hub__refresh:hover:not(:disabled) { background: var(--hub-control-hover); }
-.agent-hub .agent-hub__refresh:disabled { cursor: not-allowed; opacity: .42; }
+
+.agent-hub .agent-hub__refresh:hover:not(:disabled) {
+  background: var(--hub-control-hover);
+}
+
+.agent-hub .agent-hub__refresh:disabled {
+  cursor: not-allowed;
+  opacity: .42;
+}
 
 /* Base button surface: :where() zeroes the specificity of the :not() exclusion,
    so the scope-tab reset (border: 0) and every power-filters button override win. */
@@ -227,12 +308,30 @@
   cursor: pointer;
   transition: background-color 150ms ease, border-color 150ms ease;
 }
-.agent-hub button:where(:not(.power-filters__scope):not(.power-card__open):not([aria-pressed='true'])):hover:not(:disabled) { background: var(--hub-control-hover); }
+
+.agent-hub button:where(:not(.power-filters__scope):not(.power-card__open):not([aria-pressed='true'])):hover:not(:disabled) {
+  background: var(--hub-control-hover);
+}
 
 /* ===== Scope navigation, agent control, filters, selection states ===== */
-.power-filters { margin-bottom: 24px; }
-.power-filters__scopes { display: flex; align-items: center; gap: 6px; border-bottom: 1px solid var(--hub-border); }
-.power-filters__tabs { display: flex; gap: 18px; margin-bottom: -1px; }
+.power-filters {
+  margin-bottom: 24px;
+}
+
+.power-filters__scopes {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 1px solid var(--hub-border);
+}
+
+.power-filters__tabs {
+  display: flex;
+  gap: 18px;
+  margin-bottom: -1px;
+  font-size: 18px;
+}
+
 .power-filters__scope {
   border: 0;
   border-bottom: 2px solid transparent;
@@ -242,27 +341,75 @@
   cursor: pointer;
   font: inherit;
   font-weight: 500;
-  font-size: 14px;
+  font-size: 18px;
   padding: 10px 2px;
   transition: color 150ms ease, border-color 150ms ease;
 }
-.power-filters__scope:hover:not(:disabled) { color: var(--hub-text); }
-.power-filters__scope[aria-pressed='true'] { border-bottom-color: var(--hub-scope); color: var(--hub-scope-text); font-weight: 500; }
+
+.power-filters__scope:hover:not(:disabled) {
+  color: var(--hub-text);
+}
+
+.power-filters__scope[aria-pressed='true'] {
+  border-bottom-color: var(--hub-scope);
+  color: var(--hub-scope-text);
+  font-weight: 500;
+}
+
 /* The tab row's right-hand group: the bulk-upgrade entry and the Agent control.
    `margin-left: auto` lives here rather than on the switcher, so the two cannot be
    pushed apart by the free space being shared between two auto margins. */
-.power-filters__actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.power-filters__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
 /* `position: relative` is the containing block the Agent menu is measured against. */
-.power-filters__agent-switcher { position: relative; }
+.power-filters__agent-switcher {
+  position: relative;
+}
+
 /* The bulk-upgrade entry. It is the one control in the row that starts a long,
    machine-wide operation, so it carries the ordinary control surface and states
    its busy-ness in the label rather than only by dimming. */
-.agent-hub .power-filters__upgrade { display: inline-flex; align-items: center; gap: 7px; height: 32px; min-height: 32px; box-sizing: border-box; padding: 0 12px; border-radius: var(--hub-radius-sm); font-size: 13px; }
+.agent-hub .power-filters__upgrade {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 36px;
+  min-height: 36px;
+  box-sizing: border-box;
+  padding: 0 12px;
+  border-radius: var(--hub-radius-sm);
+  font-size: 13px;
+}
+
 /* The scope tabs when a bulk upgrade runs: three tabs that cannot be switched to,
    because the provider is one serial process and any request issued now would
    queue behind the upgrade and then time out waiting. */
-.agent-hub .power-filters__scope:disabled { cursor: not-allowed; opacity: .42; }
-.agent-hub .power-filters__agent-trigger { display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; height: 32px; min-height: 32px; box-sizing: border-box; padding: 0 8px 0 10px; font-weight: 500; font-size: 13px; border-radius: var(--hub-radius-sm); line-height: 1; white-space: nowrap; }
+.agent-hub .power-filters__scope:disabled {
+  cursor: not-allowed;
+  opacity: .42;
+}
+
+.agent-hub .power-filters__agent-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  height: 36px;
+  min-height: 32px;
+  box-sizing: border-box;
+  padding: 0 10px 0 12px;
+  font-weight: 500;
+  font-size: 14px;
+  line-height: 20px;
+  white-space: nowrap;
+  box-shadow: var(--hub-control-shadow);
+}
+
 .power-filters__agent-menu,
 .power-filters__type-menu {
   position: absolute;
@@ -275,13 +422,16 @@
   background: var(--hub-surface);
   box-shadow: var(--hub-menu-shadow);
 }
+
 .power-filters__agent-menu {
   right: 0;
   min-width: 180px;
 }
+
 .power-filters__type-menu {
   left: 0;
 }
+
 .power-filters__agent-menu::before,
 .power-filters__type-menu::before {
   content: '';
@@ -291,6 +441,7 @@
   right: 0;
   height: 8px;
 }
+
 .power-filters__agent-menu button,
 .power-filters__type-menu button {
   display: flex;
@@ -305,56 +456,85 @@
   cursor: pointer;
   text-transform: capitalize;
 }
+
 .power-filters__agent-menu button[aria-checked='true'],
 .power-filters__type-menu button[aria-checked='true'] {
   border-color: var(--hub-option-line);
   background: var(--hub-option-bg);
 }
-.power-filters__panel { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+
+.power-filters__panel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+
 .power-filters__type-field,
-.power-filters__tag-field { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; color: var(--hub-muted); font-size: 13px; line-height: 1; white-space: nowrap; }
-.power-filters__type-field > span,
-.power-filters__tag-field > span { flex-shrink: 0; white-space: nowrap; }
+.power-filters__tag-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  color: var(--hub-muted);
+  font-size: 13px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.power-filters__type-field>span,
+.power-filters__tag-field>span {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .power-filters__chevron {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   flex-shrink: 0;
+  margin-left: 8px;
   color: var(--hub-muted);
   pointer-events: none;
 }
+
 .power-filters__chevron svg {
   display: block;
-  width: 12px;
-  height: 12px;
+  width: 16px;
+  height: 16px;
 }
+
 .power-filters__select-wrap {
   position: relative;
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
 }
+
 .agent-hub .power-filters__type-trigger,
 .agent-hub .power-filters__tag-trigger {
   display: inline-flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
   min-width: 76px;
   height: 32px;
   min-height: 32px;
   box-sizing: border-box;
-  padding: 0 8px 0 10px;
-  border-radius: var(--hub-radius-sm);
-  font-size: 13px;
-  line-height: 1;
+  padding: 0 10px 0 12px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
   white-space: nowrap;
+  box-shadow: var(--hub-control-shadow);
 }
+
 .agent-hub .power-filters__type-trigger {
   text-transform: capitalize;
 }
+
 .power-filters__type-select {
   position: absolute;
   width: 1px;
@@ -368,9 +548,37 @@
   opacity: 0;
   pointer-events: none;
 }
-.power-filters__tag-dropdown { position: relative; min-width: 0; flex-shrink: 0; }
-.power-filters__tag-value { min-width: 0; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.power-filters__tag-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; min-width: 180px; max-width: min(320px, 80vw); max-height: 280px; overflow-y: auto; padding: 6px; border: 1px solid var(--hub-border); border-radius: var(--hub-radius); background: var(--hub-surface); box-shadow: var(--hub-menu-shadow); }
+
+.power-filters__tag-dropdown {
+  position: relative;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.power-filters__tag-value {
+  min-width: 0;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.power-filters__tag-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  min-width: 180px;
+  max-width: min(320px, 80vw);
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--hub-border);
+  border-radius: var(--hub-radius);
+  background: var(--hub-surface);
+  box-shadow: var(--hub-menu-shadow);
+}
+
 .power-filters__tag-menu label {
   display: flex;
   align-items: center;
@@ -384,12 +592,54 @@
   line-height: 1.4;
   user-select: none;
 }
-.power-filters__tag-menu label:hover { background: var(--hub-control-hover); }
-.power-filters__tag-menu label span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.power-filters__tag-menu input[type="checkbox"] { margin: 0; flex-shrink: 0; width: 14px; height: 14px; accent-color: var(--hub-primary); cursor: pointer; }
-.agent-hub .power-filters__tag-menu button { width: 100%; margin-top: 4px; padding: 5px 8px; border-radius: var(--hub-radius-xs); font-size: 12px; }
-.power-filters__search { min-width: 0; flex: 1; max-width: 256px; margin-left: auto; }
-.power-filters__search input { width: 100%; min-width: 0; height: 32px; min-height: 32px; box-sizing: border-box; padding: 0 12px; border: 1px solid var(--hub-control-line); border-radius: var(--hub-radius-sm); background: var(--hub-control-bg); color: var(--hub-text); font: inherit; font-size: 13px; line-height: 30px; }
+
+.power-filters__tag-menu label:hover {
+  background: var(--hub-control-hover);
+}
+
+.power-filters__tag-menu label span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.power-filters__tag-menu input[type="checkbox"] {
+  margin: 0;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  accent-color: var(--hub-primary);
+  cursor: pointer;
+}
+
+.agent-hub .power-filters__tag-menu button {
+  width: 100%;
+  margin-top: 4px;
+  padding: 5px 8px;
+  border-radius: var(--hub-radius-xs);
+  font-size: 12px;
+}
+
+.power-filters__search {
+  min-width: 0;
+  width: 240px;
+}
+
+.power-filters__search input {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  min-height: 32px;
+  box-sizing: border-box;
+  padding: 0 12px;
+  border: 1px solid var(--hub-control-line);
+  border-radius: var(--hub-radius-sm);
+  background: var(--hub-control-bg);
+  color: var(--hub-text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 30px;
+}
 
 /* ===== Visible shared focus ring =====
    One ring for every keyboard-reachable control, the clickable card included: the card
@@ -397,12 +647,17 @@
    carries `tabindex`/`role="button"` for exactly that reason. `outline` (not
    `box-shadow`) so the indicator stays separate from the card border and does not
    change the layout. */
+.agent-hub .agent-hub__create-trigger:focus-visible,
 .agent-hub button:focus-visible,
 .agent-hub select:focus-visible,
 .agent-hub input:focus-visible,
 .agent-hub .power-card[data-clickable='true']:focus-visible {
   outline: 3px solid var(--hub-focus);
   outline-offset: 2px;
+}
+
+.agent-hub .power-filters__search input:focus {
+  outline: none;
 }
 
 /* ===== Fixed-width card grid and bounded, internally scrollable card regions =====
@@ -419,13 +674,16 @@
    3-4 line box and scrolls, so every row keeps the same height at every window size. */
 .agent-hub__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(var(--hub-card-width), 100%), var(--hub-card-width)));
+  width: 100%;
+  grid-template-columns: repeat(auto-fill, minmax(min(var(--hub-card-width), 100%), 1fr));
   justify-content: center;
   gap: var(--hub-card-gap);
   margin-top: 22px;
 }
+
 .power-card {
   display: grid;
+  width: 100%;
   /* An explicit `minmax(0, 1fr)` column: an implicit grid column is `auto`, which a
      long unbreakable version/tag could push past the card's own width. */
   grid-template-columns: minmax(0, 1fr);
@@ -439,12 +697,29 @@
   box-shadow: var(--hub-card-shadow);
   transition: border-color 160ms ease, box-shadow 160ms ease;
 }
+
 .power-card:hover {
   border-color: var(--hub-control-line);
   box-shadow: var(--hub-card-shadow-hover);
 }
-.power-card__header { display: flex; min-height: 24px; align-items: center; justify-content: space-between; gap: 12px; }
-.power-card__type { margin-right: auto; color: var(--type); font-size: 11px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase; }
+
+.power-card__header {
+  display: flex;
+  min-height: 24px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.power-card__type {
+  margin-right: auto;
+  color: var(--type);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
 /* A hand-installed resource must be recognizable at a glance: a dashed border, a
    rose accent and a "Custom" badge, which no Hub-managed card ever shows. The hue
    is deliberately far from every `data-power-type` accent -- particularly MCP's
@@ -454,6 +729,7 @@
   border-color: var(--hub-custom-line);
   background: var(--hub-surface);
 }
+
 .power-card__badge {
   display: inline-flex;
   align-items: center;
@@ -473,18 +749,20 @@
   text-transform: uppercase;
   white-space: nowrap;
 }
+
 .power-card__badge--new {
   border-color: var(--hub-new-line);
   background: var(--hub-new-bg);
   color: var(--hub-new);
 }
+
 /* A Power name never wraps: the box is exactly one line high on every card (so the grid
    rows line up) and useFittedFontSize shrinks the font size until the name fits. The
    ellipsis is only a last resort for a name that would need more than it can shrink. */
 .power-card h2 {
   height: 26px;
   line-height: 26px;
-  margin: 15px 0 10px;
+  margin: 8px 0 10px;
   overflow: hidden;
   min-width: 0;
   white-space: nowrap;
@@ -492,6 +770,7 @@
   font-size: 19px;
   font-weight: 500;
 }
+
 /* The title button is the card's keyboard control, so it is styled to be invisible as a
    control: it inherits the heading's type and shows only the shared focus ring. `width:
    100%` with `text-align: left` keeps the clickable area on the title text itself rather
@@ -517,7 +796,12 @@
   white-space: nowrap;
   cursor: pointer;
 }
-.agent-hub .power-card__open:disabled { cursor: not-allowed; color: var(--hub-muted); }
+
+.agent-hub .power-card__open:disabled {
+  cursor: not-allowed;
+  color: var(--hub-muted);
+}
+
 .power-card__description {
   /* 5 lines at 14px/1.5; each line is exactly 21px so no line is cut in half. */
   height: 7.5em;
@@ -529,18 +813,95 @@
   overflow-wrap: anywhere;
   color: var(--hub-muted);
 }
-.power-card__footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; margin-top: 14px; }
-.power-card__tags { display: flex; flex: 1; min-width: 0; flex-wrap: nowrap; align-items: center; gap: 6px; min-height: 0; overflow-x: auto; overflow-y: hidden; }
-.power-card__tag { display: inline-flex; align-items: center; justify-content: center; height: 22px; line-height: 1; box-sizing: border-box; flex: 0 0 auto; padding: 0 8px; border-radius: var(--hub-radius-xs); background: var(--hub-version-chip); color: var(--hub-muted); font-size: 11px; font-weight: 500; white-space: nowrap; }
-.power-card__tag.power-card__badge--installed { background: var(--hub-primary); color: var(--hub-on-primary); font-weight: 600; }
-.agent-hub .power-card__install { flex-shrink: 0; height: 32px; padding: 4px 10px; border-radius: var(--hub-radius-sm); border-color: var(--hub-primary); background: var(--hub-primary); color: var(--hub-on-primary); font-weight: 500; font-size: 12px; visibility: hidden; transition: opacity 150ms ease; }
+
+.power-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
+  margin-top: 14px;
+}
+
+.power-card__tags {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.power-card__tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  line-height: 1;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  padding: 0 8px;
+  border-radius: var(--hub-radius-xs);
+  background: var(--hub-version-chip);
+  color: var(--hub-muted);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.power-card__tag.power-card__badge--installed {
+  background: var(--hub-primary);
+  color: var(--hub-on-primary);
+  font-weight: 600;
+}
+
+.agent-hub .power-card__install {
+  flex-shrink: 0;
+  height: 32px;
+  padding: 4px 10px;
+  border-radius: var(--hub-radius-sm);
+  border-color: var(--hub-primary);
+  background: var(--hub-primary);
+  color: var(--hub-on-primary);
+  font-weight: 500;
+  font-size: 12px;
+  visibility: hidden;
+  transition: opacity 150ms ease;
+}
+
 .agent-hub .power-card:hover .power-card__install,
-.agent-hub .power-card:focus-within .power-card__install { visibility: visible; }
-.agent-hub .power-card__install:hover:not(:disabled) { background: var(--hub-primary); opacity: .9; }
-.agent-hub .power-card__install:disabled { cursor: not-allowed; opacity: .5; }
-@media (hover: none) { .agent-hub .power-card__install { visibility: visible; } }
-.power-card__notice { margin: 12px 0 0; color: var(--hub-muted); font-size: 12px; }
-.power-card[data-clickable='true'] { cursor: pointer; }
+.agent-hub .power-card:focus-within .power-card__install {
+  visibility: visible;
+}
+
+.agent-hub .power-card__install:hover:not(:disabled) {
+  background: var(--hub-primary);
+  opacity: .9;
+}
+
+.agent-hub .power-card__install:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
+
+@media (hover: none) {
+  .agent-hub .power-card__install {
+    visibility: visible;
+  }
+}
+
+.power-card__notice {
+  margin: 12px 0 0;
+  color: var(--hub-muted);
+  font-size: 12px;
+}
+
+.power-card[data-clickable='true'] {
+  cursor: pointer;
+}
 
 /* ===== Narrow-window fallback =====
    The column count is not switched by breakpoints any more: `.agent-hub__grid` holds
@@ -548,10 +909,18 @@
    cards never resize with the window. Only the page padding and the filter rows still
    need a phone-width adjustment. */
 @media (max-width: 480px) {
-  .agent-hub { padding-inline: 14px; }
+  .agent-hub {
+    padding-inline: 14px;
+  }
+
   .power-filters__type-field,
-  .power-filters__tag-field { gap: 4px; }
-  .power-filters__tag-dropdown { max-width: 35%; }
+  .power-filters__tag-field {
+    gap: 4px;
+  }
+
+  .power-filters__tag-dropdown {
+    max-width: 35%;
+  }
 }
 
 /* ===== Centered pagination (pinned to the page scroller), status messages, scrollbars ===== */
@@ -572,6 +941,7 @@
   padding: 12px 0 calc(8px + var(--hub-page-inset-end));
   background: var(--hub-bg);
 }
+
 .agent-hub .power-pagination button {
   display: grid;
   width: 38px;
@@ -585,10 +955,31 @@
   border-radius: var(--hub-radius-sm);
   cursor: pointer;
 }
-.agent-hub .power-pagination button:hover { background: var(--hub-control-hover); }
-.agent-hub .power-pagination input { width: 58px; padding: 8px; border: 1px solid var(--hub-control-line); border-radius: var(--hub-radius-sm); background: var(--hub-control-bg); color: var(--hub-text); text-align: center; }
-.agent-hub .power-pagination button:disabled { cursor: not-allowed; opacity: .42; }
-.agent-hub__status, .agent-hub__error { margin-top: 18px; }
+
+.agent-hub .power-pagination button:hover {
+  background: var(--hub-control-hover);
+}
+
+.agent-hub .power-pagination input {
+  width: 58px;
+  padding: 8px;
+  border: 1px solid var(--hub-control-line);
+  border-radius: var(--hub-radius-sm);
+  background: var(--hub-control-bg);
+  color: var(--hub-text);
+  text-align: center;
+}
+
+.agent-hub .power-pagination button:disabled {
+  cursor: not-allowed;
+  opacity: .42;
+}
+
+.agent-hub__status,
+.agent-hub__error {
+  margin-top: 18px;
+}
+
 /* ===== Scrollbars: idle at rest, drawn as a position indicator while scrolling =====
    The platform bar cannot be styled from a plugin page. Bibit's global stylesheet sets
    `scrollbar-width: thin` on every element, and a non-`auto` `scrollbar-width` makes WebKit
@@ -608,6 +999,7 @@
   position: relative;
   scrollbar-width: none;
 }
+
 .agent-hub__scroll-thumb {
   position: absolute;
   z-index: 3;
@@ -617,9 +1009,18 @@
   opacity: 0;
   transition: opacity 160ms linear;
 }
-.agent-hub__scroll-thumb[data-visible='true'] { opacity: 1; }
-.agent-hub__scroll-thumb[data-axis='y'] { right: 2px; }
-.agent-hub__scroll-thumb[data-axis='x'] { bottom: 2px; }
+
+.agent-hub__scroll-thumb[data-visible='true'] {
+  opacity: 1;
+}
+
+.agent-hub__scroll-thumb[data-axis='y'] {
+  right: 2px;
+}
+
+.agent-hub__scroll-thumb[data-axis='x'] {
+  bottom: 2px;
+}
 
 /* ===== Loading / error / retry states (retained colors) ===== */
 .agent-hub__status {
@@ -628,6 +1029,7 @@
   background: var(--hub-status-bg);
   color: var(--hub-status-text);
 }
+
 /* An empty result is not an error and not a loading notice: it is where the grid would
    be, so it takes the grid's own top offset and reads as a plain sentence on the page
    surface rather than a tinted banner. Only the tag case carries an action. */
@@ -639,7 +1041,11 @@
   margin-top: 22px;
   color: var(--hub-muted);
 }
-.agent-hub__empty p { margin: 0; }
+
+.agent-hub__empty p {
+  margin: 0;
+}
+
 .agent-hub__error {
   display: flex;
   align-items: center;
@@ -665,7 +1071,11 @@
   color: var(--hub-text);
   box-shadow: var(--hub-dialog-shadow);
 }
-.agent-hub-dialog::backdrop { background: var(--hub-backdrop); }
+
+.agent-hub-dialog::backdrop {
+  background: var(--hub-backdrop);
+}
+
 /* A taller description makes the dialog the place users read the full text, so it must
    fit the window. `display` is declared only for [open]: an author `display` on the bare
    .agent-hub-dialog would outrank the UA `dialog:not([open]) { display: none }`. */
@@ -675,21 +1085,123 @@
   max-height: calc(100vh - 32px);
   max-height: calc(100dvh - 32px);
 }
-.agent-hub-dialog__body { min-height: 0; overflow-y: auto; padding: 24px; }
-.agent-hub-dialog__header { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
-.agent-hub-dialog__type { color: var(--type); font-size: 11px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase; }
-.agent-hub-dialog__header h2 { margin: 6px 0 0; font-family: var(--font-studio, inherit); font-size: 18px; font-weight: 500; }
-.agent-hub .agent-hub-dialog__close { border: 0; background: transparent; font-size: 22px; line-height: 1; }
-.agent-hub-dialog__field { display: flex; align-items: center; gap: 14px; margin-top: 18px; }
-.agent-hub-dialog__label { min-width: 52px; color: var(--hub-label); font-size: 12px; font-weight: 500; text-transform: uppercase; }
-.agent-hub-dialog__field select { flex: 1; padding: 8px; border: 1px solid var(--hub-border); border-radius: var(--hub-radius-sm); background: var(--hub-control-bg); color: var(--hub-text); font: inherit; }
-.agent-hub-dialog__hint { margin: 0; color: var(--hub-error-text); font-size: 12px; }
+
+.agent-hub-dialog__body {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+.agent-hub-dialog__header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.agent-hub-dialog__type {
+  color: var(--type);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.agent-hub-dialog__header h2 {
+  margin: 6px 0 0;
+  font-family: var(--font-studio, inherit);
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.agent-hub .agent-hub-dialog__close {
+  border: 0;
+  background: transparent;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.agent-hub-dialog__field {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.agent-hub-dialog__label {
+  min-width: 52px;
+  color: var(--hub-label);
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.agent-hub-dialog__field select {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  width: auto;
+  min-width: 110px;
+  height: 32px;
+  min-height: 32px;
+  box-sizing: border-box;
+  padding: 0 32px 0 12px;
+  border: 1px solid var(--hub-border);
+  border-radius: 9999px;
+  background-color: var(--hub-control-bg);
+  color: var(--hub-text);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  box-shadow: var(--hub-control-shadow);
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 15 5 5 5-5'/%3E%3Cpath d='m7 9 5-5 5 5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 16px 16px;
+  transition: all 0.15s ease;
+}
+
+.agent-hub-dialog__field select:hover:not(:disabled) {
+  background-color: var(--hub-control-hover);
+}
+
+.agent-hub-dialog__field select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.agent-hub-dialog__hint {
+  margin: 0;
+  color: var(--hub-error-text);
+  font-size: 12px;
+}
+
 /* The custom-resource dialog is informational, so its hints stay neutral instead
    of using the warning red the agent/type incompatibility hint carries. */
-.agent-hub-dialog[data-source='custom'] .agent-hub-dialog__hint { color: var(--hub-custom); }
+.agent-hub-dialog[data-source='custom'] .agent-hub-dialog__hint {
+  color: var(--hub-custom);
+}
+
 .agent-hub-dialog__custom-form,
-.agent-hub-dialog__confirm { display: grid; gap: 8px; width: 100%; text-align: left; }
-.agent-hub-dialog__custom-form label { display: grid; gap: 6px; font-size: 12px; font-weight: 500; color: var(--hub-muted); }
+.agent-hub-dialog__confirm {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+}
+
+.agent-hub-dialog__custom-form label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--hub-muted);
+}
+
 .agent-hub-dialog__custom-form input {
   padding: 8px;
   border: 1px solid var(--hub-border);
@@ -698,12 +1210,40 @@
   color: var(--hub-text);
   font: inherit;
 }
-.agent-hub-dialog__confirm p { margin: 0; }
-.agent-hub-dialog__custom-actions { display: flex; justify-content: flex-end; gap: 10px; }
-.agent-hub-dialog__description { margin: 18px 0 0; color: var(--hub-muted); }
-.agent-hub-dialog__tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
-.agent-hub-dialog__status { margin-top: 18px; }
-.agent-hub-dialog__notice { padding: 12px; border-radius: var(--hub-radius-sm); background: var(--hub-status-bg); color: var(--hub-status-text); }
+
+.agent-hub-dialog__confirm p {
+  margin: 0;
+}
+
+.agent-hub-dialog__custom-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.agent-hub-dialog__description {
+  margin: 18px 0 0;
+  color: var(--hub-muted);
+}
+
+.agent-hub-dialog__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.agent-hub-dialog__status {
+  margin-top: 18px;
+}
+
+.agent-hub-dialog__notice {
+  padding: 12px;
+  border-radius: var(--hub-radius-sm);
+  background: var(--hub-status-bg);
+  color: var(--hub-status-text);
+}
+
 /* ===== Bulk upgrade: the in-flight spinner and its progress line =====
    An indeterminate spinner is the honest indicator here: Provider Protocol v1
    carries no progress events, so there is no fraction to show. The ring is drawn
@@ -719,20 +1259,74 @@
   border-radius: 999px;
   animation: agent-hub-spin 900ms linear infinite;
 }
+
 @keyframes agent-hub-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
+
 @media (prefers-reduced-motion: reduce) {
-  .agent-hub__spinner { animation: none; border-top-color: var(--hub-scope); opacity: .55; }
+  .agent-hub__spinner {
+    animation: none;
+    border-top-color: var(--hub-scope);
+    opacity: .55;
+  }
 }
-.agent-hub-upgrade__progress { display: flex; align-items: center; gap: 9px; margin: 18px 0 0; color: var(--hub-muted); }
-.agent-hub-dialog__footer { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 24px; border-top: 1px solid var(--hub-border); }
-.agent-hub .agent-hub-dialog__install { border-color: var(--hub-primary); background: var(--hub-primary); color: var(--hub-on-primary); border-radius: var(--hub-radius-sm); font-weight: 500; }
-.agent-hub .agent-hub-dialog__install:hover:not(:disabled) { border-color: var(--hub-primary); background: var(--hub-primary); color: var(--hub-on-primary); opacity: .9; }
-.agent-hub .agent-hub-dialog__uninstall { border-color: var(--hub-uninstall-line); background: var(--hub-uninstall-bg); color: var(--hub-uninstall-text); border-radius: var(--hub-radius-sm); font-weight: 500; }
-.agent-hub .agent-hub-dialog__uninstall:hover:not(:disabled) { border-color: var(--hub-uninstall-line-hover); background: var(--hub-uninstall-hover-bg); color: var(--hub-uninstall-hover-text); }
-.agent-hub-dialog button:disabled { cursor: not-allowed; opacity: .5; }
+
+.agent-hub-upgrade__progress {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 18px 0 0;
+  color: var(--hub-muted);
+}
+
+.agent-hub-dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--hub-border);
+}
+
+.agent-hub .agent-hub-dialog__install {
+  border-color: var(--hub-primary);
+  background: var(--hub-primary);
+  color: var(--hub-on-primary);
+  border-radius: var(--hub-radius-sm);
+  font-weight: 500;
+}
+
+.agent-hub .agent-hub-dialog__install:hover:not(:disabled) {
+  border-color: var(--hub-primary);
+  background: var(--hub-primary);
+  color: var(--hub-on-primary);
+  opacity: .9;
+}
+
+.agent-hub .agent-hub-dialog__uninstall {
+  border-color: var(--hub-uninstall-line);
+  background: var(--hub-uninstall-bg);
+  color: var(--hub-uninstall-text);
+  border-radius: var(--hub-radius-sm);
+  font-weight: 500;
+}
+
+.agent-hub .agent-hub-dialog__uninstall:hover:not(:disabled) {
+  border-color: var(--hub-uninstall-line-hover);
+  background: var(--hub-uninstall-hover-bg);
+  color: var(--hub-uninstall-hover-text);
+}
+
+.agent-hub-dialog button:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
 
 /* ===== Settings tab (in-page panel) ===== */
 /* This is a section of the Agent Hub page, not a host Settings contribution:
@@ -750,16 +1344,31 @@
   color: var(--hub-text);
   box-shadow: var(--hub-card-shadow);
 }
-.agent-hub-settings-panel__credential { display: grid; gap: 8px; }
+
+.agent-hub-settings-panel__credential {
+  display: grid;
+  gap: 8px;
+}
+
 .agent-hub-settings-panel__credential-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 16px;
 }
-.agent-hub-settings-panel__credential-head strong { font-size: 15px; }
-.agent-hub-settings-panel__credential-head span { color: var(--hub-caption); }
-.agent-hub-settings-panel__credential small { color: var(--hub-caption); }
+
+.agent-hub-settings-panel__credential-head strong {
+  font-size: 15px;
+}
+
+.agent-hub-settings-panel__credential-head span {
+  color: var(--hub-caption);
+}
+
+.agent-hub-settings-panel__credential small {
+  color: var(--hub-caption);
+}
+
 /* One row: the field takes the space, the Save key action stays next to it. */
 .agent-hub-settings-panel__credential-add {
   display: flex;
@@ -767,6 +1376,7 @@
   gap: 10px;
   min-width: 0;
 }
+
 .agent-hub-settings-panel__credential-add input[type='password'] {
   flex: 1 1 auto;
   width: min(100%, 420px);
@@ -778,6 +1388,7 @@
   color: var(--hub-text);
   font: inherit;
 }
+
 .agent-hub-settings-panel__credential-add button {
   flex: 0 0 auto;
   min-height: 38px;
@@ -788,6 +1399,7 @@
   color: var(--hub-on-primary);
   font-weight: 500;
 }
+
 .agent-hub-settings-panel__keys {
   display: grid;
   gap: 8px;
@@ -795,6 +1407,7 @@
   padding: 0;
   list-style: none;
 }
+
 .agent-hub-settings-panel__key {
   display: flex;
   align-items: center;
@@ -805,27 +1418,32 @@
   border-radius: var(--hub-radius-sm);
   background: var(--hub-control-bg);
 }
+
 .agent-hub-settings-panel__key[data-enabled='true'] {
   border-color: var(--hub-primary);
   box-shadow: inset 3px 0 0 var(--hub-primary);
 }
+
 .agent-hub-settings-panel__key-preview {
   flex: 0 1 auto;
   min-width: 0;
   overflow-wrap: anywhere;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
+
 .agent-hub-settings-panel__key-state {
   flex: 0 0 auto;
   color: var(--hub-caption);
   font-size: 12px;
 }
+
 .agent-hub-settings-panel__key-actions {
   display: flex;
   flex: 0 0 auto;
   gap: 8px;
   margin-left: auto;
 }
+
 .agent-hub-settings-panel footer {
   display: flex;
   align-items: center;
@@ -834,6 +1452,7 @@
   margin-top: 18px;
   color: var(--hub-caption);
 }
+
 .agent-hub-settings-panel footer button {
   border-radius: var(--hub-radius-sm);
   border-color: var(--hub-primary);
@@ -841,6 +1460,7 @@
   color: var(--hub-on-primary);
   font-weight: 500;
 }
+
 .agent-hub .agent-hub-settings-panel__credential-add button:hover:not(:disabled),
 .agent-hub .agent-hub-settings-panel footer button:hover:not(:disabled) {
   background: var(--hub-primary);

@@ -1,4 +1,5 @@
 import {
+  ALL_TYPES,
   POWER_PAGE_SIZE,
   POWER_TYPES,
   comparePowerVersions,
@@ -223,11 +224,13 @@ export function buildPowersResult(
   search = ''
 ): ListPowersResult {
   const tagsFacet = sortedUnique(
-    records.filter((record) => record.type === query.type).flatMap((record) => record.tags)
+    records
+      .filter((record) => query.type === ALL_TYPES || record.type === query.type)
+      .flatMap((record) => record.tags)
   )
 
   const filtered = records.filter((record) => {
-    if (record.type !== query.type) return false
+    if (query.type !== ALL_TYPES && record.type !== query.type) return false
     if (query.tags.length === 0) return true
     // Intersection: selecting more tags narrows the list, so a version only
     // matches when it carries every selected tag.

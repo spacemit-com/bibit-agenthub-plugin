@@ -1,20 +1,23 @@
 import type { SVGProps } from 'react'
 
-export function ChevronDownIcon(props: SVGProps<SVGSVGElement>) {
+export function ChevronsUpDownIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg
-      width="12"
-      height="12"
-      viewBox="0 0 12 12"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.5"
+      strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
       {...props}
     >
-      <path d="m3 4.5 3 3 3-3" />
+      <path d="m7 15 5 5 5-5" />
+      <path d="m7 9 5-5 5 5" />
     </svg>
   )
 }
+
+export const ChevronDownIcon = ChevronsUpDownIcon

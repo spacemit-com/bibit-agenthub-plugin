@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { AgentSwitcher } from './AgentSwitcher'
 import { ChevronDownIcon } from './ChevronDownIcon'
 import { useAgentHubI18n } from '../agentHubI18n'
-import { powerTypesForAgent, type PowerScope, type PowerType } from '../api/contracts'
+import { ALL_TYPES, powerTypesForAgent, type PowerScope, type PowerType, type PowerTypeFilter } from '../api/contracts'
 
 /**
  * The page's first-level tab. `PowerScope` stays the wire-level data scope, so
@@ -13,19 +13,20 @@ export type PowerTab = PowerScope | 'settings'
 
 export interface PowerFiltersProps {
   tab: PowerTab
-  agents: readonly string[]
+  agents?: readonly string[]
   agent: string
-  type: PowerType
+  type: PowerTypeFilter
   availableTags: readonly string[]
   selectedTags: readonly string[]
   /** A bulk upgrade is running: the tabs and the Agent control are frozen. */
   upgrading?: boolean
   onTabChange(tab: PowerTab): void
-  onAgentChange(agent: string): void
-  onTypeChange(type: PowerType): void
+  onAgentChange?(agent: string): void
+  onTypeChange(type: PowerTypeFilter): void
   onTagsChange(tags: string[]): void
   onUpgrade?(): void
   search?: ReactNode
+  actions?: ReactNode
 }
 
 export function PowerFilters({
@@ -42,6 +43,7 @@ export function PowerFilters({
   onTagsChange,
   onUpgrade,
   search,
+  actions,
 }: PowerFiltersProps) {
   const t = useAgentHubI18n()
   const [typeOpen, setTypeOpen] = useState(false)
@@ -76,6 +78,8 @@ export function PowerFilters({
     document.addEventListener('pointerdown', dismissOutside)
     return () => document.removeEventListener('pointerdown', dismissOutside)
   }, [tagsOpen])
+
+  const typeOptions: PowerTypeFilter[] = [ALL_TYPES, ...powerTypesForAgent(agent)]
 
   return (
     <div className="power-filters">
@@ -130,7 +134,10 @@ export function PowerFilters({
               {t('Update all')}
             </button>
           )}
-          <AgentSwitcher agents={agents} agent={agent} onAgentChange={onAgentChange} />
+          {agents && onAgentChange && (
+            <AgentSwitcher agents={agents} agent={agent} onAgentChange={onAgentChange} />
+          )}
+          {actions}
         </div>
       </div>
       {/* Type and tag filters describe the catalog only; the Settings tab has
@@ -187,14 +194,14 @@ export function PowerFilters({
                   setTypeOpen((open) => !open)
                 }}
               >
-                <span>{type}</span>
+                <span>{type === ALL_TYPES ? t('All') : type}</span>
                 <span className="power-filters__chevron" aria-hidden="true">
                   <ChevronDownIcon />
                 </span>
               </button>
               {typeOpen && (
                 <div id={typeMenuId} className="power-filters__type-menu" role="menu" aria-label={t('Type')}>
-                  {powerTypesForAgent(agent).map((value) => (
+                  {typeOptions.map((value) => (
                     <button
                       key={value}
                       type="button"
@@ -207,7 +214,7 @@ export function PowerFilters({
                       }}
                     >
                       {value === type && <span aria-hidden="true">✓</span>}
-                      {value}
+                      {value === ALL_TYPES ? t('All') : value}
                     </button>
                   ))}
                 </div>
@@ -218,12 +225,14 @@ export function PowerFilters({
                 value={type}
                 tabIndex={-1}
                 onChange={(event) => {
-                  const next = event.target.value as PowerType
+                  const next = event.target.value as PowerTypeFilter
                   if (next !== type) onTypeChange(next)
                 }}
               >
-                {powerTypesForAgent(agent).map((value) => (
-                  <option key={value} value={value}>{value}</option>
+                {typeOptions.map((value) => (
+                  <option key={value} value={value}>
+                    {value === ALL_TYPES ? t('All') : value}
+                  </option>
                 ))}
               </select>
             </div>

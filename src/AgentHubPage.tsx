@@ -7,6 +7,7 @@ import {
   type FeatureServiceRequestV1,
 } from '@bibit/feature-sdk'
 import {
+  ALL_TYPES,
   INSTALLED_AGENTS,
   POWER_PAGE_SIZE,
   comparePowerVersions,
@@ -14,6 +15,7 @@ import {
   type ListPowersInput,
   type PowerScope,
   type PowerType,
+  type PowerTypeFilter,
   type ReadyListPowersResult,
   type PowerSeries,
 } from './api/contracts'
@@ -206,6 +208,7 @@ export function AgentHubPage(_: FeaturePageProps) {
   const actions = useFeatureCapability('host:actions')
   const actionsRef = useRef(actions)
   actionsRef.current = actions
+  const [showCreateUnavailable, setShowCreateUnavailable] = useState(false)
   const [composing, setComposing] = useState(false)
   const [composeNotice, setComposeNotice] = useState<ComposeNotice | undefined>(undefined)
   // A compose result that lands after unmount (the host navigates away on
@@ -240,7 +243,7 @@ export function AgentHubPage(_: FeaturePageProps) {
   // and no catalog request is issued for a panel that shows no Powers.
   const [tab, setTab] = useState<PowerTab>('installed')
   const [agent, setAgent] = useState('bibit')
-  const [type, setType] = useState<PowerType>('skill')
+  const [type, setType] = useState<PowerTypeFilter>(ALL_TYPES)
   const [tags, setTags] = useState<string[]>([])
   const [availableTags, setAvailableTags] = useState<string[]>([])
   const [search, setSearch] = useState('')
@@ -471,7 +474,7 @@ export function AgentHubPage(_: FeaturePageProps) {
     // to the first type the new Agent does take, with the reset an explicit type
     // change would get.
     const supported = powerTypesForAgent(next)
-    const typeFellAway = !supported.includes(type)
+    const typeFellAway = type !== ALL_TYPES && !supported.includes(type)
     if (typeFellAway) setType(supported[0])
     // Only the installed list is read per Agent, so only there does the Agent
     // alone reset the query; on the market the choice just moves the install
@@ -482,7 +485,7 @@ export function AgentHubPage(_: FeaturePageProps) {
     setPage(1)
     setSnapshot(undefined)
   }
-  const changeType = (next: PowerType) => {
+  const changeType = (next: PowerTypeFilter) => {
     resetPageScroll()
     setType(next)
     setAvailableTags([])
@@ -815,45 +818,6 @@ export function AgentHubPage(_: FeaturePageProps) {
   return (
     <main className="agent-hub" ref={pageScrollRef}>
       <ScrollThumb targetRef={pageScrollRef} />
-      <header>
-        <div><h1>{t('Capabilities')}</h1></div>
-        <div className="agent-hub__create">
-          {/* The two header actions share one row, refresh on the left. The refresh
-              entry is a catalog action: the Settings tab reads its own settings
-              document and shows no list, so the button is not rendered there. */}
-          <div className="agent-hub__actions">
-            {tab !== 'settings' && (
-              <button
-                type="button"
-                className="agent-hub__refresh"
-                aria-label={t('Refresh')}
-                title={t('Refresh')}
-                // Disabled rather than ignoring the click: bumping `retry` aborts the
-                // request in flight and re-issues it, which is exactly the spurious
-                // cancellation the window-focus refresh above avoids.
-                disabled={view.status === 'loading'}
-                onClick={retryLoad}
-              >
-                <span aria-hidden="true">↻</span>
-              </button>
-            )}
-            <button
-              type="button"
-              className="agent-hub__create-button"
-              disabled={!actions || composing}
-              aria-describedby={actions ? undefined : 'agent-hub-create-unavailable'}
-              onClick={createResource}
-            >
-              {t('Create')}
-            </button>
-          </div>
-          {!actions && (
-            <p id="agent-hub-create-unavailable" className="agent-hub__create-note">
-              {t(ACTIONS_UNAVAILABLE_TEXT)}
-            </p>
-          )}
-        </div>
-      </header>
       {composeNotice && (
         <div role="alert" className="agent-hub__error">
           <span>{noticeText(composeNotice)}</span>
@@ -882,6 +846,55 @@ export function AgentHubPage(_: FeaturePageProps) {
         // The entry is offered on the installed list only: it is the page that
         // shows what is installed, and a bulk upgrade is about those resources.
         onUpgrade={tab === 'installed' ? () => setUpgradePhase({ status: 'confirm' }) : undefined}
+        actions={
+          <div className="agent-hub__actions">
+            {tab !== 'settings' && (
+              <button
+                type="button"
+                className="agent-hub__refresh"
+                aria-label={t('Refresh')}
+                title={t('Refresh')}
+                // Disabled rather than ignoring the click: bumping `retry` aborts the
+                // request in flight and re-issues it, which is exactly the spurious
+                // cancellation the window-focus refresh above avoids.
+                disabled={view.status === 'loading'}
+                onClick={retryLoad}
+              >
+                <span aria-hidden="true">↻</span>
+              </button>
+            )}
+            <span
+              className="agent-hub__create-trigger"
+              tabIndex={actions ? undefined : 0}
+              aria-describedby={actions ? undefined : 'agent-hub-create-unavailable'}
+              onMouseEnter={() => setShowCreateUnavailable(!actions)}
+              onMouseLeave={() => setShowCreateUnavailable(false)}
+              onFocus={() => setShowCreateUnavailable(!actions)}
+              onBlur={() => setShowCreateUnavailable(false)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') setShowCreateUnavailable(false)
+              }}
+            >
+              <button
+                type="button"
+                className="agent-hub__create-button"
+                disabled={!actions || composing}
+                onClick={createResource}
+              >
+                {t('Create')}
+              </button>
+              {!actions && showCreateUnavailable && (
+                <span
+                  id="agent-hub-create-unavailable"
+                  role="tooltip"
+                  className="agent-hub__create-tooltip"
+                >
+                  {t(ACTIONS_UNAVAILABLE_TEXT)}
+                </span>
+              )}
+            </span>
+          </div>
+        }
       />
       {upgradePhase && (
         <UpgradeDialog
@@ -930,8 +943,12 @@ export function AgentHubPage(_: FeaturePageProps) {
                       : tags.length > 0
                       ? t('No powers match these tags.')
                       : scope === 'installed'
-                        ? t('No {type} powers are installed for {agent}.', { type, agent })
-                        : t('No {type} powers in the catalog.', { type })}
+                        ? (type === ALL_TYPES
+                            ? t('No powers are installed for {agent}.', { agent })
+                            : t('No {type} powers are installed for {agent}.', { type, agent }))
+                        : (type === ALL_TYPES
+                            ? t('No powers in the catalog.')
+                            : t('No {type} powers in the catalog.', { type }))}
                   </p>
                   {search.trim() && (
                     <button type="button" onClick={() => changeSearch('')}>

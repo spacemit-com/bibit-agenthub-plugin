@@ -300,15 +300,14 @@ describe('AgentHubPage', () => {
     await screen.findByRole('heading', { name: 'code-review' })
 
     expect(document.querySelector('.agent-hub__grid')).toBeTruthy()
-    expect(document.querySelector('.power-pagination')).toBeTruthy()
+    expect(screen.queryByRole('navigation', { name: 'Power pages' })).toBeNull()
     // The installed view reads the APM manifest and scans for hand-installed
     // resources; only the manifest read carries the list wire envelope.
     const listCalls = calls.filter((call) => call.operationId === 'powers.list.v1')
     expect(listCalls).toHaveLength(1)
     expect(wireParamsOf(listCalls[0])).toEqual({ scope: 'installed', agent: 'bibit' })
     expect(calls.filter((call) => call.operationId === 'powers.custom.list.v1')).toHaveLength(1)
-    expect(pageNumber()).toBe('1')
-    expect(screen.getByText('of 1')).toBeTruthy()
+    expect(screen.queryByRole('spinbutton', { name: 'Page number' })).toBeNull()
   })
 
   it('shows the capability-unavailable error and recovers when Retry re-reads the capability', async () => {
@@ -351,7 +350,7 @@ describe('AgentHubPage', () => {
 
     resolvers[0](installedData('[]'))
 
-    expect(await screen.findByText('No skill powers are installed for bibit.')).toBeTruthy()
+    expect(await screen.findByText('No powers are installed for bibit.')).toBeTruthy()
   })
 
   it('names the tag filter when a tag selection empties the list', async () => {
@@ -611,7 +610,7 @@ describe('AgentHubPage', () => {
       throw new Error('unexpected op ' + input.operationId)
     })
     renderPage(hostApi)
-    await screen.findByText('No skill powers are installed for bibit.')
+    await screen.findByText('No powers are installed for bibit.')
 
     // Choosing an Agent no longer requires opening a dialog: the tab-row control
     // owns it, and the market install must follow the same choice.
@@ -660,7 +659,7 @@ describe('AgentHubPage', () => {
       throw new Error('unexpected op ' + input.operationId)
     })
     renderPage(hostApi)
-    await screen.findByText('No skill powers are installed for bibit.')
+    await screen.findByText('No powers are installed for bibit.')
 
     await user.click(screen.getByRole('button', { name: 'Capability Market' }))
     await screen.findByRole('heading', { name: 'market-translate' })
@@ -750,7 +749,7 @@ describe('AgentHubPage', () => {
       return installedData(installedReads === 1 ? '[]' : installedManifest)
     })
     renderPage(hostApi)
-    await screen.findByText('No skill powers are installed for bibit.')
+    await screen.findByText('No powers are installed for bibit.')
     expect(screen.queryByText('Installed')).toBeNull()
 
     await user.click(screen.getByRole('button', { name: 'Capability Market' }))
@@ -871,7 +870,7 @@ describe('AgentHubPage', () => {
     await user.selectOptions(screen.getByRole('combobox', { name: 'Type' }), 'plugin')
     await screen.findByRole('heading', { name: 'scan-guard' })
 
-    expect(pageNumber()).toBe('1')
+    expect(screen.queryByRole('navigation', { name: 'Power pages' })).toBeNull()
     expect((screen.getByRole('combobox', { name: 'Type' }) as HTMLSelectElement).value).toBe('plugin')
   })
 
@@ -930,21 +929,23 @@ describe('AgentHubPage', () => {
     renderPage(hostApi)
     await screen.findByRole('heading', { name: 'skill-00' })
     expect(screen.queryByRole('heading', { name: 'skill-24' })).toBeNull()
+    expect(screen.getByRole('navigation', { name: 'Power pages' })).toBeTruthy()
     const search = screen.getByRole('searchbox', { name: 'Search capabilities' })
 
     await user.type(search, 'skill-24')
     expect(await screen.findByRole('heading', { name: 'skill-24' })).toBeTruthy()
     expect(screen.getAllByRole('article')).toHaveLength(1)
-    expect(pageNumber()).toBe('1')
+    expect(screen.queryByRole('navigation', { name: 'Power pages' })).toBeNull()
 
     await user.clear(search)
     await screen.findByRole('heading', { name: 'skill-00' })
+    expect(screen.getByRole('navigation', { name: 'Power pages' })).toBeTruthy()
     await user.click(screen.getByRole('button', { name: 'Next page' }))
     await screen.findByRole('heading', { name: 'skill-20' })
     expect(pageNumber()).toBe('2')
     await user.type(search, 'skill-24')
     expect(await screen.findByRole('heading', { name: 'skill-24' })).toBeTruthy()
-    expect(pageNumber()).toBe('1')
+    expect(screen.queryByRole('navigation', { name: 'Power pages' })).toBeNull()
     expect(screen.getAllByRole('article')).toHaveLength(1)
   })
 
@@ -1010,12 +1011,12 @@ describe('AgentHubPage', () => {
     renderPage(hostApi)
     await screen.findByRole('heading', { name: 'code-review' })
 
-    const header = document.querySelector('.agent-hub header') as HTMLElement
-    const refresh = within(header).getByRole('button', { name: 'Refresh' })
+    const refresh = screen.getByRole('button', { name: 'Refresh' })
     // Symbol copy, not a label: the visible content stays an icon.
     expect(refresh.textContent).toBe('↻')
-    // Refresh sits to the left of the create entry, in the same header row.
-    expect(within(header).getAllByRole('button').map((button) => button.textContent)).toEqual([
+    // Refresh sits to the left of the create entry, in the action row.
+    const actionRow = document.querySelector('.agent-hub__actions') as HTMLElement
+    expect(within(actionRow).getAllByRole('button').map((button) => button.textContent)).toEqual([
       '↻',
       'Create',
     ])
@@ -1030,7 +1031,7 @@ describe('AgentHubPage', () => {
     await waitFor(() => expect(listCalls()).toHaveLength(2))
     expect(wireParamsOf(listCalls()[1])).toEqual(wireParamsOf(listCalls()[0]))
     await screen.findByRole('heading', { name: 'code-review' })
-    expect(pageNumber()).toBe('1')
+    expect(screen.queryByRole('navigation', { name: 'Power pages' })).toBeNull()
   })
 
   it('hides the header refresh entry on the Settings tab', async () => {
@@ -1183,27 +1184,24 @@ describe('AgentHubPage', () => {
 
   it('switches every page surface with the host language prop', async () => {
     const { hostApi } = makeStoreHost((input) =>
-      installedData(wireParamsOf(input).scope === 'installed' ? codeReviewList : '[]')
+      installedData(wireParamsOf(input).scope === 'installed' ? installedPage(25) : '[]')
     )
     const view = renderLocalizedPage(hostApi, 'en')
 
-    await screen.findByRole('heading', { name: 'code-review' })
-    // The page title is the only header copy: the old INTERNAL CATALOG eyebrow is gone.
-    expect(screen.getByRole('heading', { name: 'Capabilities' })).toBeTruthy()
+    await screen.findByRole('heading', { name: 'skill-00' })
     expect(screen.queryByText('INTERNAL CATALOG')).toBeNull()
     expect(screen.getByRole('button', { name: 'My Capabilities' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Capability Market' })).toBeTruthy()
     expect(screen.getByRole('spinbutton', { name: 'Page number' })).toBeTruthy()
-    expect(screen.getByText('of 1')).toBeTruthy()
+    expect(screen.getByText('of 2')).toBeTruthy()
 
     rerenderLocalizedPage(view, hostApi, 'zh-CN')
 
-    expect(screen.getByRole('heading', { name: '能力中心' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '我的能力' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '能力市场' })).toBeTruthy()
     expect(screen.getByRole('spinbutton', { name: '页码' })).toBeTruthy()
-    expect(screen.getByText('/ 1 页')).toBeTruthy()
-    expect(screen.queryByRole('heading', { name: 'Capabilities' })).toBeNull()
+    expect(screen.getByText('/ 2 页')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'My Capabilities' })).toBeNull()
   })
 
   it('renders the localized display name of an installed Power', async () => {
@@ -1227,7 +1225,7 @@ describe('AgentHubPage', () => {
       wireParamsOf(input).scope === 'market' ? translatedCatalog : installedData('[]')
     )
     renderLocalizedPage(hostApi, 'zh-CN')
-    await screen.findByText('bibit 没有安装 skill 类型的能力。')
+    await screen.findByText('bibit 没有安装能力。')
 
     await user.click(screen.getByRole('button', { name: '能力市场' }))
 
@@ -1333,7 +1331,7 @@ describe('AgentHubPage', () => {
       )
     })
     renderPage(hostApi)
-    await screen.findByText('No skill powers are installed for bibit.')
+    await screen.findByText('No powers are installed for bibit.')
 
     await user.hover(screen.getByRole('button', { name: 'Agent: bibit' }))
 
@@ -1564,7 +1562,7 @@ describe('AgentHubPage', () => {
         throw new Error('unexpected op ' + input.operationId)
       })
       renderPage(hostApi)
-      await screen.findByText('No skill powers are installed for bibit.')
+      await screen.findByText('No powers are installed for bibit.')
       await user.click(screen.getByRole('button', { name: 'Capability Market' }))
       const add = await screen.findByRole('button', { name: 'Add capability' })
       await user.click(add)
@@ -1652,7 +1650,7 @@ describe('AgentHubPage', () => {
       // The Power is gone, so the dialog must not stay open on it: the page returns
       // to the refreshed list instead.
       await waitFor(() => expect(document.querySelector('dialog')).toBeNull())
-      expect(await screen.findByText('No skill powers are installed for bibit.')).toBeTruthy()
+      expect(await screen.findByText('No powers are installed for bibit.')).toBeTruthy()
     })
 
     it('keeps the dialog with its reason when an uninstall fails', async () => {
@@ -1676,7 +1674,7 @@ describe('AgentHubPage', () => {
 
       expect(await dialog.findByText('The command failed; version v1.0.0 is still installed.')).toBeTruthy()
       expect(document.querySelector('dialog')).toBeTruthy()
-      expect(screen.queryByText('No skill powers are installed for bibit.')).toBeNull()
+      expect(screen.queryByText('No powers are installed for bibit.')).toBeNull()
     })
 
     it('does not uninstall when the confirmation is cancelled', async () => {
@@ -1916,7 +1914,7 @@ describe('AgentHubPage custom resources', () => {
     })
     // The write refreshes the list, so the uploaded resource disappears from the
     // scan and the page falls back to the empty copy.
-    expect(await screen.findByText('No skill powers are installed for bibit.')).toBeTruthy()
+    expect(await screen.findByText('No powers are installed for bibit.')).toBeTruthy()
   })
 
   it('surfaces a missing APC key as a settings hint instead of a raw provider error', async () => {
@@ -2010,7 +2008,7 @@ describe('AgentHubPage custom resources', () => {
     expect(deleteCall?.params).toEqual({ agent: 'bibit', type: 'skill', name: 'hand-written' })
     // The resource is gone, so its dialog must not stay open on a Power that no
     // longer exists: the page returns to the list, which has already refreshed.
-    expect(await screen.findByText('No skill powers are installed for bibit.')).toBeTruthy()
+    expect(await screen.findByText('No powers are installed for bibit.')).toBeTruthy()
     await waitFor(() => expect(document.querySelector('dialog')).toBeNull())
     expect(screen.queryByText('Deleted skill "hand-written".')).toBeNull()
   })
@@ -2157,7 +2155,7 @@ describe('create-resource entry (host:actions)', () => {
     expect((calls[0].input as { prompt: string }).prompt).toContain('using-apm')
   })
 
-  it('keeps the entry disabled without the capability and sends nothing', async () => {
+  it('keeps the entry disabled and explains why on hover or focus without the capability', async () => {
     const user = userEvent.setup()
     // The host reports no `host:actions` at all: missing grant, older host, or a
     // build without the action registry. That is a supported state, not a bug.
@@ -2166,7 +2164,18 @@ describe('create-resource entry (host:actions)', () => {
     await screen.findByRole('heading', { name: 'code-review' })
 
     expect((createButton() as HTMLButtonElement).disabled).toBe(true)
-    expect(screen.getByText(ACTIONS_UNAVAILABLE_TEXT)).toBeTruthy()
+    expect(screen.queryByText(ACTIONS_UNAVAILABLE_TEXT)).toBeNull()
+    const trigger = createButton().parentElement!
+    await user.hover(trigger)
+    expect(screen.getByRole('tooltip').textContent).toBe(ACTIONS_UNAVAILABLE_TEXT)
+    await user.unhover(trigger)
+    expect(screen.queryByRole('tooltip')).toBeNull()
+
+    act(() => trigger.focus())
+    expect(screen.getByRole('tooltip').textContent).toBe(ACTIONS_UNAVAILABLE_TEXT)
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('tooltip')).toBeNull()
+    act(() => trigger.blur())
 
     await user.click(createButton())
     await user.click(createButton())
@@ -2266,7 +2275,7 @@ describe('bulk upgrade (Update all)', () => {
 
   const upgradeButton = () => screen.getByRole('button', { name: 'Update all' })
 
-  it('offers the entry on the installed list beside the Agent control', async () => {
+  it('offers the upgrade entry on the installed list beside the Agent control', async () => {
     const { hostApi } = makeStoreHost()
     renderPage(hostApi)
     await screen.findByRole('heading', { name: 'code-review' })
@@ -2275,8 +2284,7 @@ describe('bulk upgrade (Update all)', () => {
     const button = upgradeButton()
     const switcher = screen.getByRole('button', { name: 'Agent: bibit' })
     expect(actions?.contains(button)).toBe(true)
-    // Immediately left of the Agent control: the pair is the right-hand group.
-    expect(button.compareDocumentPosition(switcher) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(actions?.contains(switcher)).toBe(true)
   })
 
   it('keeps the entry off the market and settings tabs', async () => {

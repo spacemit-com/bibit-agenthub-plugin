@@ -36,13 +36,16 @@ export type AgentHubTranslate = (
  */
 const zh: Readonly<Record<string, string>> = {
   // ---- page header ----
-  'Capabilities': '能力中心',
   'Loading Powers…': '正在加载 Power…',
   'Retry': '重试',
   'Refresh': '刷新',
   'Available Powers': '可用的 Power',
   'No powers match these tags.': '没有匹配这些标签的能力。',
   'Clear tags': '清除标签',
+  'All': '全部',
+  'all': '全部',
+  'No powers are installed for {agent}.': '{agent} 没有安装能力。',
+  'No powers in the catalog.': '能力市场中暂无能力。',
   'No {type} powers are installed for {agent}.': '{agent} 没有安装 {type} 类型的能力。',
   'No {type} powers in the catalog.': '目录里没有 {type} 类型的能力。',
   'Store capability is not available.': 'Store 能力不可用。',

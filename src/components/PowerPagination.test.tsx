@@ -7,6 +7,24 @@ import { AgentHubI18nProvider } from '../agentHubI18n'
 afterEach(cleanup)
 
 describe('PowerPagination', () => {
+  it('only renders navigation when there is a second page', () => {
+    const onPageChange = vi.fn()
+    const view = render(
+      <PowerPagination page={1} totalPages={1} canGoNext={false} onPageChange={onPageChange} />
+    )
+    expect(screen.queryByRole('navigation', { name: 'Power pages' })).toBeNull()
+
+    view.rerender(
+      <PowerPagination page={1} totalPages={2} canGoNext onPageChange={onPageChange} />
+    )
+    expect(screen.getByRole('navigation', { name: 'Power pages' })).toBeTruthy()
+
+    view.rerender(
+      <PowerPagination page={1} totalPages={1} canGoNext={false} onPageChange={onPageChange} />
+    )
+    expect(screen.queryByRole('navigation', { name: 'Power pages' })).toBeNull()
+  })
+
   it('switches the page copy with the host language prop', () => {
     const onPageChange = vi.fn()
     const pagination = (language: string) => (
