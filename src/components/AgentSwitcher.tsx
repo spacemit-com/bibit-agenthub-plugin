@@ -1,4 +1,5 @@
 import { useRef, useState, type FocusEvent, type KeyboardEvent } from 'react'
+import { ChevronDownIcon } from './ChevronDownIcon'
 import { useAgentHubI18n } from '../agentHubI18n'
 
 export interface AgentSwitcherProps {
@@ -100,7 +101,10 @@ export function AgentSwitcher({ agents, agent, onAgentChange }: AgentSwitcherPro
         aria-label={t('Agent: {agent}', { agent })}
         onClick={() => openMenu()}
       >
-        {agent} <span aria-hidden="true">⌄</span>
+        <span>{agent}</span>
+        <span className="power-filters__chevron" aria-hidden="true">
+          <ChevronDownIcon />
+        </span>
       </button>
       {open && agents.length > 0 && (
         <div className="power-filters__agent-menu" role="menu" aria-label={t('Agent')}>

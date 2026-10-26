@@ -27,6 +27,13 @@
   --hub-on-primary: var(--primary-foreground, light-dark(#000000, #000000));
   --hub-status-bg: var(--muted, light-dark(#f5f5f5, #303030));
   --hub-status-text: var(--muted-foreground, light-dark(#5f5f5f, #a3a3a3));
+  --hub-radius: var(--radius, 10px);
+  --hub-radius-sm: calc(var(--hub-radius) - 2px);
+  --hub-radius-xs: calc(var(--hub-radius) - 4px);
+  --hub-card-shadow: light-dark(0 1px 3px 0 rgb(0 0 0 / 0.05), 0 1px 3px 0 rgb(0 0 0 / 0.25));
+  --hub-card-shadow-hover: light-dark(0 4px 12px 0 rgb(0 0 0 / 0.08), 0 4px 12px 0 rgb(0 0 0 / 0.35));
+  --hub-menu-shadow: light-dark(0 4px 12px 0 rgb(0 0 0 / 0.1), 0 4px 12px 0 rgb(0 0 0 / 0.4));
+  --hub-dialog-shadow: light-dark(0 10px 25px -5px rgb(0 0 0 / 0.12), 0 10px 25px -5px rgb(0 0 0 / 0.5));
   --hub-error-bg: light-dark(#fff1f0, #391917);
   --hub-error-text: light-dark(#9d2d26, #f6c2bd);
   --hub-install-line: light-dark(#22c55e, #25984d);
@@ -144,6 +151,7 @@
 }
 .agent-hub h1 {
   margin: 0;
+  font-family: var(--font-studio, inherit);
   font-size: 20px;
   font-weight: 500;
   letter-spacing: normal;
@@ -182,15 +190,26 @@
    from the content width there rather than from the row height. The glyph is the
    visible content; `aria-label` carries the meaning for assistive tech. */
 .agent-hub .agent-hub__actions > button { min-height: var(--hub-action-height); }
-.agent-hub .agent-hub__create-button { min-width: 96px; }
+.agent-hub .agent-hub__create-button {
+  min-width: 96px;
+  background: var(--hub-primary);
+  color: var(--hub-on-primary);
+  border-color: var(--hub-primary);
+  font-weight: 500;
+}
+.agent-hub .agent-hub__create-button:hover:not(:disabled) {
+  background: var(--hub-primary);
+  opacity: .9;
+}
 .agent-hub .agent-hub__refresh {
   display: grid;
   width: var(--hub-action-height);
   height: var(--hub-action-height);
   place-items: center;
   padding: 0;
-  font-size: 20px;
+  font-size: 18px;
   line-height: 1;
+  border-radius: var(--hub-radius-sm);
 }
 .agent-hub .agent-hub__refresh:hover:not(:disabled) { background: var(--hub-control-hover); }
 .agent-hub .agent-hub__refresh:disabled { cursor: not-allowed; opacity: .42; }
@@ -198,33 +217,37 @@
 /* Base button surface: :where() zeroes the specificity of the :not() exclusion,
    so the scope-tab reset (border: 0) and every power-filters button override win. */
 .agent-hub button:where(:not(.power-filters__scope)) {
-  padding: 9px 14px;
+  padding: 8px 14px;
   border: 1px solid var(--hub-control-line);
-  border-radius: 999px;
+  border-radius: var(--hub-radius-sm);
   background: var(--hub-control-bg);
   color: var(--hub-text);
   font: inherit;
   font-weight: 500;
   cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease;
 }
 .agent-hub button:where(:not(.power-filters__scope):not(.power-card__open):not([aria-pressed='true'])):hover:not(:disabled) { background: var(--hub-control-hover); }
 
 /* ===== Scope navigation, agent control, filters, selection states ===== */
 .power-filters { margin-bottom: 24px; }
 .power-filters__scopes { display: flex; align-items: center; gap: 6px; border-bottom: 1px solid var(--hub-border); }
-.power-filters__tabs { display: flex; gap: 6px; }
+.power-filters__tabs { display: flex; gap: 18px; margin-bottom: -1px; }
 .power-filters__scope {
   border: 0;
-  border-bottom: 3px solid transparent;
+  border-bottom: 2px solid transparent;
   border-radius: 0;
   background: transparent;
   color: var(--hub-muted);
   cursor: pointer;
   font: inherit;
   font-weight: 500;
-  padding: 10px 14px;
+  font-size: 14px;
+  padding: 10px 2px;
+  transition: color 150ms ease, border-color 150ms ease;
 }
-.power-filters__scope[aria-pressed='true'] { border-bottom-color: var(--hub-scope); color: var(--hub-scope-text); }
+.power-filters__scope:hover:not(:disabled) { color: var(--hub-text); }
+.power-filters__scope[aria-pressed='true'] { border-bottom-color: var(--hub-scope); color: var(--hub-scope-text); font-weight: 500; }
 /* The tab row's right-hand group: the bulk-upgrade entry and the Agent control.
    `margin-left: auto` lives here rather than on the switcher, so the two cannot be
    pushed apart by the free space being shared between two auto margins. */
@@ -234,26 +257,33 @@
 /* The bulk-upgrade entry. It is the one control in the row that starts a long,
    machine-wide operation, so it carries the ordinary control surface and states
    its busy-ness in the label rather than only by dimming. */
-.agent-hub .power-filters__upgrade { display: inline-flex; align-items: center; gap: 7px; }
+.agent-hub .power-filters__upgrade { display: inline-flex; align-items: center; gap: 7px; height: 32px; min-height: 32px; box-sizing: border-box; padding: 0 12px; border-radius: var(--hub-radius-sm); font-size: 13px; }
 /* The scope tabs when a bulk upgrade runs: three tabs that cannot be switched to,
    because the provider is one serial process and any request issued now would
    queue behind the upgrade and then time out waiting. */
 .agent-hub .power-filters__scope:disabled { cursor: not-allowed; opacity: .42; }
-.power-filters__agent-trigger { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
-.power-filters__agent-menu {
+.agent-hub .power-filters__agent-trigger { display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; height: 32px; min-height: 32px; box-sizing: border-box; padding: 0 8px 0 10px; font-weight: 500; font-size: 13px; border-radius: var(--hub-radius-sm); line-height: 1; white-space: nowrap; }
+.power-filters__agent-menu,
+.power-filters__type-menu {
   position: absolute;
   z-index: 20;
   top: calc(100% + 8px);
-  /* Right-aligned to a trigger that already sits on the page edge: opening
-     leftwards keeps the menu inside the page instead of past it. */
+  min-width: 140px;
+  padding: 6px;
+  border: 1px solid var(--hub-border);
+  border-radius: var(--hub-radius);
+  background: var(--hub-surface);
+  box-shadow: var(--hub-menu-shadow);
+}
+.power-filters__agent-menu {
   right: 0;
   min-width: 180px;
-  padding: 7px;
-  border: 1px solid var(--hub-border);
-  border-radius: 8px;
-  background: var(--hub-surface);
 }
-.power-filters__agent-menu::before {
+.power-filters__type-menu {
+  left: 0;
+}
+.power-filters__agent-menu::before,
+.power-filters__type-menu::before {
   content: '';
   position: absolute;
   top: -8px;
@@ -261,21 +291,105 @@
   right: 0;
   height: 8px;
 }
-.power-filters__agent-menu button { display: flex; width: 100%; gap: 8px; border-color: transparent; }
-.power-filters__agent-menu button[aria-checked='true'] { border-color: var(--hub-option-line); background: var(--hub-option-bg); }
-.power-filters__panel { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
-.power-filters__type-field { display: flex; align-items: center; gap: 6px; flex-shrink: 0; color: var(--hub-muted); }
-.power-filters__type-select { min-height: 32px; border: 1px solid var(--hub-control-line); border-radius: 999px; padding: 4px 10px; background: var(--hub-control-bg); color: var(--hub-text); font: inherit; text-transform: capitalize; }
-.power-filters__tag-dropdown { position: relative; min-width: 0; max-width: 40%; }
-.agent-hub .power-filters__tag-trigger { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 32px; padding: 4px 10px; }
-.power-filters__tag-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.power-filters__tag-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; min-width: 180px; max-width: min(320px, 80vw); max-height: 280px; overflow-y: auto; padding: 6px; border: 1px solid var(--hub-border); border-radius: 8px; background: var(--hub-surface); }
-.power-filters__tag-menu label { display: flex; align-items: center; gap: 8px; padding: 6px 8px; overflow-wrap: anywhere; cursor: pointer; }
+.power-filters__agent-menu button,
+.power-filters__type-menu button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: var(--hub-radius-xs);
+  border-color: transparent;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-transform: capitalize;
+}
+.power-filters__agent-menu button[aria-checked='true'],
+.power-filters__type-menu button[aria-checked='true'] {
+  border-color: var(--hub-option-line);
+  background: var(--hub-option-bg);
+}
+.power-filters__panel { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+.power-filters__type-field,
+.power-filters__tag-field { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; color: var(--hub-muted); font-size: 13px; line-height: 1; white-space: nowrap; }
+.power-filters__type-field > span,
+.power-filters__tag-field > span { flex-shrink: 0; white-space: nowrap; }
+.power-filters__chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--hub-muted);
+  pointer-events: none;
+}
+.power-filters__chevron svg {
+  display: block;
+  width: 12px;
+  height: 12px;
+}
+.power-filters__select-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.agent-hub .power-filters__type-trigger,
+.agent-hub .power-filters__tag-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 76px;
+  height: 32px;
+  min-height: 32px;
+  box-sizing: border-box;
+  padding: 0 8px 0 10px;
+  border-radius: var(--hub-radius-sm);
+  font-size: 13px;
+  line-height: 1;
+  white-space: nowrap;
+}
+.agent-hub .power-filters__type-trigger {
+  text-transform: capitalize;
+}
+.power-filters__type-select {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.power-filters__tag-dropdown { position: relative; min-width: 0; flex-shrink: 0; }
+.power-filters__tag-value { min-width: 0; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.power-filters__tag-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; min-width: 180px; max-width: min(320px, 80vw); max-height: 280px; overflow-y: auto; padding: 6px; border: 1px solid var(--hub-border); border-radius: var(--hub-radius); background: var(--hub-surface); box-shadow: var(--hub-menu-shadow); }
+.power-filters__tag-menu label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border-radius: var(--hub-radius-xs);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.4;
+  user-select: none;
+}
 .power-filters__tag-menu label:hover { background: var(--hub-control-hover); }
-.power-filters__tag-menu input { accent-color: var(--hub-primary); }
-.agent-hub .power-filters__tag-menu button { width: 100%; margin-top: 4px; padding: 4px 8px; }
+.power-filters__tag-menu label span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.power-filters__tag-menu input[type="checkbox"] { margin: 0; flex-shrink: 0; width: 14px; height: 14px; accent-color: var(--hub-primary); cursor: pointer; }
+.agent-hub .power-filters__tag-menu button { width: 100%; margin-top: 4px; padding: 5px 8px; border-radius: var(--hub-radius-xs); font-size: 12px; }
 .power-filters__search { min-width: 0; flex: 1; max-width: 256px; margin-left: auto; }
-.power-filters__search input { width: 100%; min-width: 0; min-height: 36px; padding: 6px 12px; border: 1px solid var(--hub-control-line); border-radius: 8px; background: var(--hub-control-bg); color: var(--hub-text); font: inherit; }
+.power-filters__search input { width: 100%; min-width: 0; height: 32px; min-height: 32px; box-sizing: border-box; padding: 0 12px; border: 1px solid var(--hub-control-line); border-radius: var(--hub-radius-sm); background: var(--hub-control-bg); color: var(--hub-text); font: inherit; font-size: 13px; line-height: 30px; }
 
 /* ===== Visible shared focus ring =====
    One ring for every keyboard-reachable control, the clickable card included: the card
@@ -318,13 +432,17 @@
   grid-template-rows: auto auto auto auto;
   align-content: start;
   min-width: 0;
-  padding: 18px;
+  padding: 16px 18px;
   border: 1px solid var(--hub-border);
-  border-radius: 8px;
+  border-radius: var(--hub-radius);
   background: var(--hub-surface);
-  transition: border-color 160ms ease;
+  box-shadow: var(--hub-card-shadow);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
 }
-.power-card:hover { border-color: var(--hub-control-line); }
+.power-card:hover {
+  border-color: var(--hub-control-line);
+  box-shadow: var(--hub-card-shadow-hover);
+}
 .power-card__header { display: flex; min-height: 24px; align-items: center; justify-content: space-between; gap: 12px; }
 .power-card__type { margin-right: auto; color: var(--type); font-size: 11px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase; }
 /* A hand-installed resource must be recognizable at a glance: a dashed border, a
@@ -337,16 +455,23 @@
   background: var(--hub-surface);
 }
 .power-card__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  line-height: 1;
+  box-sizing: border-box;
   flex: 0 0 auto;
-  padding: 3px 8px;
+  padding: 0 7px;
   border: 1px solid var(--hub-custom-line);
-  border-radius: 999px;
+  border-radius: var(--hub-radius-xs);
   background: var(--hub-custom-badge-bg);
   color: var(--hub-custom-badge-text);
   font-size: 10px;
   font-weight: 500;
   letter-spacing: .04em;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 .power-card__badge--new {
   border-color: var(--hub-new-line);
@@ -406,9 +531,9 @@
 }
 .power-card__footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; margin-top: 14px; }
 .power-card__tags { display: flex; flex: 1; min-width: 0; flex-wrap: nowrap; align-items: center; gap: 6px; min-height: 0; overflow-x: auto; overflow-y: hidden; }
-.power-card__tag { flex: 0 0 auto; padding: 5px 9px; border-radius: 999px; background: var(--hub-version-chip); color: var(--hub-muted); font-size: 11px; font-weight: 500; }
-.power-card__tag.power-card__badge--installed { background: var(--hub-primary); color: var(--hub-on-primary); }
-.agent-hub .power-card__install { flex-shrink: 0; height: 32px; padding: 4px 10px; border-color: var(--hub-primary); background: var(--hub-primary); color: var(--hub-on-primary); visibility: hidden; }
+.power-card__tag { display: inline-flex; align-items: center; justify-content: center; height: 22px; line-height: 1; box-sizing: border-box; flex: 0 0 auto; padding: 0 8px; border-radius: var(--hub-radius-xs); background: var(--hub-version-chip); color: var(--hub-muted); font-size: 11px; font-weight: 500; white-space: nowrap; }
+.power-card__tag.power-card__badge--installed { background: var(--hub-primary); color: var(--hub-on-primary); font-weight: 600; }
+.agent-hub .power-card__install { flex-shrink: 0; height: 32px; padding: 4px 10px; border-radius: var(--hub-radius-sm); border-color: var(--hub-primary); background: var(--hub-primary); color: var(--hub-on-primary); font-weight: 500; font-size: 12px; visibility: hidden; transition: opacity 150ms ease; }
 .agent-hub .power-card:hover .power-card__install,
 .agent-hub .power-card:focus-within .power-card__install { visibility: visible; }
 .agent-hub .power-card__install:hover:not(:disabled) { background: var(--hub-primary); opacity: .9; }
@@ -424,7 +549,8 @@
    need a phone-width adjustment. */
 @media (max-width: 480px) {
   .agent-hub { padding-inline: 14px; }
-  .power-filters__type-field { gap: 4px; }
+  .power-filters__type-field,
+  .power-filters__tag-field { gap: 4px; }
   .power-filters__tag-dropdown { max-width: 35%; }
 }
 
@@ -456,11 +582,11 @@
   border: 1px solid var(--hub-control-line);
   background: var(--hub-control-bg);
   color: var(--hub-text);
-  border-radius: 999px;
+  border-radius: var(--hub-radius-sm);
   cursor: pointer;
 }
 .agent-hub .power-pagination button:hover { background: var(--hub-control-hover); }
-.agent-hub .power-pagination input { width: 58px; padding: 8px; border: 1px solid var(--hub-control-line); border-radius: 8px; background: var(--hub-control-bg); color: var(--hub-text); text-align: center; }
+.agent-hub .power-pagination input { width: 58px; padding: 8px; border: 1px solid var(--hub-control-line); border-radius: var(--hub-radius-sm); background: var(--hub-control-bg); color: var(--hub-text); text-align: center; }
 .agent-hub .power-pagination button:disabled { cursor: not-allowed; opacity: .42; }
 .agent-hub__status, .agent-hub__error { margin-top: 18px; }
 /* ===== Scrollbars: idle at rest, drawn as a position indicator while scrolling =====
@@ -498,7 +624,7 @@
 /* ===== Loading / error / retry states (retained colors) ===== */
 .agent-hub__status {
   padding: 12px;
-  border-radius: 8px;
+  border-radius: var(--hub-radius-sm);
   background: var(--hub-status-bg);
   color: var(--hub-status-text);
 }
@@ -520,7 +646,7 @@
   justify-content: space-between;
   gap: 12px;
   padding: 12px;
-  border-radius: 8px;
+  border-radius: var(--hub-radius-sm);
   background: var(--hub-error-bg);
   color: var(--hub-error-text);
 }
@@ -534,9 +660,10 @@
   height: fit-content;
   padding: 0;
   border: 1px solid var(--hub-border);
-  border-radius: 8px;
+  border-radius: var(--hub-radius);
   background: var(--hub-surface);
   color: var(--hub-text);
+  box-shadow: var(--hub-dialog-shadow);
 }
 .agent-hub-dialog::backdrop { background: var(--hub-backdrop); }
 /* A taller description makes the dialog the place users read the full text, so it must
@@ -551,11 +678,11 @@
 .agent-hub-dialog__body { min-height: 0; overflow-y: auto; padding: 24px; }
 .agent-hub-dialog__header { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
 .agent-hub-dialog__type { color: var(--type); font-size: 11px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase; }
-.agent-hub-dialog__header h2 { margin: 6px 0 0; font-size: 18px; font-weight: 500; }
+.agent-hub-dialog__header h2 { margin: 6px 0 0; font-family: var(--font-studio, inherit); font-size: 18px; font-weight: 500; }
 .agent-hub .agent-hub-dialog__close { border: 0; background: transparent; font-size: 22px; line-height: 1; }
 .agent-hub-dialog__field { display: flex; align-items: center; gap: 14px; margin-top: 18px; }
 .agent-hub-dialog__label { min-width: 52px; color: var(--hub-label); font-size: 12px; font-weight: 500; text-transform: uppercase; }
-.agent-hub-dialog__field select { flex: 1; padding: 8px; border: 1px solid var(--hub-border); border-radius: 8px; background: var(--hub-control-bg); color: var(--hub-text); font: inherit; }
+.agent-hub-dialog__field select { flex: 1; padding: 8px; border: 1px solid var(--hub-border); border-radius: var(--hub-radius-sm); background: var(--hub-control-bg); color: var(--hub-text); font: inherit; }
 .agent-hub-dialog__hint { margin: 0; color: var(--hub-error-text); font-size: 12px; }
 /* The custom-resource dialog is informational, so its hints stay neutral instead
    of using the warning red the agent/type incompatibility hint carries. */
@@ -566,7 +693,7 @@
 .agent-hub-dialog__custom-form input {
   padding: 8px;
   border: 1px solid var(--hub-border);
-  border-radius: 8px;
+  border-radius: var(--hub-radius-sm);
   background: var(--hub-control-bg);
   color: var(--hub-text);
   font: inherit;
@@ -576,7 +703,7 @@
 .agent-hub-dialog__description { margin: 18px 0 0; color: var(--hub-muted); }
 .agent-hub-dialog__tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
 .agent-hub-dialog__status { margin-top: 18px; }
-.agent-hub-dialog__notice { padding: 12px; border-radius: 8px; background: var(--hub-status-bg); color: var(--hub-status-text); }
+.agent-hub-dialog__notice { padding: 12px; border-radius: var(--hub-radius-sm); background: var(--hub-status-bg); color: var(--hub-status-text); }
 /* ===== Bulk upgrade: the in-flight spinner and its progress line =====
    An indeterminate spinner is the honest indicator here: Provider Protocol v1
    carries no progress events, so there is no fraction to show. The ring is drawn
@@ -601,9 +728,9 @@
 }
 .agent-hub-upgrade__progress { display: flex; align-items: center; gap: 9px; margin: 18px 0 0; color: var(--hub-muted); }
 .agent-hub-dialog__footer { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 24px; border-top: 1px solid var(--hub-border); }
-.agent-hub .agent-hub-dialog__install { border-color: var(--hub-primary); background: var(--hub-primary); color: var(--hub-on-primary); }
+.agent-hub .agent-hub-dialog__install { border-color: var(--hub-primary); background: var(--hub-primary); color: var(--hub-on-primary); border-radius: var(--hub-radius-sm); font-weight: 500; }
 .agent-hub .agent-hub-dialog__install:hover:not(:disabled) { border-color: var(--hub-primary); background: var(--hub-primary); color: var(--hub-on-primary); opacity: .9; }
-.agent-hub .agent-hub-dialog__uninstall { border-color: var(--hub-uninstall-line); background: var(--hub-uninstall-bg); color: var(--hub-uninstall-text); }
+.agent-hub .agent-hub-dialog__uninstall { border-color: var(--hub-uninstall-line); background: var(--hub-uninstall-bg); color: var(--hub-uninstall-text); border-radius: var(--hub-radius-sm); font-weight: 500; }
 .agent-hub .agent-hub-dialog__uninstall:hover:not(:disabled) { border-color: var(--hub-uninstall-line-hover); background: var(--hub-uninstall-hover-bg); color: var(--hub-uninstall-hover-text); }
 .agent-hub-dialog button:disabled { cursor: not-allowed; opacity: .5; }
 
@@ -618,9 +745,10 @@
   max-width: 100%;
   padding: 20px 22px;
   border: 1px solid var(--hub-border);
-  border-radius: 8px;
+  border-radius: var(--hub-radius);
   background: var(--hub-surface);
   color: var(--hub-text);
+  box-shadow: var(--hub-card-shadow);
 }
 .agent-hub-settings-panel__credential { display: grid; gap: 8px; }
 .agent-hub-settings-panel__credential-head {
@@ -645,7 +773,7 @@
   min-width: 0;
   padding: 9px 12px;
   border: 1px solid var(--hub-control-line);
-  border-radius: 8px;
+  border-radius: var(--hub-radius-sm);
   background: var(--hub-control-bg);
   color: var(--hub-text);
   font: inherit;
@@ -654,9 +782,11 @@
   flex: 0 0 auto;
   min-height: 38px;
   padding: 0 16px;
+  border-radius: var(--hub-radius-sm);
   border-color: var(--hub-primary);
   background: var(--hub-primary);
   color: var(--hub-on-primary);
+  font-weight: 500;
 }
 .agent-hub-settings-panel__keys {
   display: grid;
@@ -672,7 +802,7 @@
   min-width: 0;
   padding: 9px 12px;
   border: 1px solid var(--hub-border);
-  border-radius: 8px;
+  border-radius: var(--hub-radius-sm);
   background: var(--hub-control-bg);
 }
 .agent-hub-settings-panel__key[data-enabled='true'] {
@@ -705,9 +835,11 @@
   color: var(--hub-caption);
 }
 .agent-hub-settings-panel footer button {
+  border-radius: var(--hub-radius-sm);
   border-color: var(--hub-primary);
   background: var(--hub-primary);
   color: var(--hub-on-primary);
+  font-weight: 500;
 }
 .agent-hub .agent-hub-settings-panel__credential-add button:hover:not(:disabled),
 .agent-hub .agent-hub-settings-panel footer button:hover:not(:disabled) {

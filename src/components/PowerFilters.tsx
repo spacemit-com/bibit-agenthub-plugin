@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { AgentSwitcher } from './AgentSwitcher'
+import { ChevronDownIcon } from './ChevronDownIcon'
 import { useAgentHubI18n } from '../agentHubI18n'
 import { powerTypesForAgent, type PowerScope, type PowerType } from '../api/contracts'
 
@@ -43,12 +44,30 @@ export function PowerFilters({
   search,
 }: PowerFiltersProps) {
   const t = useAgentHubI18n()
+  const [typeOpen, setTypeOpen] = useState(false)
+  const typeRef = useRef<HTMLDivElement>(null)
+  const typeTriggerRef = useRef<HTMLButtonElement>(null)
+  const typeMenuId = useId()
+
   const [tagsOpen, setTagsOpen] = useState(false)
   const tagsRef = useRef<HTMLDivElement>(null)
   const tagsTriggerRef = useRef<HTMLButtonElement>(null)
   const tagsMenuId = useId()
 
-  useEffect(() => { setTagsOpen(false) }, [tab, agent, type])
+  useEffect(() => {
+    setTypeOpen(false)
+    setTagsOpen(false)
+  }, [tab, agent, type])
+
+  useEffect(() => {
+    if (!typeOpen) return
+    const dismissOutside = (event: PointerEvent) => {
+      if (!typeRef.current?.contains(event.target as Node)) setTypeOpen(false)
+    }
+    document.addEventListener('pointerdown', dismissOutside)
+    return () => document.removeEventListener('pointerdown', dismissOutside)
+  }, [typeOpen])
+
   useEffect(() => {
     if (!tagsOpen) return
     const dismissOutside = (event: PointerEvent) => {
@@ -118,21 +137,96 @@ export function PowerFilters({
           neither, so its panel would be a row of controls that do nothing. */}
       {tab !== 'settings' && (
         <div className="power-filters__panel">
-          <label className="power-filters__type-field">
+          <label
+            className="power-filters__type-field"
+            onClick={(event) => {
+              if (event.target !== event.currentTarget) event.preventDefault()
+            }}
+          >
             <span>{t('Type')}</span>
-            <select
-              className="power-filters__type-select"
-              aria-label={t('Type')}
-              value={type}
-              onChange={(event) => {
-                const next = event.target.value as PowerType
-                if (next !== type) onTypeChange(next)
+            <div
+              className="power-filters__select-wrap"
+              ref={typeRef}
+              onBlur={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setTypeOpen(false)
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  event.preventDefault()
+                  setTypeOpen(false)
+                  typeTriggerRef.current?.focus()
+                  return
+                }
+                if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+                event.preventDefault()
+                if (!typeOpen) {
+                  setTypeOpen(true)
+                  requestAnimationFrame(() => typeRef.current?.querySelector<HTMLButtonElement>('[role="menuitemradio"]')?.focus())
+                  return
+                }
+                const options = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]'))
+                if (!options.length) return
+                const index = options.indexOf(document.activeElement as HTMLButtonElement)
+                const direction = event.key === 'ArrowDown' ? 1 : -1
+                const next = index < 0
+                  ? direction === 1 ? 0 : options.length - 1
+                  : (index + direction + options.length) % options.length
+                options[next].focus()
               }}
             >
-              {powerTypesForAgent(agent).map((value) => (
-                <option key={value} value={value}>{value}</option>
-              ))}
-            </select>
+              <button
+                ref={typeTriggerRef}
+                type="button"
+                className="power-filters__type-trigger"
+                aria-haspopup="menu"
+                aria-expanded={typeOpen}
+                aria-controls={typeMenuId}
+                aria-label={t('Type')}
+                onClick={() => {
+                  setTagsOpen(false)
+                  setTypeOpen((open) => !open)
+                }}
+              >
+                <span>{type}</span>
+                <span className="power-filters__chevron" aria-hidden="true">
+                  <ChevronDownIcon />
+                </span>
+              </button>
+              {typeOpen && (
+                <div id={typeMenuId} className="power-filters__type-menu" role="menu" aria-label={t('Type')}>
+                  {powerTypesForAgent(agent).map((value) => (
+                    <button
+                      key={value}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={value === type}
+                      onClick={() => {
+                        if (value !== type) onTypeChange(value)
+                        setTypeOpen(false)
+                        typeTriggerRef.current?.focus()
+                      }}
+                    >
+                      {value === type && <span aria-hidden="true">✓</span>}
+                      {value}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <select
+                className="power-filters__type-select"
+                aria-label={t('Type')}
+                value={type}
+                tabIndex={-1}
+                onChange={(event) => {
+                  const next = event.target.value as PowerType
+                  if (next !== type) onTypeChange(next)
+                }}
+              >
+                {powerTypesForAgent(agent).map((value) => (
+                  <option key={value} value={value}>{value}</option>
+                ))}
+              </select>
+            </div>
           </label>
           <div
             className="power-filters__tag-dropdown"
@@ -164,22 +258,43 @@ export function PowerFilters({
               options[next].focus()
             }}
           >
-            <button
-              ref={tagsTriggerRef}
-              type="button"
-              className="power-filters__tag-trigger"
-              aria-label={t('Tags')}
-              aria-haspopup="dialog"
-              aria-expanded={tagsOpen}
-              aria-controls={tagsMenuId}
-              onClick={() => setTagsOpen((open) => !open)}
+            <label
+              className="power-filters__tag-field"
+              onClick={(event) => {
+                if (event.target !== event.currentTarget) event.preventDefault()
+              }}
             >
               <span>{t('Tags')}</span>
-              <span className="power-filters__tag-value">{selectedTags.length ? selectedTags.join(', ') : t('Any')}</span>
-              <span aria-hidden="true">⌄</span>
-            </button>
+              <button
+                ref={tagsTriggerRef}
+                type="button"
+                className="power-filters__tag-trigger"
+                aria-label={t('Tags')}
+                aria-haspopup="dialog"
+                aria-expanded={tagsOpen}
+                aria-controls={tagsMenuId}
+                onClick={() => {
+                  setTypeOpen(false)
+                  setTagsOpen((open) => !open)
+                }}
+              >
+                <span className="power-filters__tag-value">{selectedTags.length ? selectedTags.join(', ') : t('Any')}</span>
+                <span className="power-filters__chevron" aria-hidden="true">
+                  <ChevronDownIcon />
+                </span>
+              </button>
+            </label>
             {tagsOpen && (
-              <div id={tagsMenuId} className="power-filters__tag-menu" role="dialog" aria-label={t('Tags')}>
+              <div
+                id={tagsMenuId}
+                className="power-filters__tag-menu"
+                role="dialog"
+                aria-label={t('Tags')}
+                onMouseDown={(event) => {
+                  // Prevent blur from dismissing the menu on item click
+                  event.preventDefault()
+                }}
+              >
                 {availableTags.map((tag) => (
                   <label key={tag}>
                     <input
