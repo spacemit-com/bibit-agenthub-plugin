@@ -21,12 +21,14 @@ Agent Hub is the capability center of Bibit. It consists of two parts:
 
 | Tab | Content |
 | --- | --- |
-| My Capabilities | Installed list: APM-managed resources plus hand-installed custom ones (marked `Custom`) |
-| Capability Market | Browses the full APC catalog; cards are marked `Installed`, with `New` when a higher version exists |
+| My Capabilities | Installed list: APM-managed resources plus hand-installed custom ones (marked `Custom`); the tag row leads with `Installed` |
+| Capability Market | Browses the full APC catalog; installed ones are marked `Installed`, with `New` when a higher version exists |
 | Settings | APC API key list: masked (`head****tail`), each key enabled / deleted individually |
 
 - **Update all**: reconciles every installed capability on the machine with a single `apm upgrade`;
-- **Details dialog**: pick a version, then `Install` / `Update` / `Downgrade` / `Uninstall`; writes ask for confirmation;
+- **Filter and search**: a type dropdown, a multi-select tag dropdown and a search box share one row; tags filter by intersection, and search matches name, description and tags before pagination;
+- **Cards**: clicking a card opens its details; the version lives in the dialog and the tags sit at the bottom, with `Installed` in the host's primary colour; only market cards confirmed as not installed show "Add capability", on hover or keyboard focus;
+- **Details dialog**: pick a version, then `Install` / `Update` / `Downgrade` / `Uninstall`; a first install goes straight through, while update, downgrade and uninstall ask for confirmation;
 - **Custom resources**: scans each Agent's directories and lists them, with APC upload and local delete;
 - **Light and dark themes** follow the host.
 
@@ -51,6 +53,8 @@ make -C provider build GOARCH=riscv64
 Before committing, `npm test`, `npm run typecheck`, `npm run build:dev` and `npm run build:plugin` must all pass. Never commit the private key under `.bibit-keys/`; a development signature is not a substitute for the Release trust chain.
 
 ## Deploy
+
+This repository is the standalone plugin source for the real capability center. UI changes must be built, signed and shipped from here into the `bibit-agenthub-plugin` package or its bundle; syncing only the host's `demo-ui-v3` branch does not update an installed plugin. The dev preview is for local verification, not the page the host renders.
 
 | Package | Architecture | Contents |
 | --- | --- | --- |

@@ -24,6 +24,8 @@ export const INSTALLED_AGENTS = ['bibit', 'codex', 'claude-code', 'hermes-agent'
 
 export type PowerScope = 'installed' | 'market'
 export type PowerType = (typeof POWER_TYPES)[number]
+export const ALL_TYPES = 'all' as const
+export type PowerTypeFilter = PowerType | typeof ALL_TYPES
 
 /**
  * `expert`-type Powers are bibit-only: bibit is the one Agent APM will install one
@@ -44,7 +46,7 @@ export function powerTypesForAgent(agent: string): readonly PowerType[] {
 export interface ListPowersInput {
   scope: PowerScope
   agent?: string
-  type: PowerType
+  type: PowerTypeFilter
   tags: string[]
   page: number
   pageSize: 20
@@ -253,6 +255,11 @@ function assertPageSize(value: unknown, prefix: string): typeof POWER_PAGE_SIZE 
     fail(prefix, `pageSize must be ${POWER_PAGE_SIZE}`)
   }
   return POWER_PAGE_SIZE
+}
+
+function assertPowerTypeFilter(value: unknown, prefix: string): PowerTypeFilter {
+  if (value === ALL_TYPES) return ALL_TYPES
+  return assertPowerType(value, prefix)
 }
 
 function assertPowerType(value: unknown, prefix: string): PowerType {
@@ -563,7 +570,7 @@ export function parseListPowersInput(value: unknown): ListPowersInput {
     fail(REQUEST_PREFIX, 'agent must be omitted for market scope')
   }
 
-  const type = assertPowerType(obj.type, REQUEST_PREFIX)
+  const type = assertPowerTypeFilter(obj.type, REQUEST_PREFIX)
   const tags = assertSortedUniqueStrings(obj.tags, REQUEST_PREFIX, 'tags', 20)
   const page = assertPositiveInteger(obj.page, REQUEST_PREFIX, 'page')
   const pageSize = assertPageSize(obj.pageSize, REQUEST_PREFIX)

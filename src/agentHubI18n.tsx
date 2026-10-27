@@ -36,13 +36,16 @@ export type AgentHubTranslate = (
  */
 const zh: Readonly<Record<string, string>> = {
   // ---- page header ----
-  'Capabilities': '能力中心',
   'Loading Powers…': '正在加载 Power…',
   'Retry': '重试',
   'Refresh': '刷新',
   'Available Powers': '可用的 Power',
   'No powers match these tags.': '没有匹配这些标签的能力。',
   'Clear tags': '清除标签',
+  'All': '全部',
+  'all': '全部',
+  'No powers are installed for {agent}.': '{agent} 没有安装能力。',
+  'No powers in the catalog.': '能力市场中暂无能力。',
   'No {type} powers are installed for {agent}.': '{agent} 没有安装 {type} 类型的能力。',
   'No {type} powers in the catalog.': '目录里没有 {type} 类型的能力。',
   'Store capability is not available.': 'Store 能力不可用。',
@@ -85,6 +88,12 @@ const zh: Readonly<Record<string, string>> = {
   'Capability Market': '能力市场',
   'Type': '类型',
   'Tags': '标签',
+  'Any': '不限',
+  'Add capability': '添加能力',
+  'Search capabilities': '搜索能力',
+  'Search name, description…': '搜索名称、描述…',
+  'No capabilities match your search.': '没有匹配搜索条件的能力。',
+  'Clear search': '清除搜索',
   'Version': '版本',
   'Installed': '已安装',
   'New': '新版本',
@@ -144,6 +153,8 @@ const zh: Readonly<Record<string, string>> = {
   // ---- installation store and operation messages ----
   'This version is already installed; uninstall it first.':
     '该版本已安装，请先卸载后再安装',
+  'This capability is already installed; manage it in details.':
+    '该能力已安装，请在详情中管理。',
   'Refresh failed; the installed state could not be confirmed.':
     '刷新失败，无法确认安装状态',
   'This installation is not authorized for that operation; do not retry.':

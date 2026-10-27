@@ -14,7 +14,9 @@ export type InstallInput = PowerTarget & { version: string }
 export type InspectResult = { listJson: string }
 export type MutationResult = { status: 'exited'; exitCode: number }
 export type MutationIntent =
-  | { kind: 'install'; input: InstallInput }
+  // Local intent only: card adds must not replace a version installed since the
+  // catalog was read. This flag is never part of powers.install.v1 params.
+  | { kind: 'install'; input: InstallInput; onlyIfAbsent?: boolean }
   | { kind: 'uninstall'; input: PowerTarget }
 
 const TARGET_PREFIX = 'Invalid power target:'

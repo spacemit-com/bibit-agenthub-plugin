@@ -314,7 +314,71 @@ describe('execute', () => {
     await store.execute(installIntent, signal())
 
     expect(installCalls).toBe(0)
-    expect(store.getSnapshot().notices.get(demoKey)?.text).toContain('already installed')
+    expect(store.getSnapshot().notices.get(demoKey)?.text).toBe('This version is already installed; uninstall it first.')
+  })
+
+  it.each(['v1.0.0', 'v2.0.0'])('does not replace an installation discovered after a card read a stale empty manifest (target %s)', async (chosenVersion) => {
+    const existing = record('demo', 'v1.0.0')
+    const { service, calls } = makeService((op) => {
+      if (op === 'powers.list.v1') return listResponse([])
+      if (op === 'powers.inspect.v1') return { listJson: JSON.stringify([existing]) }
+      if (op === 'powers.install.v1') return { status: 'exited', exitCode: 0 }
+      throw new Error(`unexpected op ${op}`)
+    })
+    const store = getInstallationStore(service)
+    await store.refreshAgent('bibit', signal())
+    expect(store.getSnapshot().fullLists.get('bibit')).toEqual([])
+
+    await store.execute({
+      kind: 'install',
+      input: { ...target, version: chosenVersion },
+      onlyIfAbsent: true,
+    }, signal())
+
+    expect(calls.filter((call) => call.operationId === 'powers.install.v1')).toHaveLength(0)
+    expect(store.getSnapshot().items.get(demoKey)).toEqual({ status: 'ready', records: [existing] })
+    expect(store.getSnapshot().notices.get(demoKey)?.text).toBe('This capability is already installed; manage it in details.')
+    expect(store.getSnapshot().active).toBeUndefined()
+  })
+
+  it.each([
+    ['v1.0.0', 'v2.0.0'],
+    ['v2.0.0', 'v1.0.0'],
+  ])('allows an explicit dialog version change from %s to %s', async (installedVersion, chosenVersion) => {
+    const { service, calls } = makeService((op) => {
+      if (op === 'powers.inspect.v1') return { listJson: JSON.stringify([record('demo', installedVersion)]) }
+      if (op === 'powers.install.v1') return { status: 'exited', exitCode: 0 }
+      if (op === 'powers.list.v1') return listResponse([record('demo', chosenVersion)])
+      throw new Error(`unexpected op ${op}`)
+    })
+    const store = getInstallationStore(service)
+
+    await store.execute({ kind: 'install', input: { ...target, version: chosenVersion } }, signal())
+
+    const writes = calls.filter((call) => call.operationId === 'powers.install.v1')
+    expect(writes).toHaveLength(1)
+    expect(writes[0].params).toEqual({ ...target, version: chosenVersion })
+    expect(store.getSnapshot().items.get(demoKey)).toEqual({
+      status: 'ready', records: [record('demo', chosenVersion)],
+    })
+  })
+
+  it('adds an absent capability without sending the local guard flag to the provider', async () => {
+    const { service, calls } = makeService((op) => {
+      if (op === 'powers.inspect.v1') return { listJson: '[]' }
+      if (op === 'powers.install.v1') return { status: 'exited', exitCode: 0 }
+      if (op === 'powers.list.v1') return listResponse([record('demo', 'v1.0.0')])
+      throw new Error(`unexpected op ${op}`)
+    })
+    const store = getInstallationStore(service)
+
+    await store.execute({ ...installIntent, onlyIfAbsent: true }, signal())
+
+    const writes = calls.filter((call) => call.operationId === 'powers.install.v1')
+    expect(writes).toHaveLength(1)
+    expect(writes[0].params).toEqual(installIntent.input)
+    expect(writes[0].params).not.toHaveProperty('onlyIfAbsent')
+    expect(store.getSnapshot().notices.get(demoKey)).toEqual({ text: 'Installation complete.' })
   })
 
   it('rejects a second concurrent execute and runs only one mutation', async () => {

@@ -19,6 +19,8 @@ export function PowerPagination({
 
   useEffect(() => setDraft(String(page)), [page])
 
+  if (totalPages <= 1) return null
+
   const commitDraft = () => {
     const trimmed = draft.trim()
     if (!/^\d+$/.test(trimmed)) {

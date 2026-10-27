@@ -454,4 +454,64 @@ describe('buildMergedInstalledPowersResult', () => {
     expect(result.items[0].name_en).toBe('Hand Written')
     expect(result.items[0].versions[0].description_zh).toBe('手写资源。')
   })
+
+  it('searches before pagination and keeps every version of a matching series', () => {
+    const records = Array.from({ length: 25 }, (_, index) => record({
+      agent: 'bibit', type: 'skill', name: `a-${index.toString().padStart(2, '0')}`,
+      version: 'v1.0.0', tags: ['other'],
+    }))
+    records.push(
+      record({ agent: 'bibit', type: 'skill', name: 'z-report', version: 'v2.0.0', description: 'Current report', tags: ['reports'] }),
+      record({ agent: 'bibit', type: 'skill', name: 'z-report', version: 'v1.0.0', description: 'Legacy analysis', tags: ['reports'] }),
+    )
+    const unfiltered = buildMergedInstalledPowersResult(query(), records, [])
+    expect(unfiltered.status).toBe('ready')
+    if (unfiltered.status !== 'ready') return
+    expect(unfiltered.items.some((item) => item.name === 'z-report')).toBe(false)
+
+    const result = buildMergedInstalledPowersResult(query(), records, [], '  LEGACY ANALYSIS  ')
+    expect(result.status).toBe('ready')
+    if (result.status !== 'ready') return
+    expect(result.items.map((item) => item.name)).toEqual(['z-report'])
+    expect(result.items[0].versions.map((version) => version.version)).toEqual(['v2.0.0', 'v1.0.0'])
+    expect(result.total).toBe(1)
+    expect(result.nextPage).toBeUndefined()
+    expect(result.facets.tags).toEqual(['other', 'reports'])
+    expect(result.snapshot).toBe(unfiltered.snapshot)
+    expect(buildMergedInstalledPowersResult(query(), records, [], '  ')).toEqual(unfiltered)
+  })
+
+  it.each(['hand-written', '手写', 'HAND WRITTEN', '手写资源', 'hand made', 'drafting'])(
+    'searches custom resources by localized names, descriptions and tags: %s',
+    (search) => {
+      const result = buildMergedInstalledPowersResult(query(), [], [
+        customRecord({ name_zh: '手写', name_en: 'Hand Written', description_zh: '手写资源。', tags: ['drafting'] }),
+        customRecord({ name: 'unrelated', description: 'Other resource', tags: [] }),
+      ], search)
+      expect(result.status).toBe('ready')
+      if (result.status !== 'ready') return
+      expect(result.items.map((item) => item.name)).toEqual(['hand-written'])
+      expect(result.items[0].source).toBe('custom')
+    }
+  )
+
+  it('paginates the searched set and still rejects a stale catalog snapshot', () => {
+    const records = Array.from({ length: 45 }, (_, index) => record({
+      agent: 'bibit', type: 'skill', name: `resource-${index.toString().padStart(2, '0')}`,
+      version: 'v1.0.0', description: index % 2 === 0 ? 'Match' : 'Other',
+    }))
+    const first = buildMergedInstalledPowersResult(query(), records, [], 'match')
+    expect(first.status).toBe('ready')
+    if (first.status !== 'ready') return
+    expect(first.items).toHaveLength(20)
+    expect(first.total).toBe(23)
+    expect(first.nextPage).toBe(2)
+    const second = buildMergedInstalledPowersResult(query({ page: 2, snapshot: first.snapshot }), records, [], 'match')
+    expect(second.status).toBe('ready')
+    if (second.status !== 'ready') return
+    expect(second.items.map((item) => item.name)).toEqual(['resource-40', 'resource-42', 'resource-44'])
+    expect(second.nextPage).toBeUndefined()
+    expect(buildMergedInstalledPowersResult(query({ page: 2, snapshot: 'stale' }), records, [], 'match'))
+      .toEqual({ status: 'reset_required', reason: 'snapshot_changed' })
+  })
 })

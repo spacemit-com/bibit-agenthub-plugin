@@ -7,6 +7,7 @@ import {
   type FeatureServiceRequestV1,
 } from '@bibit/feature-sdk'
 import {
+  ALL_TYPES,
   INSTALLED_AGENTS,
   POWER_PAGE_SIZE,
   comparePowerVersions,
@@ -14,6 +15,7 @@ import {
   type ListPowersInput,
   type PowerScope,
   type PowerType,
+  type PowerTypeFilter,
   type ReadyListPowersResult,
   type PowerSeries,
 } from './api/contracts'
@@ -206,6 +208,7 @@ export function AgentHubPage(_: FeaturePageProps) {
   const actions = useFeatureCapability('host:actions')
   const actionsRef = useRef(actions)
   actionsRef.current = actions
+  const [showCreateUnavailable, setShowCreateUnavailable] = useState(false)
   const [composing, setComposing] = useState(false)
   const [composeNotice, setComposeNotice] = useState<ComposeNotice | undefined>(undefined)
   // A compose result that lands after unmount (the host navigates away on
@@ -240,8 +243,10 @@ export function AgentHubPage(_: FeaturePageProps) {
   // and no catalog request is issued for a panel that shows no Powers.
   const [tab, setTab] = useState<PowerTab>('installed')
   const [agent, setAgent] = useState('bibit')
-  const [type, setType] = useState<PowerType>('skill')
+  const [type, setType] = useState<PowerTypeFilter>(ALL_TYPES)
   const [tags, setTags] = useState<string[]>([])
+  const [availableTags, setAvailableTags] = useState<string[]>([])
+  const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [snapshot, setSnapshot] = useState<string | undefined>(undefined)
   const [retry, setRetry] = useState(0)
@@ -380,7 +385,7 @@ export function AgentHubPage(_: FeaturePageProps) {
       ...(page > 1 && snapshot !== undefined ? { snapshot } : {}),
     }
 
-    void listPowers(store, input, listController.signal)
+    void listPowers(store, input, listController.signal, { search })
       .then((result) => {
         if (listController.signal.aborted || generation !== generationRef.current) return
         if (result.status === 'reset_required') {
@@ -393,6 +398,7 @@ export function AgentHubPage(_: FeaturePageProps) {
           return
         }
         setSnapshot(result.snapshot)
+        setAvailableTags(result.facets.tags)
         setView({ status: 'ready', data: result })
       })
       .catch((reason: unknown) => {
@@ -401,7 +407,7 @@ export function AgentHubPage(_: FeaturePageProps) {
       })
 
     return () => listController.abort()
-  }, [store, scope, tab, listAgent, type, tags, page, retry])
+  }, [store, scope, tab, listAgent, type, tags, search, page, retry])
 
   // ---- the market preloads the chosen Agent's install manifest ----
   // The market catalog is Agent-independent -- its list request carries no `agent` --
@@ -454,6 +460,7 @@ export function AgentHubPage(_: FeaturePageProps) {
     // query was, so returning to a Powers tab resumes exactly where the user was.
     if (next === 'settings') return
     setScope(next)
+    setAvailableTags([])
     setTags([])
     setPage(1)
     setSnapshot(undefined)
@@ -467,19 +474,21 @@ export function AgentHubPage(_: FeaturePageProps) {
     // to the first type the new Agent does take, with the reset an explicit type
     // change would get.
     const supported = powerTypesForAgent(next)
-    const typeFellAway = !supported.includes(type)
+    const typeFellAway = type !== ALL_TYPES && !supported.includes(type)
     if (typeFellAway) setType(supported[0])
     // Only the installed list is read per Agent, so only there does the Agent
     // alone reset the query; on the market the choice just moves the install
     // target and the catalog the user is browsing must stay where it is.
     if (!typeFellAway && scope !== 'installed') return
+    setAvailableTags([])
     setTags([])
     setPage(1)
     setSnapshot(undefined)
   }
-  const changeType = (next: PowerType) => {
+  const changeType = (next: PowerTypeFilter) => {
     resetPageScroll()
     setType(next)
+    setAvailableTags([])
     setTags([])
     setPage(1)
     setSnapshot(undefined)
@@ -487,6 +496,12 @@ export function AgentHubPage(_: FeaturePageProps) {
   const changeTags = (next: string[]) => {
     resetPageScroll()
     setTags([...next].sort())
+    setPage(1)
+    setSnapshot(undefined)
+  }
+  const changeSearch = (next: string) => {
+    resetPageScroll()
+    setSearch(next)
     setPage(1)
     setSnapshot(undefined)
   }
@@ -754,7 +769,6 @@ export function AgentHubPage(_: FeaturePageProps) {
 
   // `facets.agents` is not read anywhere: the Agent list is the fixed
   // `INSTALLED_AGENTS` constant, so agent discovery is never performed.
-  const availableTags = view.status === 'ready' ? view.data.facets.tags : []
   // `fullLists` is keyed by Agent and is the manifest a market card's badges read. The
   // market catalog is Agent-independent, so membership has to be resolved against the
   // Agent the user chose rather than against the scope the list was read in. Rebuilt
@@ -804,12 +818,35 @@ export function AgentHubPage(_: FeaturePageProps) {
   return (
     <main className="agent-hub" ref={pageScrollRef}>
       <ScrollThumb targetRef={pageScrollRef} />
-      <header>
-        <div><h1>{t('Capabilities')}</h1></div>
-        <div className="agent-hub__create">
-          {/* The two header actions share one row, refresh on the left. The refresh
-              entry is a catalog action: the Settings tab reads its own settings
-              document and shows no list, so the button is not rendered there. */}
+      {composeNotice && (
+        <div role="alert" className="agent-hub__error">
+          <span>{noticeText(composeNotice)}</span>
+        </div>
+      )}
+      <PowerFilters
+        tab={tab}
+        agents={INSTALLED_AGENTS}
+        agent={agent}
+        type={type}
+        availableTags={availableTags}
+        selectedTags={tags}
+        search={<input
+          type="search"
+          aria-label={t('Search capabilities')}
+          placeholder={t('Search name, description…')}
+          value={search}
+          onChange={(event) => changeSearch(event.target.value)}
+          disabled={upgrading}
+        />}
+        upgrading={upgrading}
+        onTabChange={changeTab}
+        onAgentChange={changeAgent}
+        onTypeChange={changeType}
+        onTagsChange={changeTags}
+        // The entry is offered on the installed list only: it is the page that
+        // shows what is installed, and a bulk upgrade is about those resources.
+        onUpgrade={tab === 'installed' ? () => setUpgradePhase({ status: 'confirm' }) : undefined}
+        actions={
           <div className="agent-hub__actions">
             {tab !== 'settings' && (
               <button
@@ -826,42 +863,38 @@ export function AgentHubPage(_: FeaturePageProps) {
                 <span aria-hidden="true">↻</span>
               </button>
             )}
-            <button
-              type="button"
-              disabled={!actions || composing}
+            <span
+              className="agent-hub__create-trigger"
+              tabIndex={actions ? undefined : 0}
               aria-describedby={actions ? undefined : 'agent-hub-create-unavailable'}
-              onClick={createResource}
+              onMouseEnter={() => setShowCreateUnavailable(!actions)}
+              onMouseLeave={() => setShowCreateUnavailable(false)}
+              onFocus={() => setShowCreateUnavailable(!actions)}
+              onBlur={() => setShowCreateUnavailable(false)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') setShowCreateUnavailable(false)
+              }}
             >
-              {t('Create')}
-            </button>
+              <button
+                type="button"
+                className="agent-hub__create-button"
+                disabled={!actions || composing}
+                onClick={createResource}
+              >
+                {t('Create')}
+              </button>
+              {!actions && showCreateUnavailable && (
+                <span
+                  id="agent-hub-create-unavailable"
+                  role="tooltip"
+                  className="agent-hub__create-tooltip"
+                >
+                  {t(ACTIONS_UNAVAILABLE_TEXT)}
+                </span>
+              )}
+            </span>
           </div>
-          {!actions && (
-            <p id="agent-hub-create-unavailable" className="agent-hub__create-note">
-              {t(ACTIONS_UNAVAILABLE_TEXT)}
-            </p>
-          )}
-        </div>
-      </header>
-      {composeNotice && (
-        <div role="alert" className="agent-hub__error">
-          <span>{noticeText(composeNotice)}</span>
-        </div>
-      )}
-      <PowerFilters
-        tab={tab}
-        agents={INSTALLED_AGENTS}
-        agent={agent}
-        type={type}
-        availableTags={availableTags}
-        selectedTags={tags}
-        upgrading={upgrading}
-        onTabChange={changeTab}
-        onAgentChange={changeAgent}
-        onTypeChange={changeType}
-        onTagsChange={changeTags}
-        // The entry is offered on the installed list only: it is the page that
-        // shows what is installed, and a bulk upgrade is about those resources.
-        onUpgrade={tab === 'installed' ? () => setUpgradePhase({ status: 'confirm' }) : undefined}
+        }
       />
       {upgradePhase && (
         <UpgradeDialog
@@ -905,12 +938,23 @@ export function AgentHubPage(_: FeaturePageProps) {
                    the type chips are already on screen for that. */
                 <div className="agent-hub__empty" role="status">
                   <p>
-                    {tags.length > 0
+                    {search.trim()
+                      ? t('No capabilities match your search.')
+                      : tags.length > 0
                       ? t('No powers match these tags.')
                       : scope === 'installed'
-                        ? t('No {type} powers are installed for {agent}.', { type, agent })
-                        : t('No {type} powers in the catalog.', { type })}
+                        ? (type === ALL_TYPES
+                            ? t('No powers are installed for {agent}.', { agent })
+                            : t('No {type} powers are installed for {agent}.', { type, agent }))
+                        : (type === ALL_TYPES
+                            ? t('No powers in the catalog.')
+                            : t('No {type} powers in the catalog.', { type }))}
                   </p>
+                  {search.trim() && (
+                    <button type="button" onClick={() => changeSearch('')}>
+                      {t('Clear search')}
+                    </button>
+                  )}
                   {tags.length > 0 && (
                     <button type="button" onClick={() => changeTags([])}>
                       {t('Clear tags')}
@@ -921,8 +965,6 @@ export function AgentHubPage(_: FeaturePageProps) {
                 <>
                   <section className="agent-hub__grid" aria-label={t('Available Powers')}>
                     {view.data.items.map((series) => {
-                      // Only the market badges: every card on the installed tab is
-                      // installed by definition, so a badge there would be noise.
                       const installedVersion =
                         scope === 'market'
                           ? installedVersions.get(powerSeriesKey(series.type, series.name))
@@ -932,16 +974,28 @@ export function AgentHubPage(_: FeaturePageProps) {
                           key={`${series.type}-${series.name}`}
                           series={series}
                           busy={isBusyFor(agent, series)}
-                          installed={installedVersion !== undefined}
+                          installed={scope === 'installed' || installedVersion !== undefined}
+                          onInstall={
+                            scope === 'market' &&
+                            installationSnapshot.fullLists.has(agent) &&
+                            installedVersion === undefined &&
+                            series.source !== 'custom' &&
+                            powerTypesForAgent(agent).includes(series.type)
+                              ? () => runMutation({
+                                  kind: 'install',
+                                  onlyIfAbsent: true,
+                                  input: { agent, type: series.type, name: series.name, version: series.versions[0].version },
+                                })
+                              : undefined
+                          }
+                          installDisabled={installationSnapshot.active !== undefined}
                           // `New` is only meaningful relative to an installed version.
                           hasNewer={
                             installedVersion !== undefined &&
                             comparePowerVersions(series.versions[0].version, installedVersion) > 0
                           }
                           notice={
-                            scope === 'installed'
-                              ? installationSnapshot.notices.get(itemKey(agent, series.type, series.name))
-                              : undefined
+                            installationSnapshot.notices.get(itemKey(agent, series.type, series.name))
                           }
                           onDetails={() => openDetails(series)}
                         />

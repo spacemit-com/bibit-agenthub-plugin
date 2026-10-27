@@ -44,6 +44,16 @@ beforeAll(() => {
 
 type StoreRequest = FeatureServiceRequestV1<'store'>
 
+async function chooseTag(user: ReturnType<typeof userEvent.setup>, name: string) {
+  const trigger = screen.getByRole('button', { name: 'Tags' })
+  if (trigger.getAttribute('aria-expanded') !== 'true') await user.click(trigger)
+  await user.click(screen.getByRole('checkbox', { name }))
+}
+
+function selectedTagLabel(): string {
+  return screen.getByRole('button', { name: 'Tags' }).textContent ?? ''
+}
+
 type WireParams = { scope: string; agent?: string; knownSnapshot?: string }
 
 async function sha256(text: string): Promise<string> {
@@ -290,15 +300,14 @@ describe('AgentHubPage', () => {
     await screen.findByRole('heading', { name: 'code-review' })
 
     expect(document.querySelector('.agent-hub__grid')).toBeTruthy()
-    expect(document.querySelector('.power-pagination')).toBeTruthy()
+    expect(screen.queryByRole('navigation', { name: 'Power pages' })).toBeNull()
     // The installed view reads the APM manifest and scans for hand-installed
     // resources; only the manifest read carries the list wire envelope.
     const listCalls = calls.filter((call) => call.operationId === 'powers.list.v1')
     expect(listCalls).toHaveLength(1)
     expect(wireParamsOf(listCalls[0])).toEqual({ scope: 'installed', agent: 'bibit' })
     expect(calls.filter((call) => call.operationId === 'powers.custom.list.v1')).toHaveLength(1)
-    expect(pageNumber()).toBe('1')
-    expect(screen.getByText('of 1')).toBeTruthy()
+    expect(screen.queryByRole('spinbutton', { name: 'Page number' })).toBeNull()
   })
 
   it('shows the capability-unavailable error and recovers when Retry re-reads the capability', async () => {
@@ -341,7 +350,7 @@ describe('AgentHubPage', () => {
 
     resolvers[0](installedData('[]'))
 
-    expect(await screen.findByText('No skill powers are installed for bibit.')).toBeTruthy()
+    expect(await screen.findByText('No powers are installed for bibit.')).toBeTruthy()
   })
 
   it('names the tag filter when a tag selection empties the list', async () => {
@@ -360,12 +369,8 @@ describe('AgentHubPage', () => {
 
     // The tags facet only offers tags that exist, and the filter is an intersection, so
     // selecting both tags matches no version -- the empty case under test.
-    const tagGroup = screen.getByRole('group', { name: 'Tags' })
-    expect(within(tagGroup).getAllByRole('button').length).toBeGreaterThan(1)
-    // Re-query between clicks: selecting a tag re-reads the list, and a node captured
-    // before the re-render is detached.
-    await user.click(within(tagGroup).getByRole('button', { name: 'quality' }))
-    await user.click(within(screen.getByRole('group', { name: 'Tags' })).getByRole('button', { name: 'writing' }))
+    await chooseTag(user, 'quality')
+    await chooseTag(user, 'writing')
 
     // The message names the tag filter, not the type: that is the filter that is
     // excluding everything, and the one the offered action clears.
@@ -386,13 +391,13 @@ describe('AgentHubPage', () => {
     renderPage(hostApi)
     await screen.findByRole('heading', { name: 'code-review' })
 
-    const tagGroup = screen.getByRole('group', { name: 'Tags' })
-    await user.click(within(tagGroup).getByRole('button', { name: 'quality' }))
-    await user.click(within(screen.getByRole('group', { name: 'Tags' })).getByRole('button', { name: 'writing' }))
+    await chooseTag(user, 'quality')
+    await chooseTag(user, 'writing')
     await screen.findByText('No powers match these tags.')
 
     // The empty state carries the one action that fixes it, instead of telling the user
     // only that there is nothing to see.
+    await user.click(screen.getByRole('button', { name: 'Tags' }))
     await user.click(screen.getByRole('button', { name: 'Clear tags' }))
 
     expect(await screen.findByRole('heading', { name: 'code-review' })).toBeTruthy()
@@ -411,10 +416,10 @@ describe('AgentHubPage', () => {
     await user.click(screen.getByRole('button', { name: 'Capability Market' }))
     await screen.findByRole('heading', { name: 'market-translate' })
 
-    await user.click(screen.getByRole('button', { name: 'expert' }))
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Type' }), 'expert')
 
     expect(await screen.findByText('No expert powers in the catalog.')).toBeTruthy()
-    // No action is offered here: the type chips are already on screen.
+    // No extra action is needed: the type dropdown remains available.
     expect(screen.queryByRole('button', { name: 'Clear tags' })).toBeNull()
   })
 
@@ -548,7 +553,7 @@ describe('AgentHubPage', () => {
     expect(scroller.scrollTop).toBe(0)
 
     scroller.scrollTop = 640
-    await user.click(screen.getByRole('button', { name: 'plugin' }))
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Type' }), 'plugin')
     await screen.findByRole('heading', { name: 'scan-guard' })
     expect(scroller.scrollTop).toBe(0)
   })
@@ -605,7 +610,7 @@ describe('AgentHubPage', () => {
       throw new Error('unexpected op ' + input.operationId)
     })
     renderPage(hostApi)
-    await screen.findByText('No skill powers are installed for bibit.')
+    await screen.findByText('No powers are installed for bibit.')
 
     // Choosing an Agent no longer requires opening a dialog: the tab-row control
     // owns it, and the market install must follow the same choice.
@@ -654,13 +659,13 @@ describe('AgentHubPage', () => {
       throw new Error('unexpected op ' + input.operationId)
     })
     renderPage(hostApi)
-    await screen.findByText('No skill powers are installed for bibit.')
+    await screen.findByText('No powers are installed for bibit.')
 
     await user.click(screen.getByRole('button', { name: 'Capability Market' }))
     await screen.findByRole('heading', { name: 'market-translate' })
-    await user.click(screen.getByRole('button', { name: 'alpha' }))
+    await chooseTag(user, 'alpha')
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'alpha' }).getAttribute('aria-pressed')).toBe('true')
+      expect(selectedTagLabel()).toContain('alpha')
     )
 
     const marketCalls = () =>
@@ -680,7 +685,7 @@ describe('AgentHubPage', () => {
     // The market catalog is Agent-independent, so the choice only moves the
     // install target: the list and the tag filter must stay where they were.
     expect(marketCalls()).toBe(before)
-    expect(screen.getByRole('button', { name: 'alpha' }).getAttribute('aria-pressed')).toBe('true')
+    expect(selectedTagLabel()).toContain('alpha')
   })
 
   it('drops the expert type and moves the query off it when another Agent is chosen', async () => {
@@ -697,28 +702,28 @@ describe('AgentHubPage', () => {
 
     // Expert (the type) is bibit-only, so it is offered while bibit is the chosen Agent. The
     // type filter is applied client-side, so "the query moved off it" shows up as
-    // which chip is pressed and which cards survive, not as a wire parameter.
-    await user.click(screen.getByRole('button', { name: 'expert' }))
+    // the dropdown value and which cards survive, not as a wire parameter.
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Type' }), 'expert')
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'expert' }).getAttribute('aria-pressed')).toBe('true')
+      expect((screen.getByRole('combobox', { name: 'Type' }) as HTMLSelectElement).value).toBe('expert')
     )
     // The fixture is a skill, so it drops out under the expert filter.
     await waitFor(() => expect(screen.queryByRole('heading', { name: 'code-review' })).toBeNull())
 
-    // Choosing another Agent hides the chip, and the selection moves to a type
+    // Choosing another Agent removes the option, and the selection moves to a type
     // that Agent does take: staying on a hidden type would strand the list on
     // something the user can neither see nor switch away from.
     await user.hover(screen.getByRole('button', { name: 'Agent: bibit' }))
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'codex' }))
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Agent: codex' })).toBeTruthy()
-      expect(screen.queryByRole('button', { name: 'expert' })).toBeNull()
-      expect(screen.getByRole('button', { name: 'skill' }).getAttribute('aria-pressed')).toBe('true')
+      expect(screen.queryByRole('option', { name: 'expert' })).toBeNull()
+      expect((screen.getByRole('combobox', { name: 'Type' }) as HTMLSelectElement).value).toBe('skill')
     })
     // The three types that Agent does take are all still offered, and the list
     // follows the fallback rather than staying on the hidden type.
     for (const label of ['skill', 'plugin', 'mcp']) {
-      expect(screen.getByRole('button', { name: label })).toBeTruthy()
+      expect(screen.getByRole('option', { name: label })).toBeTruthy()
     }
     await screen.findByRole('heading', { name: 'code-review' })
 
@@ -727,7 +732,7 @@ describe('AgentHubPage', () => {
     // would not fire a second `mouseenter`.
     await user.click(screen.getByRole('button', { name: 'Agent: codex' }))
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'bibit' }))
-    await waitFor(() => expect(screen.getByRole('button', { name: 'expert' })).toBeTruthy())
+    await waitFor(() => expect(screen.getByRole('option', { name: 'expert' })).toBeTruthy())
   })
 
   it('preloads the manifest so market cards can show what is installed', async () => {
@@ -744,7 +749,7 @@ describe('AgentHubPage', () => {
       return installedData(installedReads === 1 ? '[]' : installedManifest)
     })
     renderPage(hostApi)
-    await screen.findByText('No skill powers are installed for bibit.')
+    await screen.findByText('No powers are installed for bibit.')
     expect(screen.queryByText('Installed')).toBeNull()
 
     await user.click(screen.getByRole('button', { name: 'Capability Market' }))
@@ -754,6 +759,7 @@ describe('AgentHubPage', () => {
     await waitFor(() => expect(installedReads).toBeGreaterThan(1))
     await waitFor(() => expect(screen.getByText('Installed')).toBeTruthy())
     expect(screen.getAllByText('Installed')).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: 'Add capability' })).toBeNull()
 
     // The badge came from the manifest preload, which must not leak into the market
     // wire request: the catalog is still read without an Agent.
@@ -818,20 +824,22 @@ describe('AgentHubPage', () => {
     // The badge is an addition to browsing: a manifest that cannot be read leaves
     // the cards unmarked rather than turning the market into an error.
     expect(screen.queryByText('Installed')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Add capability' })).toBeNull()
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
-  it('does not badge the installed tab', async () => {
+  it('marks every installed card without offering another install', async () => {
     const { hostApi } = makeStoreHost((input) => {
       if (input.operationId === 'powers.custom.list.v1') return customData()
       return installedData(installedManifest)
     })
     renderPage(hostApi)
 
-    // Every card on this tab is installed by definition, so a badge would be noise.
+    // Installed state is visible at the start of each card's tag row.
     await screen.findByRole('heading', { name: 'code-review' })
     await screen.findByRole('heading', { name: 'market-translate' })
-    expect(screen.queryByText('Installed')).toBeNull()
+    expect(screen.getAllByText('Installed')).toHaveLength(2)
+    expect(screen.queryByRole('button', { name: 'Add capability' })).toBeNull()
   })
 
   it('clears tags and resets the page when selecting the plugin type', async () => {
@@ -851,19 +859,19 @@ describe('AgentHubPage', () => {
     renderPage(hostApi)
     await screen.findByRole('heading', { name: 'skill-00' })
 
-    await user.click(screen.getByRole('button', { name: 'alpha' }))
+    await chooseTag(user, 'alpha')
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'alpha' }).getAttribute('aria-pressed')).toBe('true')
+      expect(selectedTagLabel()).toContain('alpha')
     )
 
     await user.click(screen.getByRole('button', { name: 'Next page' }))
     await screen.findByRole('heading', { name: 'skill-20' })
 
-    await user.click(screen.getByRole('button', { name: 'plugin' }))
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Type' }), 'plugin')
     await screen.findByRole('heading', { name: 'scan-guard' })
 
-    expect(pageNumber()).toBe('1')
-    expect(screen.getByRole('button', { name: 'plugin' }).getAttribute('aria-pressed')).toBe('true')
+    expect(screen.queryByRole('navigation', { name: 'Power pages' })).toBeNull()
+    expect((screen.getByRole('combobox', { name: 'Type' }) as HTMLSelectElement).value).toBe('plugin')
   })
 
   it('selects tags in sorted order and narrows the list', async () => {
@@ -892,24 +900,53 @@ describe('AgentHubPage', () => {
     await screen.findByRole('heading', { name: 'both' })
 
     // One tag keeps every series that carries it.
-    await user.click(screen.getByRole('button', { name: 'beta' }))
+    await chooseTag(user, 'beta')
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'beta' }).getAttribute('aria-pressed')).toBe('true')
+      expect(selectedTagLabel()).toContain('beta')
     )
     expect(await screen.findByRole('heading', { name: 'both' })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: 'alpha-only' })).toBeNull()
 
-    await user.click(screen.getByRole('button', { name: 'alpha' }))
+    await chooseTag(user, 'alpha')
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'alpha' }).getAttribute('aria-pressed')).toBe('true')
-      expect(screen.getByRole('button', { name: 'beta' }).getAttribute('aria-pressed')).toBe('true')
+      expect(selectedTagLabel()).toContain('alpha')
+      expect(selectedTagLabel()).toContain('beta')
     })
     // Intersection: the second tag narrows the result instead of broadening it.
     // `alpha-only` carries just one of the two selected tags, so it drops out
     // while `both` survives.
     expect(await screen.findByRole('heading', { name: 'both' })).toBeTruthy()
     await waitFor(() => expect(screen.queryByRole('heading', { name: 'alpha-only' })).toBeNull())
+  })
+
+  it('searches across pages and resets pagination for the matching result', async () => {
+    const user = userEvent.setup()
+    const { hostApi } = makeStoreHost((input) => {
+      if (input.operationId === 'powers.custom.list.v1') return customData()
+      return installedData(installedPage(25))
+    })
+    renderPage(hostApi)
+    await screen.findByRole('heading', { name: 'skill-00' })
+    expect(screen.queryByRole('heading', { name: 'skill-24' })).toBeNull()
+    expect(screen.getByRole('navigation', { name: 'Power pages' })).toBeTruthy()
+    const search = screen.getByRole('searchbox', { name: 'Search capabilities' })
+
+    await user.type(search, 'skill-24')
+    expect(await screen.findByRole('heading', { name: 'skill-24' })).toBeTruthy()
+    expect(screen.getAllByRole('article')).toHaveLength(1)
+    expect(screen.queryByRole('navigation', { name: 'Power pages' })).toBeNull()
+
+    await user.clear(search)
+    await screen.findByRole('heading', { name: 'skill-00' })
+    expect(screen.getByRole('navigation', { name: 'Power pages' })).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Next page' }))
+    await screen.findByRole('heading', { name: 'skill-20' })
+    expect(pageNumber()).toBe('2')
+    await user.type(search, 'skill-24')
+    expect(await screen.findByRole('heading', { name: 'skill-24' })).toBeTruthy()
+    expect(screen.queryByRole('navigation', { name: 'Power pages' })).toBeNull()
+    expect(screen.getAllByRole('article')).toHaveLength(1)
   })
 
   it('resets to page 1 and drops the snapshot on reset_required', async () => {
@@ -974,12 +1011,12 @@ describe('AgentHubPage', () => {
     renderPage(hostApi)
     await screen.findByRole('heading', { name: 'code-review' })
 
-    const header = document.querySelector('.agent-hub header') as HTMLElement
-    const refresh = within(header).getByRole('button', { name: 'Refresh' })
+    const refresh = screen.getByRole('button', { name: 'Refresh' })
     // Symbol copy, not a label: the visible content stays an icon.
     expect(refresh.textContent).toBe('↻')
-    // Refresh sits to the left of the create entry, in the same header row.
-    expect(within(header).getAllByRole('button').map((button) => button.textContent)).toEqual([
+    // Refresh sits to the left of the create entry, in the action row.
+    const actionRow = document.querySelector('.agent-hub__actions') as HTMLElement
+    expect(within(actionRow).getAllByRole('button').map((button) => button.textContent)).toEqual([
       '↻',
       'Create',
     ])
@@ -994,7 +1031,7 @@ describe('AgentHubPage', () => {
     await waitFor(() => expect(listCalls()).toHaveLength(2))
     expect(wireParamsOf(listCalls()[1])).toEqual(wireParamsOf(listCalls()[0]))
     await screen.findByRole('heading', { name: 'code-review' })
-    expect(pageNumber()).toBe('1')
+    expect(screen.queryByRole('navigation', { name: 'Power pages' })).toBeNull()
   })
 
   it('hides the header refresh entry on the Settings tab', async () => {
@@ -1147,27 +1184,24 @@ describe('AgentHubPage', () => {
 
   it('switches every page surface with the host language prop', async () => {
     const { hostApi } = makeStoreHost((input) =>
-      installedData(wireParamsOf(input).scope === 'installed' ? codeReviewList : '[]')
+      installedData(wireParamsOf(input).scope === 'installed' ? installedPage(25) : '[]')
     )
     const view = renderLocalizedPage(hostApi, 'en')
 
-    await screen.findByRole('heading', { name: 'code-review' })
-    // The page title is the only header copy: the old INTERNAL CATALOG eyebrow is gone.
-    expect(screen.getByRole('heading', { name: 'Capabilities' })).toBeTruthy()
+    await screen.findByRole('heading', { name: 'skill-00' })
     expect(screen.queryByText('INTERNAL CATALOG')).toBeNull()
     expect(screen.getByRole('button', { name: 'My Capabilities' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Capability Market' })).toBeTruthy()
     expect(screen.getByRole('spinbutton', { name: 'Page number' })).toBeTruthy()
-    expect(screen.getByText('of 1')).toBeTruthy()
+    expect(screen.getByText('of 2')).toBeTruthy()
 
     rerenderLocalizedPage(view, hostApi, 'zh-CN')
 
-    expect(screen.getByRole('heading', { name: '能力中心' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '我的能力' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '能力市场' })).toBeTruthy()
     expect(screen.getByRole('spinbutton', { name: '页码' })).toBeTruthy()
-    expect(screen.getByText('/ 1 页')).toBeTruthy()
-    expect(screen.queryByRole('heading', { name: 'Capabilities' })).toBeNull()
+    expect(screen.getByText('/ 2 页')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'My Capabilities' })).toBeNull()
   })
 
   it('renders the localized display name of an installed Power', async () => {
@@ -1191,7 +1225,7 @@ describe('AgentHubPage', () => {
       wireParamsOf(input).scope === 'market' ? translatedCatalog : installedData('[]')
     )
     renderLocalizedPage(hostApi, 'zh-CN')
-    await screen.findByText('bibit 没有安装 skill 类型的能力。')
+    await screen.findByText('bibit 没有安装能力。')
 
     await user.click(screen.getByRole('button', { name: '能力市场' }))
 
@@ -1297,7 +1331,7 @@ describe('AgentHubPage', () => {
       )
     })
     renderPage(hostApi)
-    await screen.findByText('No skill powers are installed for bibit.')
+    await screen.findByText('No powers are installed for bibit.')
 
     await user.hover(screen.getByRole('button', { name: 'Agent: bibit' }))
 
@@ -1395,8 +1429,8 @@ describe('AgentHubPage', () => {
       await user.click(screen.getByRole('button', { name: 'Capability Market' }))
       await screen.findByRole('heading', { name: 'market-translate' })
 
-      // The card is display-only: it reports the newest version the catalog lists.
-      expect(screen.getByTestId('power-card-version').textContent).toBe('v2.0.0')
+      // The card uses the newest description; version selection stays in details.
+      expect(screen.queryByTestId('power-card-version')).toBeNull()
       expect(screen.getByText('Translates v2.')).toBeTruthy()
       expect(screen.queryByLabelText('Version')).toBeNull()
 
@@ -1432,14 +1466,14 @@ describe('AgentHubPage', () => {
       await user.click(screen.getByRole('button', { name: 'Capability Market' }))
       await screen.findByRole('heading', { name: 'market-translate' })
 
-      // The catalog's newest is v2 and the Agent has v1, so both badges appear, with
-      // `New` to the left of `Installed`.
+      // Keep the update information and show installation at the start of the tag row.
       await waitFor(() => expect(screen.getByText('New')).toBeTruthy())
       expect(
         Array.from(document.querySelectorAll('.power-card__badge')).map((badge) => badge.textContent)
-      ).toEqual(['New', 'Installed'])
-      // The card still reports the newest version the catalog lists.
-      expect(screen.getByTestId('power-card-version').textContent).toBe('v2.0.0')
+      ).toEqual(['New'])
+      expect(document.querySelector('.power-card__tags')?.firstElementChild?.textContent).toBe('Installed')
+      // The card version is omitted while the description still uses the newest entry.
+      expect(screen.queryByTestId('power-card-version')).toBeNull()
     })
 
     it('shows no New badge once the newest version is the installed one', async () => {
@@ -1508,6 +1542,39 @@ describe('AgentHubPage', () => {
         name: 'market-translate',
         version: 'v2.0.0',
       })
+    })
+
+    it('adds the newest market version directly and then shows its installed badge', async () => {
+      const user = userEvent.setup()
+      let installed: unknown[] = []
+      const { hostApi, calls } = makeStoreHost((input) => {
+        if (input.operationId === 'powers.custom.list.v1') return customData()
+        if (input.operationId === 'powers.list.v1') {
+          return wireParamsOf(input).scope === 'market'
+            ? twoVersionMarketData()
+            : installedData(JSON.stringify(installed))
+        }
+        if (input.operationId === 'powers.inspect.v1') return { listJson: JSON.stringify(installed) }
+        if (input.operationId === 'powers.install.v1') {
+          installed = [{ ...codeReviewRecord, name: 'market-translate', version: 'v2.0.0' }]
+          return { status: 'exited', exitCode: 0 }
+        }
+        throw new Error('unexpected op ' + input.operationId)
+      })
+      renderPage(hostApi)
+      await screen.findByText('No powers are installed for bibit.')
+      await user.click(screen.getByRole('button', { name: 'Capability Market' }))
+      const add = await screen.findByRole('button', { name: 'Add capability' })
+      await user.click(add)
+
+      await waitFor(() => expect(calls.filter(call => call.operationId === 'powers.install.v1')).toHaveLength(1))
+      expect(calls.find(call => call.operationId === 'powers.install.v1')?.params).toEqual({
+        agent: 'bibit', type: 'skill', name: 'market-translate', version: 'v2.0.0',
+      })
+      expect(document.querySelector('dialog[open]')).toBeNull()
+      expect(await screen.findByText('Installed')).toBeTruthy()
+      expect(screen.queryByRole('button', { name: 'Add capability' })).toBeNull()
+      expect(await screen.findByText('Installation complete.')).toBeTruthy()
     })
 
     it('installs the selected version from the market details dialog', async () => {
@@ -1583,7 +1650,7 @@ describe('AgentHubPage', () => {
       // The Power is gone, so the dialog must not stay open on it: the page returns
       // to the refreshed list instead.
       await waitFor(() => expect(document.querySelector('dialog')).toBeNull())
-      expect(await screen.findByText('No skill powers are installed for bibit.')).toBeTruthy()
+      expect(await screen.findByText('No powers are installed for bibit.')).toBeTruthy()
     })
 
     it('keeps the dialog with its reason when an uninstall fails', async () => {
@@ -1607,7 +1674,7 @@ describe('AgentHubPage', () => {
 
       expect(await dialog.findByText('The command failed; version v1.0.0 is still installed.')).toBeTruthy()
       expect(document.querySelector('dialog')).toBeTruthy()
-      expect(screen.queryByText('No skill powers are installed for bibit.')).toBeNull()
+      expect(screen.queryByText('No powers are installed for bibit.')).toBeNull()
     })
 
     it('does not uninstall when the confirmation is cancelled', async () => {
@@ -1733,12 +1800,11 @@ describe('AgentHubPage custom resources', () => {
     await screen.findByRole('heading', { name: 'hand-written' })
     expect(screen.getByText('Custom')).toBeTruthy()
     expect(document.querySelector('.power-card[data-source="custom"]')).toBeTruthy()
-    // No card chooses a version any more, the hand-installed one included: its slot is
-    // the label the scanner's declared version (here: none) renders into.
+    // Version information belongs in details, including for hand-installed resources.
     expect(screen.queryByLabelText('Version')).toBeNull()
     expect(
-      document.querySelector('.power-card[data-source="custom"] .power-card__version')?.textContent
-    ).toBe('No version')
+      document.querySelector('.power-card[data-source="custom"] .power-card__version')
+    ).toBeNull()
   })
 
   it('shows the declared name of a v1 resource instead of its directory name', async () => {
@@ -1848,7 +1914,7 @@ describe('AgentHubPage custom resources', () => {
     })
     // The write refreshes the list, so the uploaded resource disappears from the
     // scan and the page falls back to the empty copy.
-    expect(await screen.findByText('No skill powers are installed for bibit.')).toBeTruthy()
+    expect(await screen.findByText('No powers are installed for bibit.')).toBeTruthy()
   })
 
   it('surfaces a missing APC key as a settings hint instead of a raw provider error', async () => {
@@ -1942,7 +2008,7 @@ describe('AgentHubPage custom resources', () => {
     expect(deleteCall?.params).toEqual({ agent: 'bibit', type: 'skill', name: 'hand-written' })
     // The resource is gone, so its dialog must not stay open on a Power that no
     // longer exists: the page returns to the list, which has already refreshed.
-    expect(await screen.findByText('No skill powers are installed for bibit.')).toBeTruthy()
+    expect(await screen.findByText('No powers are installed for bibit.')).toBeTruthy()
     await waitFor(() => expect(document.querySelector('dialog')).toBeNull())
     expect(screen.queryByText('Deleted skill "hand-written".')).toBeNull()
   })
@@ -2036,7 +2102,7 @@ describe('AgentHubPage settings tab', () => {
     await user.click(screen.getByRole('button', { name: 'My Capabilities' }))
 
     expect(await screen.findByRole('heading', { name: 'code-review' })).toBeTruthy()
-    expect(screen.getByRole('group', { name: 'Type' })).toBeTruthy()
+    expect(screen.getByRole('combobox', { name: 'Type' })).toBeTruthy()
     await waitFor(() =>
       expect(calls.filter((call) => call.operationId === 'powers.list.v1').length).toBeGreaterThan(
         listCallsBefore
@@ -2089,7 +2155,7 @@ describe('create-resource entry (host:actions)', () => {
     expect((calls[0].input as { prompt: string }).prompt).toContain('using-apm')
   })
 
-  it('keeps the entry disabled without the capability and sends nothing', async () => {
+  it('keeps the entry disabled and explains why on hover or focus without the capability', async () => {
     const user = userEvent.setup()
     // The host reports no `host:actions` at all: missing grant, older host, or a
     // build without the action registry. That is a supported state, not a bug.
@@ -2098,7 +2164,18 @@ describe('create-resource entry (host:actions)', () => {
     await screen.findByRole('heading', { name: 'code-review' })
 
     expect((createButton() as HTMLButtonElement).disabled).toBe(true)
-    expect(screen.getByText(ACTIONS_UNAVAILABLE_TEXT)).toBeTruthy()
+    expect(screen.queryByText(ACTIONS_UNAVAILABLE_TEXT)).toBeNull()
+    const trigger = createButton().parentElement!
+    await user.hover(trigger)
+    expect(screen.getByRole('tooltip').textContent).toBe(ACTIONS_UNAVAILABLE_TEXT)
+    await user.unhover(trigger)
+    expect(screen.queryByRole('tooltip')).toBeNull()
+
+    act(() => trigger.focus())
+    expect(screen.getByRole('tooltip').textContent).toBe(ACTIONS_UNAVAILABLE_TEXT)
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('tooltip')).toBeNull()
+    act(() => trigger.blur())
 
     await user.click(createButton())
     await user.click(createButton())
@@ -2198,7 +2275,7 @@ describe('bulk upgrade (Update all)', () => {
 
   const upgradeButton = () => screen.getByRole('button', { name: 'Update all' })
 
-  it('offers the entry on the installed list beside the Agent control', async () => {
+  it('offers the upgrade entry on the installed list beside the Agent control', async () => {
     const { hostApi } = makeStoreHost()
     renderPage(hostApi)
     await screen.findByRole('heading', { name: 'code-review' })
@@ -2207,8 +2284,7 @@ describe('bulk upgrade (Update all)', () => {
     const button = upgradeButton()
     const switcher = screen.getByRole('button', { name: 'Agent: bibit' })
     expect(actions?.contains(button)).toBe(true)
-    // Immediately left of the Agent control: the pair is the right-hand group.
-    expect(button.compareDocumentPosition(switcher) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(actions?.contains(switcher)).toBe(true)
   })
 
   it('keeps the entry off the market and settings tabs', async () => {

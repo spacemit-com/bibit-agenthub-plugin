@@ -75,6 +75,23 @@ describe('AgentHubI18nProvider', () => {
     expect(screen.getByTestId('value').textContent).toBe('没有匹配这些标签的能力。')
   })
 
+  it('directs an already installed capability to details in both languages', () => {
+    const source = 'This capability is already installed; manage it in details.'
+    const view = render(
+      <AgentHubI18nProvider language="en">
+        <Probe source={source} />
+      </AgentHubI18nProvider>
+    )
+    expect(screen.getByTestId('value').textContent).toBe(source)
+
+    view.rerender(
+      <AgentHubI18nProvider language="zh-CN">
+        <Probe source={source} />
+      </AgentHubI18nProvider>
+    )
+    expect(screen.getByTestId('value').textContent).toBe('该能力已安装，请在详情中管理。')
+  })
+
   it('interpolates the type and agent into the empty-list copy', () => {
     // The empty-list copy is the one place a translated string carries the filters that
     // produced it, so the placeholders have to survive into both languages.
